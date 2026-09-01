@@ -127,10 +127,12 @@ class CatalogLoadController:
         if cancelled or win._is_closing:
             return
         try:
-            record_results(win._background_health_results)
+            recorded = record_results(win._background_health_results)
             win._refresh_home_health()
-            win.lists.populate_tv_list(win.tv_channels_data)
-            win.lists.populate_radio_list(win.radio_stations_data)
+            # El diagnóstico solo cambia ROLE_HEALTH y la fecha asociada.
+            # No se borran/recrean miles de filas (ni se reencolan sus logos)
+            # mientras el usuario puede estar reproduciendo un stream.
+            win.lists.update_stream_health(recorded)
             win.lists.filter_current_list()
             win.statusBar().showMessage(
                 f"Diagnóstico automático: {len(win._background_health_results)} streams revisados.",

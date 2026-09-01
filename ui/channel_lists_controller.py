@@ -172,6 +172,34 @@ class ChannelListsController:
         self.sort_catalog(win.radio_list)
         self._queue_logo_batch(pending_logos, win.radio_list)
 
+    def update_stream_health(self, health_entries) -> None:
+        """Actualiza solo las filas afectadas por un diagnóstico terminado."""
+        health_by_stream = {
+            (entry.get("kind"), entry.get("url")): entry
+            for entry in health_entries
+        }
+        if not health_by_stream:
+            return
+
+        for kind, list_widget in (("tv", self.win.tv_list), ("radio", self.win.radio_list)):
+            list_widget.setUpdatesEnabled(False)
+            try:
+                for index in range(list_widget.count()):
+                    item = list_widget.item(index)
+                    data = item.data(ROLE_DATA) or {}
+                    health = health_by_stream.get((kind, data.get("url")))
+                    if health is None:
+                        continue
+                    item.setData(ROLE_HEALTH, health.get("status"))
+                    data["health_checked_at"] = health.get("checked_at", "")
+                    item.setData(ROLE_DATA, data)
+                    item.setToolTip(
+                        f"Último diagnóstico: {health.get('checked_at', 'desconocido')} · "
+                        f"{health.get('latency_ms', 0)} ms"
+                    )
+            finally:
+                list_widget.setUpdatesEnabled(True)
+
     def _queue_logo_batch(self, pending, list_widget, batch_size=150):
         """
         Pide los logos en tandas pequeñas con QTimer.singleShot(0, ...) en
