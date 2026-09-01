@@ -99,7 +99,11 @@ def import_backup(origen: str) -> list[str]:
         raise
     if backup_size > MAX_BACKUP_BYTES:
         raise ValueError("La copia de seguridad supera el tamaño máximo permitido.")
-    datos = json.loads(source_path.read_text(encoding="utf-8"))
+    with source_path.open("rb") as source:
+        raw_backup = source.read(MAX_BACKUP_BYTES + 1)
+    if len(raw_backup) > MAX_BACKUP_BYTES:
+        raise ValueError("La copia de seguridad supera el tamaño máximo permitido.")
+    datos = json.loads(raw_backup.decode("utf-8"))
     if (
         not isinstance(datos, dict)
         or datos.get("app") != "TDT & Radio VIP"

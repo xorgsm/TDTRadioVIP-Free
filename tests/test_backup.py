@@ -106,6 +106,24 @@ def test_import_rejects_oversized_backup_before_reading(tmp_path, monkeypatch):
         backup.import_backup(str(archive))
 
 
+def test_import_size_limit_is_enforced_again_during_read(tmp_path, monkeypatch):
+    archive = tmp_path / "backup.json"
+    archive.write_bytes(b"{}")
+    monkeypatch.setattr(backup, "MAX_BACKUP_BYTES", 1)
+    real_stat = Path.stat
+
+    def stale_small_stat(path, *args, **kwargs):
+        result = real_stat(path, *args, **kwargs)
+        if path == archive:
+            return type("Stat", (), {"st_size": 0})()
+        return result
+
+    monkeypatch.setattr(Path, "stat", stale_small_stat)
+
+    with pytest.raises(ValueError, match="tamaño máximo"):
+        backup.import_backup(str(archive))
+
+
 def test_future_dated_backup_does_not_disable_automatic_backups(tmp_path, monkeypatch):
     monkeypatch.setattr(backup, "export_backup", lambda path: Path(path).write_text("{}"))
     now = datetime(2026, 8, 31, 12, 0, 0)
