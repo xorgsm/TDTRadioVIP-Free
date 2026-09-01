@@ -39,5 +39,12 @@ jobs:
       - name: Lint (ruff)
         run: ruff check .
 
+      # "python -m pytest" (no el script "pytest" a secas): -m antepone el
+      # directorio actual a sys.path automáticamente, que es lo que permite
+      # resolver "from core.X import ..." / "from ui.X import ...". Sin el
+      # -m, pytest no añadía la raíz del repo al import path y todas las
+      # corridas de este workflow venían fallando con ModuleNotFoundError
+      # desde el primer commit -- nunca se notó en local porque ahí siempre
+      # se invoca con -m.
       - name: Tests + cobertura
-        run: pytest --cov=core --cov=ui --cov=player --cov-report=term-missing -q
+        run: python -m pytest --cov=core --cov=ui --cov=player --cov-report=term-missing -q
