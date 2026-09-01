@@ -52,7 +52,6 @@ from ui.onboarding import OnboardingDialog
 from ui.mosaic_view import MosaicView
 from ui.recurring_dialog import RecurringRecordingsDialog
 from ui.scheduled_recordings_dialog import ScheduledRecordingsDialog
-from ui.splash import SplashDialog
 from ui.stats_dialog import StatsDialog
 from ui.stream_diagnostics_dialog import StreamDiagnosticsDialog
 from ui.tray_controller import TrayReminderController
@@ -1777,7 +1776,15 @@ class MainWindow(QMainWindow):
         Descargas y la paleta de comandos ya consultan self.activated al
         vuelo, así que solo hay que actualizar lo que se decidió al
         construir la ventana (el botón de enviar a TV y esta entrada de menú).
+
+        Import local (no arriba del módulo): esta ruta solo se conecta a un
+        menú cuando not self.es_version_free (ver _build_menu), así que
+        ui.splash -- y core.license, que importa a su vez -- no hace falta
+        que se carguen nunca en la edición free. Mismo motivo que
+        core.caster/ui.download_panel más arriba (ver __init__).
         """
+        from ui.splash import SplashDialog
+
         dialog = SplashDialog(self, show_profile_selector=False)
         dialog.exec()
         if dialog.activated and not self.activated:

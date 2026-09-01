@@ -7,10 +7,8 @@ from PySide6.QtGui import QFontDatabase, QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from core.config import APP_VERSION, get_font_path, get_icon_path, load_settings
-from core.license import load_activation
 from player.vlc_player import vlc_disponible_al_arrancar
 from ui.main_window import MainWindow
-from ui.splash import SplashDialog
 from ui.style import DEFAULT_ACCENT, build_style
 
 
@@ -63,7 +61,16 @@ def run_vip() -> int:
     llama aquí porque necesita el hardware ID y eso son varios segundos de
     subprocesos WMIC/PowerShell bloqueando el arranque — esa validación la
     hace el propio splash en su hilo de fondo, como siempre.
+
+    Imports locales (no arriba del módulo): run_free() no llama a run_vip(),
+    pero como ambas viven en el mismo archivo, un import a nivel de módulo
+    de core.license/ui.splash se habría colado igual en el build free vía
+    TDTRadioVIP_Free.spec -- ver el mismo comentario junto a
+    self._cast_session en ui/main_window.py para el porqué de fondo.
     """
+    from core.license import load_activation
+    from ui.splash import SplashDialog
+
     app, app_icon = _create_application()
     activated = False
     tiene_licencia = bool(load_activation().get("activated"))

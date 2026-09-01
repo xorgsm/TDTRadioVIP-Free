@@ -21,6 +21,11 @@ excludes = [
     'pychromecast', 'zeroconf', 'libtorrent',
     'ui.download_panel', 'ui.cast_controller',
     'core.caster', 'core.dlna_caster',
+    # Activación/licencia: ui/application.py y ui/main_window.py importan
+    # core.license/ui.splash de forma local (dentro de run_vip()/
+    # _open_activation_dialog(), no arriba del módulo) precisamente para
+    # que este build pueda excluirlos de verdad.
+    'core.license', 'ui.splash',
 ]
 
 
