@@ -4,20 +4,25 @@ e importar listas M3U completas (por URL o archivo local).
 """
 from datetime import datetime
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import requests
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
-    QAbstractItemView, QButtonGroup, QColorDialog, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
+    QAbstractItemView, QButtonGroup, QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
     QFrame, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget, QListWidgetItem,
-    QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout,
+    QMessageBox, QMenu, QPushButton, QScrollArea, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from core import config as cfg
 from core import countries
+from core import channels as tv_channels
+from core.playlist_export import export_m3u
 from core.recording_library import list_recordings
 from ui import palette
 from ui.style import ACCENT_PRESETS, DEFAULT_ACCENT
+from ui.fetch_worker import FetchWorker
 from ui.visual import set_surface
 
 
@@ -180,6 +185,7 @@ class SettingsDialog(QDialog):
         set_surface(self, "dialog")
         self.setWindowTitle("Configuración")
         self.setMinimumWidth(480)
+        self.resize(560, 640)
         self.settings = dict(settings)
 
         root = QVBoxLayout(self)
@@ -189,6 +195,20 @@ class SettingsDialog(QDialog):
             "Configuración",
             "Fuentes de contenido, grabación y aspecto de la aplicación.",
         ))
+
+        # Todas las secciones van dentro de un scroll: con las 5 juntas
+        # (Canales, Guía y grabaciones, Mantenimiento, Apariencia, Perfil)
+        # el diálogo sin scroll se volvía más alto que la pantalla y no
+        # dejaba encogerlo ni ver las últimas secciones.
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 4, 0)
+        content_layout.setSpacing(14)
+        scroll.setWidget(content)
+        root.addWidget(scroll, stretch=1)
 
         # ---- Canales ----
         panel_canales, form_canales = _panel("Canales")
@@ -203,7 +223,7 @@ class SettingsDialog(QDialog):
         self.radio_country_combo = QComboBox()
         self._fill_country_combo(self.radio_country_combo, self.settings.get("radio_country_code", "ES"))
         form_canales.addRow("País de radio:", self.radio_country_combo)
-        root.addWidget(panel_canales)
+        content_layout.addWidget(panel_canales)
 
         # ---- Guía y grabaciones ----
         panel_grab, form_grab = _panel("Guía y grabaciones")
@@ -218,10 +238,69 @@ class SettingsDialog(QDialog):
         rec_row.addWidget(self.rec_dir_input)
         rec_row.addWidget(browse_btn)
         form_grab.addRow("Carpeta de grabaciones:", rec_row)
-        root.addWidget(panel_grab)
+        content_layout.addWidget(panel_grab)
+
+        panel_maintenance, form_maintenance = _panel("Mantenimiento automático")
+        self.auto_backup_check = QCheckBox("Crear copias de seguridad automáticamente")
+        self.auto_backup_check.setChecked(
+            bool(self.settings.get("automatic_backups_enabled", True))
+        )
+        form_maintenance.addRow("Copias:", self.auto_backup_check)
+        self.backup_interval_combo = QComboBox()
+        self.backup_interval_combo.addItem("Cada día", 1)
+        self.backup_interval_combo.addItem("Cada semana", 7)
+        interval_index = self.backup_interval_combo.findData(
+            int(self.settings.get("automatic_backup_interval_days", 1))
+        )
+        self.backup_interval_combo.setCurrentIndex(max(0, interval_index))
+        form_maintenance.addRow("Frecuencia:", self.backup_interval_combo)
+        self.backup_retention_combo = QComboBox()
+        for count in (3, 7, 14):
+            self.backup_retention_combo.addItem(f"Conservar {count} copias", count)
+        retention_index = self.backup_retention_combo.findData(
+            int(self.settings.get("automatic_backup_retention", 7))
+        )
+        self.backup_retention_combo.setCurrentIndex(max(0, retention_index))
+        form_maintenance.addRow("Retención:", self.backup_retention_combo)
+        self.auto_diagnostics_check = QCheckBox("Revisar streams antiguos en segundo plano")
+        self.auto_diagnostics_check.setChecked(
+            bool(self.settings.get("automatic_stream_diagnostics", True))
+        )
+        form_maintenance.addRow("Diagnóstico:", self.auto_diagnostics_check)
+        content_layout.addWidget(panel_maintenance)
 
         # ---- Apariencia ----
         panel_apariencia, form_apariencia = _panel("Apariencia")
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItem("Oscuro", "dark")
+        self.theme_combo.addItem("Claro", "light")
+        theme_index = self.theme_combo.findData(self.settings.get("theme_mode", "dark"))
+        self.theme_combo.setCurrentIndex(max(0, theme_index))
+        form_apariencia.addRow("Tema:", self.theme_combo)
+
+        self.card_size_combo = QComboBox()
+        self.card_size_combo.addItem("Compactas", 140)
+        self.card_size_combo.addItem("Medianas", 168)
+        self.card_size_combo.addItem("Grandes", 204)
+        card_index = self.card_size_combo.findData(
+            int(self.settings.get("catalog_card_size", 168))
+        )
+        self.card_size_combo.setCurrentIndex(max(0, card_index))
+        form_apariencia.addRow("Tarjetas del catálogo:", self.card_size_combo)
+
+        self.resume_last_check = QCheckBox("Reanudar el último canal o emisora al iniciar")
+        self.resume_last_check.setChecked(bool(self.settings.get("resume_last_stream", False)))
+        form_apariencia.addRow("Reproducción:", self.resume_last_check)
+
+        self.fullscreen_autohide_check = QCheckBox(
+            "Ocultar cabecera y controles en pantalla completa "
+            "(aparecen al mover el ratón)"
+        )
+        self.fullscreen_autohide_check.setChecked(
+            bool(self.settings.get("fullscreen_autohide_ui", True))
+        )
+        form_apariencia.addRow("Pantalla completa:", self.fullscreen_autohide_check)
+
         accent_row = QHBoxLayout()
         accent_row.setSpacing(8)
         self._accent_group = QButtonGroup(self)
@@ -266,7 +345,7 @@ class SettingsDialog(QDialog):
 
         accent_row.addStretch(1)
         form_apariencia.addRow("Color de acento:", accent_row)
-        root.addWidget(panel_apariencia)
+        content_layout.addWidget(panel_apariencia)
 
         # ---- Perfil ----
         panel_perfil, form_perfil = _panel("Perfil")
@@ -275,8 +354,14 @@ class SettingsDialog(QDialog):
         self._reload_perfil_combo(self.settings.get("active_profile", "Default"))
         nuevo_perfil_btn = QPushButton("+ Nuevo perfil…")
         nuevo_perfil_btn.clicked.connect(self._on_nuevo_perfil)
+        duplicar_perfil_btn = QPushButton("Duplicar…")
+        duplicar_perfil_btn.clicked.connect(self._on_duplicar_perfil)
+        eliminar_perfil_btn = QPushButton("Eliminar")
+        eliminar_perfil_btn.clicked.connect(self._on_eliminar_perfil)
         perfil_row.addWidget(self.perfil_combo, stretch=1)
         perfil_row.addWidget(nuevo_perfil_btn)
+        perfil_row.addWidget(duplicar_perfil_btn)
+        perfil_row.addWidget(eliminar_perfil_btn)
         form_perfil.addRow("Perfil activo:", perfil_row)
         perfil_aviso = QLabel(
             "Cada perfil tiene sus propios favoritos, historial, canales/emisoras "
@@ -286,9 +371,9 @@ class SettingsDialog(QDialog):
         perfil_aviso.setWordWrap(True)
         perfil_aviso.setObjectName("dialogSubtitle")
         form_perfil.addRow(perfil_aviso)
-        root.addWidget(panel_perfil)
+        content_layout.addWidget(panel_perfil)
 
-        root.addStretch(1)
+        content_layout.addStretch(1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.button(QDialogButtonBox.Ok).setObjectName("primaryButton")
@@ -379,12 +464,50 @@ class SettingsDialog(QDialog):
             return
         self._reload_perfil_combo(nombre)
 
+    def _on_duplicar_perfil(self):
+        source = self.perfil_combo.currentData() or "Default"
+        name, accepted = QInputDialog.getText(self, "Duplicar perfil", "Nombre de la copia:")
+        if not accepted or not name.strip():
+            return
+        try:
+            cfg.duplicate_profile(source, name)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Duplicar perfil", str(exc))
+            return
+        self._reload_perfil_combo(name.strip())
+
+    def _on_eliminar_perfil(self):
+        name = self.perfil_combo.currentData() or "Default"
+        if name == "Default":
+            QMessageBox.information(self, "Eliminar perfil", "El perfil Default no se puede eliminar.")
+            return
+        if QMessageBox.question(
+            self, "Eliminar perfil", f"¿Eliminar el perfil «{name}» y todos sus datos?"
+        ) != QMessageBox.Yes:
+            return
+        cfg.delete_profile(name)
+        self._reload_perfil_combo("Default")
+
     def get_settings(self) -> dict:
         self.settings["tv_country_code"] = self.tv_country_combo.currentData()
         self.settings["tv_playlist_url"] = self.tv_url_input.text().strip()
         self.settings["radio_country_code"] = self.radio_country_combo.currentData()
         self.settings["epg_url"] = self.epg_input.text().strip()
         self.settings["recordings_dir"] = self.rec_dir_input.text().strip() or self.settings.get("recordings_dir")
+        self.settings["theme_mode"] = self.theme_combo.currentData() or "dark"
+        self.settings["catalog_card_size"] = self.card_size_combo.currentData() or 168
+        self.settings["resume_last_stream"] = self.resume_last_check.isChecked()
+        self.settings["fullscreen_autohide_ui"] = self.fullscreen_autohide_check.isChecked()
+        self.settings["automatic_backups_enabled"] = self.auto_backup_check.isChecked()
+        self.settings["automatic_backup_interval_days"] = (
+            self.backup_interval_combo.currentData() or 1
+        )
+        self.settings["automatic_backup_retention"] = (
+            self.backup_retention_combo.currentData() or 7
+        )
+        self.settings["automatic_stream_diagnostics"] = (
+            self.auto_diagnostics_check.isChecked()
+        )
         if self._custom_selected and self._custom_color:
             self.settings["accent_color"] = self._custom_color
         else:
@@ -472,10 +595,14 @@ class AddEntryDialog(QDialog):
 class ImportPlaylistDialog(QDialog):
     """Importar una lista M3U/M3U8 completa desde una URL o un archivo local."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, entry_type: str | None = None):
         super().__init__(parent)
+        self._entry_type = entry_type if entry_type in ("tv", "radio") else None
         set_surface(self, "dialog")
-        self.setWindowTitle("Importar lista M3U")
+        title = "Importar lista de TV" if self._entry_type == "tv" else (
+            "Importar lista de radio" if self._entry_type == "radio" else "Importar lista M3U"
+        )
+        self.setWindowTitle(title)
         self.setMinimumWidth(500)
 
         root = QVBoxLayout(self)
@@ -492,6 +619,9 @@ class ImportPlaylistDialog(QDialog):
         self.type_combo = QComboBox()
         self.type_combo.addItem("Canales de TV", "tv")
         self.type_combo.addItem("Emisoras de radio", "radio")
+        if self._entry_type:
+            self.type_combo.setCurrentIndex(self.type_combo.findData(self._entry_type))
+            self.type_combo.setEnabled(False)
         form.addRow("Añadir como:", self.type_combo)
 
         source_row = QHBoxLayout()
@@ -522,6 +652,292 @@ class ImportPlaylistDialog(QDialog):
 
     def get_values(self):
         return self.type_combo.currentData(), self.source_input.text().strip()
+
+
+class M3UEditorDialog(QDialog):
+    """Editor visual para revisar una lista M3U antes de exportarla."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        set_surface(self, "dialog")
+        self.setWindowTitle("Editor M3U")
+        self.resize(1120, 720)
+
+        root = QVBoxLayout(self)
+        root.setSpacing(12)
+        root.setContentsMargins(20, 18, 20, 18)
+        root.addLayout(_header(
+            "EDITOR M3U",
+            "Carga una lista HTTP(S) o un archivo, filtra grupos y edita su contenido antes de exportarlo.",
+        ))
+
+        source_row = QHBoxLayout()
+        source_row.addWidget(QLabel("Origen (URL o archivo):"))
+        self.source_input = QLineEdit()
+        self.source_input.setPlaceholderText("http(s)://…/lista.m3u o archivo .m3u/.m3u8")
+        source_row.addWidget(self.source_input, 1)
+        browse_btn = QPushButton("Examinar…")
+        browse_btn.clicked.connect(self._browse_file)
+        source_row.addWidget(browse_btn)
+        load_btn = QPushButton("Cargar")
+        load_btn.setObjectName("primaryButton")
+        load_btn.clicked.connect(self._load_source)
+        source_row.addWidget(load_btn)
+        root.addLayout(source_row)
+
+        content = QHBoxLayout()
+        groups_box = QVBoxLayout()
+        groups_box.addWidget(QLabel("GRUPOS"))
+        groups_hint = QLabel("Ctrl/Shift + clic para seleccionar varios")
+        groups_hint.setObjectName("dialogSubtitle")
+        groups_box.addWidget(groups_hint)
+        self.groups_list = QListWidget()
+        self.groups_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.groups_list.itemSelectionChanged.connect(self._apply_filters)
+        self.groups_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.groups_list.customContextMenuRequested.connect(self._show_groups_menu)
+        groups_box.addWidget(self.groups_list, 1)
+        content.addLayout(groups_box, 1)
+
+        table_box = QVBoxLayout()
+        search_row = QHBoxLayout()
+        search_row.addWidget(QLabel("Buscar:"))
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Nombre, grupo o URL")
+        self.search_input.textChanged.connect(self._apply_filters)
+        search_row.addWidget(self.search_input, 1)
+        clear_btn = QPushButton("Quitar filtro")
+        clear_btn.clicked.connect(self._clear_filters)
+        search_row.addWidget(clear_btn)
+        table_box.addLayout(search_row)
+        self.table = QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels(["Incluir", "Grupo", "Nombre del canal", "URL", "Estado"])
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.setColumnWidth(0, 68)
+        self.table.setColumnWidth(1, 170)
+        self.table.setColumnWidth(2, 250)
+        self.table.setColumnWidth(4, 130)
+        table_box.addWidget(self.table, 1)
+        content.addLayout(table_box, 4)
+        root.addLayout(content, 1)
+
+        actions = QHBoxLayout()
+        include_btn = QPushButton("Marcar visibles")
+        include_btn.clicked.connect(lambda: self._set_visible_checked(Qt.Checked))
+        actions.addWidget(include_btn)
+        exclude_btn = QPushButton("Desmarcar visibles")
+        exclude_btn.clicked.connect(lambda: self._set_visible_checked(Qt.Unchecked))
+        actions.addWidget(exclude_btn)
+        remove_rows_btn = QPushButton("Eliminar seleccionados")
+        remove_rows_btn.clicked.connect(self._remove_selected_rows)
+        actions.addWidget(remove_rows_btn)
+        remove_groups_btn = QPushButton("Eliminar grupo(s) seleccionado(s)")
+        remove_groups_btn.clicked.connect(self._remove_selected_groups)
+        actions.addWidget(remove_groups_btn)
+        self.analyze_btn = QPushButton("Analizar lista")
+        self.analyze_btn.clicked.connect(self._start_analysis)
+        actions.addWidget(self.analyze_btn)
+        actions.addStretch(1)
+        export_btn = QPushButton("Exportar lista…")
+        export_btn.setObjectName("primaryButton")
+        export_btn.clicked.connect(self._export)
+        actions.addWidget(export_btn)
+        root.addLayout(actions)
+
+    def _browse_file(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Selecciona lista M3U", "", "Listas M3U (*.m3u *.m3u8);;Todos los archivos (*)"
+        )
+        if path:
+            self.source_input.setText(path)
+
+    def _load_source(self):
+        source = self.source_input.text().strip()
+        if not source:
+            return
+        try:
+            if source.lower().startswith(("http://", "https://")):
+                response = requests.get(source, timeout=15)
+                response.raise_for_status()
+                text = response.text
+            else:
+                text = Path(source).read_text(encoding="utf-8", errors="ignore")
+        except (OSError, requests.RequestException, ValueError) as exc:
+            QMessageBox.warning(self, "No se pudo cargar", str(exc))
+            return
+        channels = tv_channels.parse_m3u(text, deduplicate=False)
+        if not channels:
+            QMessageBox.information(self, "Lista vacía", "No se encontraron canales M3U válidos.")
+            return
+        self._populate(channels)
+
+    def _populate(self, channels):
+        self.table.setRowCount(0)
+        for channel in channels:
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+            include = QTableWidgetItem()
+            include.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
+            include.setCheckState(Qt.Checked)
+            self.table.setItem(row, 0, include)
+            self.table.setItem(row, 1, QTableWidgetItem(channel.group))
+            self.table.setItem(row, 2, QTableWidgetItem(channel.name))
+            self.table.setItem(row, 3, QTableWidgetItem(channel.url))
+            status = QTableWidgetItem("Pendiente")
+            status.setFlags(Qt.ItemIsEnabled)
+            self.table.setItem(row, 4, status)
+        self._mark_duplicates()
+        self._refresh_groups()
+
+    def _mark_duplicates(self):
+        names: dict[str, int] = {}
+        urls: dict[str, int] = {}
+        for row in range(self.table.rowCount()):
+            name = self.table.item(row, 2).text().strip().casefold()
+            url = self.table.item(row, 3).text().strip().casefold()
+            names[name] = names.get(name, 0) + 1
+            urls[url] = urls.get(url, 0) + 1
+        for row in range(self.table.rowCount()):
+            name = self.table.item(row, 2).text().strip().casefold()
+            url = self.table.item(row, 3).text().strip().casefold()
+            duplicate = names.get(name, 0) > 1 or urls.get(url, 0) > 1
+            self.table.item(row, 4).setText("Duplicado" if duplicate else "Pendiente")
+
+    def _refresh_groups(self):
+        selected = {item.text() for item in self.groups_list.selectedItems()}
+        groups = sorted({self.table.item(row, 1).text().strip() or "Sin grupo" for row in range(self.table.rowCount())})
+        self.groups_list.clear()
+        for group in groups:
+            item = QListWidgetItem(group)
+            self.groups_list.addItem(item)
+            item.setSelected(group in selected)
+        self._apply_filters()
+
+    def _clear_filters(self):
+        self.search_input.clear()
+        self.groups_list.clearSelection()
+
+    def _show_groups_menu(self, position):
+        item = self.groups_list.itemAt(position)
+        if item is None:
+            return
+        if not item.isSelected():
+            self.groups_list.clearSelection()
+            item.setSelected(True)
+        selected_count = len(self.groups_list.selectedItems())
+        menu = QMenu(self)
+        label = "Eliminar grupo…" if selected_count == 1 else f"Eliminar {selected_count} grupos…"
+        menu.addAction(label, self._remove_selected_groups)
+        menu.exec(self.groups_list.mapToGlobal(position))
+
+    def _apply_filters(self):
+        groups = {item.text() for item in self.groups_list.selectedItems()}
+        query = self.search_input.text().strip().casefold()
+        for row in range(self.table.rowCount()):
+            values = [self.table.item(row, column).text() for column in range(1, 5)]
+            group = values[0].strip() or "Sin grupo"
+            visible = (not groups or group in groups) and (not query or query in " ".join(values).casefold())
+            self.table.setRowHidden(row, not visible)
+
+    def _set_visible_checked(self, state):
+        for row in range(self.table.rowCount()):
+            if not self.table.isRowHidden(row):
+                self.table.item(row, 0).setCheckState(state)
+
+    def _remove_selected_rows(self):
+        rows = sorted({item.row() for item in self.table.selectedItems()}, reverse=True)
+        for row in rows:
+            self.table.removeRow(row)
+        self._mark_duplicates()
+        self._refresh_groups()
+
+    def _remove_selected_groups(self):
+        groups = {item.text() for item in self.groups_list.selectedItems()}
+        if not groups:
+            return
+        rows = [
+            row for row in range(self.table.rowCount())
+            if (self.table.item(row, 1).text().strip() or "Sin grupo") in groups
+        ]
+        if not rows:
+            return
+        answer = QMessageBox.question(
+            self, "Eliminar grupos", f"Se eliminarán {len(rows)} canales de {len(groups)} grupo(s). ¿Continuar?"
+        )
+        if answer != QMessageBox.Yes:
+            return
+        for row in reversed(rows):
+            self.table.removeRow(row)
+        self._mark_duplicates()
+        self._refresh_groups()
+
+    @staticmethod
+    def _check_streams(urls: list[str]) -> dict[str, str]:
+        def check(url: str) -> tuple[str, str]:
+            if not url.lower().startswith(("http://", "https://")):
+                return url, "No verificable"
+            try:
+                response = requests.get(url, stream=True, timeout=(4, 8), headers={"User-Agent": "TDTRadioVIP"})
+                response.close()
+                return url, "OK" if response.status_code < 400 else f"Error HTTP {response.status_code}"
+            except requests.RequestException:
+                return url, "Sin respuesta"
+
+        results = {}
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = [executor.submit(check, url) for url in set(urls)]
+            for future in as_completed(futures):
+                url, status = future.result()
+                results[url] = status
+        return results
+
+    def _start_analysis(self):
+        if not self.table.rowCount() or getattr(self, "_analysis_worker", None):
+            return
+        urls = [self.table.item(row, 3).text().strip() for row in range(self.table.rowCount())]
+        self.analyze_btn.setEnabled(False)
+        self.analyze_btn.setText("Analizando…")
+        worker = FetchWorker(self._check_streams, urls)
+        worker.done.connect(self._finish_analysis)
+        worker.finished.connect(lambda: setattr(self, "_analysis_worker", None))
+        self._analysis_worker = worker
+        worker.start()
+
+    def _finish_analysis(self, results):
+        self.analyze_btn.setEnabled(True)
+        self.analyze_btn.setText("Analizar lista")
+        if not isinstance(results, dict):
+            QMessageBox.warning(self, "Análisis interrumpido", "No se pudo comprobar la lista.")
+            return
+        for row in range(self.table.rowCount()):
+            url = self.table.item(row, 3).text().strip()
+            status_item = self.table.item(row, 4)
+            prefix = "Duplicado · " if status_item.text() == "Duplicado" else ""
+            status_item.setText(prefix + results.get(url, "Sin respuesta"))
+
+    def _export(self):
+        entries = []
+        for row in range(self.table.rowCount()):
+            if self.table.item(row, 0).checkState() != Qt.Checked:
+                continue
+            name = self.table.item(row, 2).text().strip()
+            url = self.table.item(row, 3).text().strip()
+            if name and url:
+                entries.append({"name": name, "url": url, "group": self.table.item(row, 1).text().strip()})
+        if not entries:
+            QMessageBox.information(self, "Lista vacía", "No hay canales marcados para exportar.")
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "Exportar lista M3U", "lista_editada.m3u", "Listas M3U (*.m3u)")
+        if not path:
+            return
+        try:
+            export_m3u(entries, path)
+        except OSError as exc:
+            QMessageBox.warning(self, "No se pudo exportar", str(exc))
+            return
+        QMessageBox.information(self, "Lista exportada", f"Se exportaron {len(entries)} canales.")
 
 
 class ExportPlaylistDialog(QDialog):

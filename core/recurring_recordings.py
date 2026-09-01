@@ -138,6 +138,42 @@ def set_rule_enabled(rule_id: str, enabled: bool) -> List[RecurringRule]:
     return rules
 
 
+def find_rule_conflicts(
+    days: List[int], start_time: str, duration_minutes: int,
+    rules: List[RecurringRule] | None = None,
+) -> List[RecurringRule]:
+    """Encuentra reglas semanales solapadas, incluso al cruzar medianoche."""
+    try:
+        hour, minute = (int(part) for part in start_time.split(":"))
+    except (AttributeError, ValueError):
+        return []
+    week_minutes = 7 * 24 * 60
+    candidate_intervals = [
+        (day * 1440 + hour * 60 + minute,
+         day * 1440 + hour * 60 + minute + duration_minutes)
+        for day in days
+    ]
+    conflicts = []
+    for rule in load_rules() if rules is None else rules:
+        if not rule.enabled:
+            continue
+        rule_hour, rule_minute = (int(part) for part in rule.start_time.split(":"))
+        rule_intervals = [
+            (day * 1440 + rule_hour * 60 + rule_minute,
+             day * 1440 + rule_hour * 60 + rule_minute + rule.duration_minutes)
+            for day in rule.days
+        ]
+        overlaps = any(
+            start < other_stop + shift and other_start + shift < stop
+            for start, stop in candidate_intervals
+            for other_start, other_stop in rule_intervals
+            for shift in (-week_minutes, 0, week_minutes)
+        )
+        if overlaps:
+            conflicts.append(rule)
+    return conflicts
+
+
 def _load_sync_state() -> dict:
     data = read_json(_sync_path(), {})
     return data if isinstance(data, dict) else {}

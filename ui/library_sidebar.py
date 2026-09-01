@@ -36,11 +36,16 @@ class LibrarySidebar(QWidget):
         self._on_open_folder = on_open_folder
         self.setObjectName("librarySidebar")
         self.setProperty("uiSurface", "sidebar")
-        self.setFixedWidth(210)
+        self.setFixedWidth(232)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 18, 8, 12)
-        layout.setSpacing(4)
+        layout.setContentsMargins(16, 20, 12, 14)
+        layout.setSpacing(6)
+
+        heading = QLabel("BIBLIOTECA")
+        heading.setObjectName("libraryHeading")
+        layout.addWidget(heading)
+        layout.addSpacing(8)
 
         recent_title = QLabel("RECIENTES")
         recent_title.setObjectName("libSectionTitle")

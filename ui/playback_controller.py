@@ -28,7 +28,8 @@ import logging
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QApplication, QGraphicsOpacityEffect, QListWidget, QListWidgetItem, QMenu, QMessageBox,
+    QApplication, QGraphicsOpacityEffect, QInputDialog, QListWidget, QListWidgetItem, QMenu,
+    QMessageBox,
 )
 
 from core import channels as tv_channels
@@ -52,6 +53,7 @@ class PlaybackController:
     """Reproducción, grabación y temporizador de apagado de MainWindow."""
 
     MAX_AUTO_SKIP = 6
+    MAX_STREAM_RETRIES = 2
     AUTO_SKIP_DELAY_MS = 2200
     # A partir de este número de fallos SEGUIDOS del mismo canal/emisora
     # (no total histórico, ver core.channels.record_channel_failure), se
@@ -60,10 +62,14 @@ class PlaybackController:
 
     def __init__(self, window):
         self.win = window
+        self._recovery_attempts = 0
 
     # ---------- Reproducción ----------
 
-    def play(self, item_type: str, name: str, url: str, tvg_id: str = "", logo: str = ""):
+    def play(
+        self, item_type: str, name: str, url: str, tvg_id: str = "", logo: str = "",
+        alternate_urls=None,
+    ):
         win = self.win
         if win.recorder.is_recording:
             self.toggle_recording()
@@ -90,6 +96,7 @@ class PlaybackController:
             win.player.play(url)
             win.player.set_volume(win.volume_slider.value())
             win.equalizer.set_intensity(0.0 if win.mute_btn.isChecked() else win.volume_slider.value() / 100)
+            win.equalizer.set_station(name, logo, self._find_station_tags(name))
             win.equalizer.start()
 
         win.current_type = item_type
@@ -97,6 +104,7 @@ class PlaybackController:
         win.current_url = url
         win.current_tvg_id = tvg_id
         win.current_logo = logo
+        win._current_alternate_urls = list(alternate_urls or [])
         win.set_live_badge_visible(True)
 
         icon = "TV" if item_type == "tv" else "FM"
@@ -117,11 +125,17 @@ class PlaybackController:
         # abajo). Hasta entonces, o si el logo no da un color válido, se
         # queda el azul/naranja fijo de arriba.
         self.update_now_logo(logo, tipo_accent)
-        win.play_btn.setText("⏸")
+        self._set_play_button_state(paused=True)
         self._pulse_now_playing()
+        # Se desactivan hasta confirmar (_confirm_playback_ok) si el
+        # contenido nuevo admite avance rápido -- is_seekable() de libVLC
+        # no da una respuesta fiable hasta que la reproducción arranca de
+        # verdad, así que dejarlos activos aquí los volvería un botón que
+        # no hace nada durante ese margen en directo.
+        self._update_seek_buttons_enabled(False)
 
         win.fav_btn.setChecked(fav_store.is_favorite(win.favorites, item_type, name))
-        win.fav_btn.setText("★" if win.fav_btn.isChecked() else "☆")
+        self._update_favorite_button_icon()
 
         win.history = hist_store.add_entry(item_type, name, url)
         win.lists.refresh_history_tab()
@@ -144,6 +158,17 @@ class PlaybackController:
             return
         store = tv_channels if item_type == "tv" else radio_stations
         store.reset_channel_failures(name)
+        self._recovery_attempts = 0
+        self._update_seek_buttons_enabled(win.player.is_seekable())
+
+    def _find_station_tags(self, name: str) -> str:
+        """Género/tags de Radio-Browser para 'name', o '' si no se encuentra
+        (emisora personalizada, o cargada desde favoritos/historial sin
+        pasar por el catálogo). Ver RadioHeroWidget.set_station()."""
+        for station in self.win.radio_stations_data:
+            if station.name == name:
+                return station.tags
+        return ""
 
     def update_now_logo(self, url: str, tipo_accent: str):
         """
@@ -206,23 +231,56 @@ class PlaybackController:
             return
         win.player.pause_toggle()
         playing = win.player.is_playing()
-        win.play_btn.setText("⏸" if playing else "▶")
+        self._set_play_button_state(paused=playing)
         win._taskbar.update_play_state(playing)
         if win.current_type == "radio":
             win.equalizer.start() if playing else win.equalizer.stop()
         win._refresh_home_now_playing()
+
+    def seek(self, offset_ms: int):
+        """Salta offset_ms hacia adelante (positivo) o atrás (negativo) --
+        botones ⏪/⏩ de 30 s en la barra de reproducción. No hace nada en
+        directo puro (ver VLCPlayer.seek_relative)."""
+        win = self.win
+        if win.current_url is None:
+            return
+        win.player.seek_relative(offset_ms)
+
+    def _update_seek_buttons_enabled(self, enabled: bool):
+        win = self.win
+        win.seek_back_btn.setEnabled(enabled)
+        win.seek_fwd_btn.setEnabled(enabled)
 
     def on_player_error(self, message: str):
         win = self.win
         win.set_live_badge_visible(False)
         win._playback_failed = True
         win.equalizer.stop()
-        win.play_btn.setText("▶")
+        self._set_play_button_state(paused=False)
         win.retry_btn.setVisible(True)
+        self._update_seek_buttons_enabled(False)
         win.now_subtitle.setText(f"⚠ {message}")
         win.now_subtitle.setStyleSheet(f"color: {palette.DANGER};")
         name = win.current_name or "el canal seleccionado"
         win.lists.mark_playing_everywhere()
+
+        # Antes de abandonar el canal se reintenta la misma URL. Muchos
+        # streams HLS fallan de forma transitoria al cambiar de segmento;
+        # saltar inmediatamente al siguiente canal hacía que una caída de
+        # uno o dos segundos pareciera una emisora permanentemente rota.
+        if win.current_url and self._recovery_attempts < self.MAX_STREAM_RETRIES:
+            token = win._playback_token
+            attempt = self._recovery_attempts + 1
+            win.statusBar().showMessage(
+                f"«{name}» perdió la conexión. Reintentando "
+                f"({attempt}/{self.MAX_STREAM_RETRIES})…",
+                self.AUTO_SKIP_DELAY_MS,
+            )
+            QTimer.singleShot(
+                self.AUTO_SKIP_DELAY_MS,
+                lambda: self._retry_current_stream(token),
+            )
+            return
 
         if win.current_type and win.current_name:
             store = tv_channels if win.current_type == "tv" else radio_stations
@@ -242,6 +300,40 @@ class PlaybackController:
                 f"No se pudo conectar con «{name}». Puede que el servidor esté caído.", 8000
             )
             win._auto_skip_count = 0
+
+    def _retry_current_stream(self, token: int):
+        """Reconecta la emisión actual sin duplicarla en el historial."""
+        win = self.win
+        if token != win._playback_token or not win.current_url:
+            return
+        self._recovery_attempts += 1
+        # El primer intento reconecta la URL original. A partir del segundo
+        # se prueban las fuentes de respaldo conservadas al deduplicar el
+        # catálogo M3U/Radio-Browser.
+        alternate_index = self._recovery_attempts - 2
+        if 0 <= alternate_index < len(win._current_alternate_urls):
+            win.current_url = win._current_alternate_urls[alternate_index]
+        win._playback_token += 1
+        retry_token = win._playback_token
+        win._playback_failed = False
+        win.retry_btn.setVisible(False)
+        win.now_subtitle.setText(
+            f"Reconectando… intento {self._recovery_attempts}/{self.MAX_STREAM_RETRIES}"
+        )
+        win.now_subtitle.setStyleSheet("")
+        win.player.stop()
+        win.player.play(win.current_url)
+        win.player.set_volume(win.volume_slider.value())
+        if win.current_type == "tv":
+            self._apply_audio_only_state()
+        else:
+            win.equalizer.start()
+        QTimer.singleShot(
+            self.AUTO_SKIP_DELAY_MS,
+            lambda: self._confirm_playback_ok(
+                win.current_type, win.current_name, retry_token
+            ),
+        )
 
     def _maybe_offer_autohide(self, item_type: str, name: str, fallos: int):
         """
@@ -278,17 +370,21 @@ class PlaybackController:
         if win.queue.has_items():
             win.queue.play_next()
             return
-        win.play_btn.setText("▶")
+        self._set_play_button_state(paused=False)
         win.set_live_badge_visible(False)
         win.equalizer.stop()
         win.statusBar().showMessage("La emisión se ha detenido.", 5000)
         win.lists.mark_playing_everywhere()
+        self._update_seek_buttons_enabled(False)
 
     def retry_playback(self):
         win = self.win
         if not win.current_url:
             return
-        self.play(win.current_type, win.current_name, win.current_url, win.current_tvg_id, win.current_logo)
+        self.play(
+            win.current_type, win.current_name, win.current_url,
+            win.current_tvg_id, win.current_logo, win._current_alternate_urls,
+        )
 
     def stop_playback(self):
         win = self.win
@@ -296,7 +392,7 @@ class PlaybackController:
             self.toggle_recording()
         win.player.stop()
         win.equalizer.stop()
-        win.play_btn.setText("▶")
+        self._set_play_button_state(paused=False)
         win.set_live_badge_visible(False)
         win.now_title.setText("Nada en reproducción")
         win.now_subtitle.setText("Elige un canal o una emisora")
@@ -305,12 +401,14 @@ class PlaybackController:
         win._playback_failed = False
         win._playback_token += 1
         win._active_list = None
+        self._update_seek_buttons_enabled(False)
         win._auto_skip_count = 0
         win.now_logo.clear()
         win.now_logo.setStyleSheet(f"background-color: {palette.BG_PANEL_ALT}; border-radius: 10px;")
         win.current_type = None
         win.current_name = None
         win.current_url = None
+        win._current_alternate_urls = []
         win.lists.mark_playing_everywhere()
         win._refresh_home_now_playing()
 
@@ -332,6 +430,7 @@ class PlaybackController:
         # fondo palette.ACCENT_INFO -- mismo patrón que cast_btn/sleep_btn
         # en main_window.py.
         win.mute_btn.setIcon(app_icons.icon_speaker(palette.BG_ROOT if muted else palette.ACCENT_INFO, muted=muted))
+        win.mute_btn.setToolTip("Activar sonido" if muted else "Silenciar")
         win._taskbar.update_mute_state(muted)
         if win.current_type == "radio":
             win.equalizer.set_intensity(0.0 if muted else win.volume_slider.value() / 100)
@@ -493,7 +592,11 @@ class PlaybackController:
         win._active_row = list_widget.row(item)
         if not is_auto:
             win._auto_skip_count = 0
-        self.play(data["type"], data["name"], data["url"], data.get("tvg_id", ""), data.get("logo", ""))
+        self._recovery_attempts = 0
+        self.play(
+            data["type"], data["name"], data["url"], data.get("tvg_id", ""),
+            data.get("logo", ""), data.get("alternate_urls", []),
+        )
 
     def play_prev(self):
         win = self.win
@@ -541,6 +644,9 @@ class PlaybackController:
         menu.addAction("60 minutos", lambda: self.iniciar_sleep(60))
         menu.addAction("90 minutos", lambda: self.iniciar_sleep(90))
         menu.addAction("120 minutos", lambda: self.iniciar_sleep(120))
+        menu.addAction("15 minutos", lambda: self.iniciar_sleep(15))
+        menu.addAction("30 minutos", lambda: self.iniciar_sleep(30))
+        menu.addAction("Personalizado…", self._custom_sleep_timer)
         menu.addSeparator()
         menu.addAction("Cancelar temporizador", self.cancelar_sleep)
         # Ancla a more_btn: sleep_btn ya no vive en ningún layout visible
@@ -550,6 +656,13 @@ class PlaybackController:
         # Si el usuario cierra el menú sin elegir nada, desmarcar el botón.
         if not win._sleep_timer.isActive():
             win.sleep_btn.setChecked(False)
+
+    def _custom_sleep_timer(self):
+        minutes, accepted = QInputDialog.getInt(
+            self.win, "Temporizador personalizado", "Minutos:", 45, 1, 1440, 5
+        )
+        if accepted:
+            self.iniciar_sleep(minutes)
 
     def iniciar_sleep(self, minutos: int):
         win = self.win
@@ -587,7 +700,7 @@ class PlaybackController:
         win.sleep_btn.setToolTip("Temporizador de apagado")
         win.player.stop()
         win.equalizer.stop()
-        win.play_btn.setText("▶")
+        self._set_play_button_state(paused=False)
         win.statusBar().showMessage("Temporizador: reproducción detenida.", 8000)
 
     # ---------- EPG ----------
@@ -612,6 +725,25 @@ class PlaybackController:
         win.favorites = fav_store.toggle_favorite(
             win.current_type, win.current_name, win.current_url or "", win.current_logo or ""
         )
-        win.fav_btn.setText("★" if win.fav_btn.isChecked() else "☆")
+        self._update_favorite_button_icon()
         win.lists.refresh_favorites_tab()
         win.lists.mark_favorites_everywhere()
+
+    def _update_favorite_button_icon(self) -> None:
+        checked = self.win.fav_btn.isChecked()
+        self.win.fav_btn.setIcon(
+            app_icons.icon_favorite(palette.ACCENT, size=18, filled=checked)
+        )
+        self.win.fav_btn.setToolTip(
+            "Quitar de favoritos" if checked else "Añadir a favoritos"
+        )
+        self.win.fav_btn.setAccessibleName(self.win.fav_btn.toolTip())
+
+    def _set_play_button_state(self, *, paused: bool) -> None:
+        """Muestra pausa si está reproduciendo, play en cualquier otro estado."""
+        action = "Pausar" if paused else "Reproducir"
+        self.win.play_btn.setIcon(
+            app_icons.icon_play(palette.BG_ROOT, size=22, paused=paused)
+        )
+        self.win.play_btn.setToolTip(action)
+        self.win.play_btn.setAccessibleName(action)

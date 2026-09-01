@@ -78,6 +78,23 @@ class _NuevaReglaDialog(QDialog):
             QMessageBox.warning(self, "Faltan días", "Elige al menos un día de la semana.")
             return
         name, url = self.canal_combo.currentData()
+        conflicts = recurring.find_rule_conflicts(
+            dias,
+            self.hora_edit.time().toString("HH:mm"),
+            self.duracion_spin.value(),
+        )
+        if conflicts:
+            detail = "\n".join(
+                f"• {rule.channel_name} — {rule.start_time}"
+                for rule in conflicts[:4]
+            )
+            QMessageBox.warning(
+                self,
+                "Conflicto de grabación",
+                "Ese horario coincide con otra regla recurrente:\n\n"
+                f"{detail}\n\nModifica el día, la hora o la duración.",
+            )
+            return
         self.result_rule = {
             "channel_name": name, "channel_url": url, "days": dias,
             "start_time": self.hora_edit.time().toString("HH:mm"),
@@ -109,6 +126,7 @@ class RecurringRecordingsDialog(QDialog):
         root.addWidget(subtitle)
 
         self.list_widget = QListWidget()
+        self.list_widget.itemChanged.connect(self._on_enabled_changed)
         root.addWidget(self.list_widget, stretch=1)
 
         botones_row = QHBoxLayout()
@@ -129,13 +147,20 @@ class RecurringRecordingsDialog(QDialog):
         self._reload()
 
     def _reload(self):
+        self.list_widget.blockSignals(True)
         self.list_widget.clear()
         for rule in recurring.load_rules():
             dias_txt = "".join(DIAS_CORTO[d] for d in sorted(rule.days))
             texto = f"{rule.channel_name} — {dias_txt} {rule.start_time} ({rule.duration_minutes} min)"
             item = QListWidgetItem(texto)
             item.setData(Qt.UserRole, rule.id)
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.Checked if rule.enabled else Qt.Unchecked)
             self.list_widget.addItem(item)
+        self.list_widget.blockSignals(False)
+
+    def _on_enabled_changed(self, item):
+        recurring.set_rule_enabled(item.data(Qt.UserRole), item.checkState() == Qt.Checked)
 
     def _on_add(self):
         if not self._canales:

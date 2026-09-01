@@ -87,7 +87,15 @@ class QueueController:
         if self._dialog is not None and self._dialog.isVisible():
             self._dialog.close()
             return
-        self._build_panel()
+        # Reutiliza el diálogo si ya existe (solo oculto, no cerrado de
+        # verdad) en vez de reconstruirlo: al ser un QDialog(win, Qt.Popup)
+        # parentado a la ventana principal, cada reconstrucción dejaba el
+        # anterior vivo e invisible como hijo huérfano, filtrando memoria en
+        # cada ciclo abrir/cerrar.
+        if self._dialog is None:
+            self._build_panel()
+        else:
+            self._render_list()
         # Ancla a more_btn: queue_btn ya no vive en ningún layout visible
         # (ver ui/main_window.py _build_now_playing_bar) y su posición en
         # pantalla no sería fiable para mapToGlobal.

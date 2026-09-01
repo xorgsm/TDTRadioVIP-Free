@@ -1,9 +1,11 @@
 import json
+from datetime import datetime, timezone
 
 import pytest
 
 from core.stream_health_store import (
-    StreamHealthStore, derive_health_status, matches_health_filter, summarize_health,
+    StreamHealthStore, derive_health_status, is_health_stale, matches_health_filter,
+    list_health, select_stale_entries, summarize_health,
 )
 
 
@@ -76,6 +78,14 @@ def test_list_filters_by_kind_and_orders_newest_first(tmp_path):
     assert [item["kind"] for item in store.list("tv")] == ["tv"]
 
 
+def test_list_health_uses_the_active_profile_store(monkeypatch, tmp_path):
+    store = StreamHealthStore(tmp_path / "stream_health.json")
+    store.record_result("radio", "https://radio.test", {"status": "ok"})
+    monkeypatch.setattr("core.stream_health_store.get_profile_data_dir", lambda: tmp_path)
+
+    assert [item["url"] for item in list_health()] == ["https://radio.test"]
+
+
 def test_clear_removes_selected_stream_or_all_states(tmp_path):
     store = StreamHealthStore(tmp_path / "health.json")
     store.record_results([
@@ -110,3 +120,19 @@ def test_summarize_health_accepts_saved_and_raw_diagnostic_results():
         {"status": "error"},
         {"status": "restricted"},
     ]) == {"total": 4, "stable": 1, "slow": 1, "down": 1, "restricted": 1}
+
+
+def test_health_staleness_handles_old_missing_and_recent_dates():
+    now = datetime(2026, 8, 24, tzinfo=timezone.utc)
+    assert is_health_stale(None, now=now)
+    assert is_health_stale("2026-08-01T00:00:00+00:00", now=now)
+    assert not is_health_stale("2026-08-23T00:00:00+00:00", now=now)
+
+
+def test_select_stale_entries_respects_limit(tmp_path):
+    store = StreamHealthStore(tmp_path / "health.json")
+    entries = [
+        {"kind": "tv", "name": f"Canal {index}", "url": f"https://{index}.test"}
+        for index in range(5)
+    ]
+    assert len(select_stale_entries(entries, store=store, limit=2)) == 2

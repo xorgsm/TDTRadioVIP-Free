@@ -8,13 +8,12 @@ tolerancia hacia atrás, por si la app estaba cerrada justo en ese momento).
 
 Coder By X@R
 """
-import json
 from dataclasses import dataclass, asdict
 from datetime import datetime, timedelta
 from typing import List
 
 from core.config import get_profile_data_dir
-from core.json_store import write_json_atomic
+from core.json_store import read_json, write_json_atomic
 
 REMINDERS_FILE = "epg_reminders.json"
 
@@ -45,13 +44,7 @@ def _path():
 
 
 def load_reminders() -> List[Reminder]:
-    path = _path()
-    if not path.exists():
-        return []
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return []
+    data = read_json(_path(), [])
     if not isinstance(data, list):
         return []
     resultado = []

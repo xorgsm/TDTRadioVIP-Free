@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QDialog, QHBoxLayout, QHeaderView, QLabel, QMenu, QPushButton, QTableWidget,
+    QDialog, QHBoxLayout, QHeaderView, QLabel, QMenu, QMessageBox, QPushButton, QTableWidget,
     QTableWidgetItem, QVBoxLayout,
 )
 
@@ -283,10 +283,23 @@ class EpgDialog(QDialog):
             if tiene_grabacion:
                 recording_schedule.remove_scheduled(tvg_id, title or "", start)
             else:
-                recording_schedule.add_scheduled(recording_schedule.ScheduledRecording(
+                nueva = recording_schedule.ScheduledRecording(
                     tvg_id=tvg_id, channel_name=channel_name or "", channel_url=channel_url or "",
                     title=title or "", start=start, stop=stop or "",
-                ))
+                )
+                conflictos = recording_schedule.find_conflicts(nueva)
+                if conflictos:
+                    detalle = "\n".join(
+                        f"• {r.channel_name}: {r.title}" for r in conflictos[:4]
+                    )
+                    QMessageBox.warning(
+                        self,
+                        "Conflicto de grabación",
+                        "No se puede programar porque coincide con otra grabación:\n\n"
+                        f"{detalle}\n\nCancela la otra reserva o elige otro horario.",
+                    )
+                else:
+                    recording_schedule.add_scheduled(nueva)
         self._populate()  # repinta para reflejar el cambio (texto y color)
 
     def _on_cell_clicked(self, row: int, _col: int):

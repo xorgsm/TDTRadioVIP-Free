@@ -73,9 +73,34 @@ class Programme:
 
 
 def _parse_xmltv_time(value: str) -> Optional[datetime]:
-    value = value.strip().split(" ")[0]
+    """Convierte una hora XMLTV ("20260824193000" o "20260824193000 +0200",
+    también "Z") a un datetime naive en hora LOCAL del sistema.
+
+    XMLTV admite opcionalmente una zona horaria tras un espacio. Antes se
+    descartaba sin más (`.split(" ")[0]`), lo que desplazaba horas y
+    minutos enteros en cualquier guía que no estuviera ya en hora local del
+    equipo (el caso normal de una guía servida en UTC) -- afectaba a
+    "ahora/siguiente", los avisos EPG y el arranque/parada real de
+    grabaciones programadas. Sin zona horaria en el valor, se sigue
+    asumiendo que ya viene en hora local (comportamiento histórico, sigue
+    siendo correcto para las guías que no la incluyen).
+    """
+    value = (value or "").strip()
+    if not value:
+        return None
+    base, _, tz_part = value.partition(" ")
+    tz_part = tz_part.strip()
+    if tz_part.upper() == "Z":
+        tz_part = "+0000"
+    if tz_part:
+        try:
+            aware = datetime.strptime(f"{base} {tz_part}", "%Y%m%d%H%M%S %z")
+        except ValueError:
+            pass
+        else:
+            return aware.astimezone().replace(tzinfo=None)
     try:
-        return datetime.strptime(value, "%Y%m%d%H%M%S")
+        return datetime.strptime(base, "%Y%m%d%H%M%S")
     except ValueError:
         return None
 
@@ -84,6 +109,21 @@ def _parse_xmltv_time(value: str) -> Optional[datetime]:
 # parsear horas de inicio/fin igual que este módulo, y usar un nombre con
 # guion bajo de otro módulo no es buena práctica aunque Python lo permita.
 parse_xmltv_time = _parse_xmltv_time
+
+
+def _prepare_guide(guide: Dict[str, List[Programme]]) -> Dict[str, List[Programme]]:
+    """Parsea y ordena una guía una sola vez, al entrar en memoria.
+
+    ``Programme`` no usa ``slots``, así que las fechas preparadas pueden
+    guardarse como atributos internos sin contaminar ``asdict()`` ni el
+    formato compatible del caché JSON.
+    """
+    for programmes in guide.values():
+        for programme in programmes:
+            programme._start_dt = _parse_xmltv_time(programme.start)
+            programme._stop_dt = _parse_xmltv_time(programme.stop)
+        programmes.sort(key=lambda programme: programme._start_dt or datetime.max)
+    return guide
 
 
 def fetch_epg(epg_url: str, force_refresh: bool = False) -> Dict[str, List[Programme]]:
@@ -97,7 +137,10 @@ def fetch_epg(epg_url: str, force_refresh: bool = False) -> Dict[str, List[Progr
             return {}
         try:
             raw = json.loads(cache_path.read_text(encoding="utf-8"))
-            return {cid: [Programme(**p) for p in progs] for cid, progs in raw.items()}
+            if not isinstance(raw, dict):
+                return {}
+            guide = {cid: [Programme(**p) for p in progs] for cid, progs in raw.items()}
+            return _prepare_guide(guide)
         except (json.JSONDecodeError, OSError, TypeError):
             return {}
 
@@ -156,6 +199,7 @@ def fetch_epg(epg_url: str, force_refresh: bool = False) -> Dict[str, List[Progr
                 guide.setdefault(clave, []).append(programme)
 
     if guide:
+        _prepare_guide(guide)
         try:
             write_json_atomic(
                 cache_path,
@@ -174,14 +218,25 @@ def get_now_next(
     # guide está indexado por channel_key(), no por el tvg-id/id crudo --
     # ver el docstring del módulo y channel_key() para el porqué.
     programmes = guide.get(channel_key(channel_id), [])
+    if programmes and not hasattr(programmes[0], "_start_dt"):
+        programmes = sorted(programmes, key=lambda programme: programme.start)
     now = datetime.now()
     current = None
     upcoming = None
-    for prog in sorted(programmes, key=lambda p: p.start):
-        start = _parse_xmltv_time(prog.start)
-        stop = _parse_xmltv_time(prog.stop)
+    for prog in programmes:
+        # Las guías de fetch_epg ya traen ambos valores preparados. El
+        # fallback conserva compatibilidad con guías construidas a mano por
+        # integraciones/pruebas, sin volver a parsear las ya preparadas.
+        start = getattr(prog, "_start_dt", None)
+        stop = getattr(prog, "_stop_dt", None)
+        if not hasattr(prog, "_start_dt"):
+            start = _parse_xmltv_time(prog.start)
+            stop = _parse_xmltv_time(prog.stop)
         if start and stop and start <= now <= stop:
             current = prog
         elif start and start > now and upcoming is None:
             upcoming = prog
+            # La lista está ordenada: después del primer programa futuro no
+            # puede aparecer otro programa actual.
+            break
     return current, upcoming

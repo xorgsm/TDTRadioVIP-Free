@@ -47,9 +47,14 @@ def _configurar_raiz():
         # bloquear el arranque de la app por esto.
         return
 
-    handler = RotatingFileHandler(
-        _LOG_FILE, maxBytes=2 * 1024 * 1024, backupCount=3, encoding="utf-8"
-    )
+    try:
+        handler = RotatingFileHandler(
+            _LOG_FILE, maxBytes=2 * 1024 * 1024, backupCount=3, encoding="utf-8"
+        )
+    except OSError:
+        # La carpeta puede existir y aun así el archivo estar bloqueado o
+        # no ser escribible. El registro nunca debe impedir el arranque.
+        return
     handler.setFormatter(logging.Formatter(
         "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",

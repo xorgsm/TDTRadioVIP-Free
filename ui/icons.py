@@ -16,6 +16,7 @@ versiones — una para el fondo oscuro normal y otra para el fondo dorado — y
 se cambia el icono al hacer toggle, igual que antes se cambiaba el color del
 texto vía QSS ":checked".
 """
+import math
 from functools import lru_cache
 
 from PySide6.QtCore import QPointF, QRectF, Qt
@@ -87,6 +88,31 @@ def icon_radio(color: str, size: int = 26) -> QIcon:
 
 
 @lru_cache(maxsize=128)
+def icon_music_note(color: str, size: int = 26) -> QIcon:
+    """Corchea simple: cabeza rellena + plica + banderín. Sustituye al logo
+    de la emisora en la vista "Ahora Suena" de radio (ver ui/radio_hero.py)
+    cuando Radio-Browser no trae favicon para esa emisora."""
+    pm = _blank(size)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.setPen(Qt.NoPen)
+    p.setBrush(_qcolor(color))
+    cabeza = QRectF(size * 0.22, size * 0.62, size * 0.26, size * 0.20)
+    p.drawEllipse(cabeza)
+    plica = QRectF(size * 0.46, size * 0.18, size * 0.05, size * 0.54)
+    p.drawRect(plica)
+    banderin = QPainterPath()
+    banderin.moveTo(size * 0.51, size * 0.18)
+    banderin.cubicTo(
+        size * 0.74, size * 0.22, size * 0.74, size * 0.42, size * 0.51, size * 0.46,
+    )
+    banderin.closeSubpath()
+    p.drawPath(banderin)
+    p.end()
+    return QIcon(pm)
+
+
+@lru_cache(maxsize=128)
 def icon_history(color: str, size: int = 26) -> QIcon:
     pm = _blank(size)
     p = _stroke_painter(pm, color)
@@ -95,6 +121,137 @@ def icon_history(color: str, size: int = 26) -> QIcon:
     cx, cy = size * 0.5, size * 0.5
     p.drawLine(QPointF(cx, cy), QPointF(cx, size * 0.28))
     p.drawLine(QPointF(cx, cy), QPointF(size * 0.68, size * 0.58))
+    p.end()
+    return QIcon(pm)
+
+
+@lru_cache(maxsize=128)
+def icon_favorite(color: str, size: int = 26, filled: bool = False) -> QIcon:
+    """Estrella lineal para favoritos, sin depender de glifos Unicode."""
+    pm = _blank(size)
+    p = _stroke_painter(pm, color, width=1.6)
+    points = []
+    for index in range(10):
+        angle = math.radians(-90 + index * 36)
+        radius = size * (0.37 if index % 2 == 0 else 0.16)
+        points.append(
+            QPointF(size * 0.5 + math.cos(angle) * radius,
+                    size * 0.5 + math.sin(angle) * radius)
+        )
+    points.append(points[0])
+    polygon = QPolygonF(points)
+    if filled:
+        p.setBrush(_qcolor(color))
+        p.drawPolygon(polygon)
+    else:
+        p.drawPolyline(polygon)
+    p.end()
+    return QIcon(pm)
+
+
+@lru_cache(maxsize=128)
+def icon_download(color: str, size: int = 26) -> QIcon:
+    """Flecha de descarga y bandeja en el trazo del resto del sistema."""
+    pm = _blank(size)
+    p = _stroke_painter(pm, color, width=1.7)
+    p.drawLine(QPointF(size * 0.50, size * 0.14), QPointF(size * 0.50, size * 0.62))
+    p.drawLine(QPointF(size * 0.30, size * 0.45), QPointF(size * 0.50, size * 0.64))
+    p.drawLine(QPointF(size * 0.70, size * 0.45), QPointF(size * 0.50, size * 0.64))
+    p.drawLine(QPointF(size * 0.18, size * 0.82), QPointF(size * 0.82, size * 0.82))
+    p.end()
+    return QIcon(pm)
+
+
+@lru_cache(maxsize=128)
+def icon_play(color: str, size: int = 26, paused: bool = False) -> QIcon:
+    """Reproducir/pausar con geometría estable, sin glifos de fuente."""
+    pm = _blank(size)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.setPen(Qt.NoPen)
+    p.setBrush(_qcolor(color))
+    if paused:
+        p.drawRoundedRect(QRectF(size * 0.28, size * 0.20, size * 0.14, size * 0.60), 1, 1)
+        p.drawRoundedRect(QRectF(size * 0.58, size * 0.20, size * 0.14, size * 0.60), 1, 1)
+    else:
+        p.drawPolygon(QPolygonF([
+            QPointF(size * 0.30, size * 0.18),
+            QPointF(size * 0.78, size * 0.50),
+            QPointF(size * 0.30, size * 0.82),
+        ]))
+    p.end()
+    return QIcon(pm)
+
+
+@lru_cache(maxsize=128)
+def icon_stop(color: str, size: int = 26) -> QIcon:
+    pm = _blank(size)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.setPen(Qt.NoPen)
+    p.setBrush(_qcolor(color))
+    p.drawRoundedRect(QRectF(size * 0.27, size * 0.27, size * 0.46, size * 0.46), 2, 2)
+    p.end()
+    return QIcon(pm)
+
+
+@lru_cache(maxsize=128)
+def icon_seek(color: str, size: int = 26, forward: bool = True) -> QIcon:
+    pm = _blank(size)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.setPen(Qt.NoPen)
+    p.setBrush(_qcolor(color))
+    direction = 1 if forward else -1
+    for center in (0.38, 0.62):
+        tip_x = center + direction * 0.18
+        base_x = center - direction * 0.13
+        p.drawPolygon(QPolygonF([
+            QPointF(size * base_x, size * 0.26),
+            QPointF(size * tip_x, size * 0.50),
+            QPointF(size * base_x, size * 0.74),
+        ]))
+    p.end()
+    return QIcon(pm)
+
+
+@lru_cache(maxsize=128)
+def icon_retry(color: str, size: int = 26) -> QIcon:
+    pm = _blank(size)
+    p = _stroke_painter(pm, color, width=1.7)
+    p.drawArc(QRectF(size * 0.18, size * 0.18, size * 0.64, size * 0.64), 35 * 16, 285 * 16)
+    p.drawLine(QPointF(size * 0.72, size * 0.17), QPointF(size * 0.82, size * 0.35))
+    p.drawLine(QPointF(size * 0.72, size * 0.17), QPointF(size * 0.55, size * 0.22))
+    p.end()
+    return QIcon(pm)
+
+
+@lru_cache(maxsize=128)
+def icon_record(color: str, size: int = 26) -> QIcon:
+    pm = _blank(size)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.setPen(Qt.NoPen)
+    p.setBrush(_qcolor(color))
+    p.drawEllipse(QRectF(size * 0.28, size * 0.28, size * 0.44, size * 0.44))
+    p.end()
+    return QIcon(pm)
+
+
+@lru_cache(maxsize=128)
+def icon_fullscreen(color: str, size: int = 26, close: bool = False) -> QIcon:
+    pm = _blank(size)
+    p = _stroke_painter(pm, color, width=1.7)
+    if close:
+        p.drawLine(QPointF(size * 0.28, size * 0.28), QPointF(size * 0.72, size * 0.72))
+        p.drawLine(QPointF(size * 0.72, size * 0.28), QPointF(size * 0.28, size * 0.72))
+    else:
+        for x1, y1, x2, y2, x3, y3 in (
+            (.16, .38, .16, .16, .38, .16), (.62, .16, .84, .16, .84, .38),
+            (.16, .62, .16, .84, .38, .84), (.62, .84, .84, .84, .84, .62),
+        ):
+            p.drawLine(QPointF(size * x1, size * y1), QPointF(size * x2, size * y2))
+            p.drawLine(QPointF(size * x2, size * y2), QPointF(size * x3, size * y3))
     p.end()
     return QIcon(pm)
 

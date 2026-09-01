@@ -7,7 +7,7 @@ stream sin volver a comprobarlo al abrir una lista.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -41,6 +41,27 @@ def matches_health_filter(status: str | None, filter_key: str) -> bool:
     if filter_key == "unchecked":
         return not status
     return True
+
+
+def is_health_stale(
+    checked_at: str | None,
+    *,
+    now: datetime | None = None,
+    max_age: timedelta = timedelta(days=7),
+) -> bool:
+    """Indica si un diagnóstico falta o tiene más antigüedad de la permitida."""
+    if not checked_at:
+        return True
+    try:
+        checked = datetime.fromisoformat(checked_at.replace("Z", "+00:00"))
+    except (AttributeError, ValueError):
+        return True
+    if checked.tzinfo is None:
+        checked = checked.replace(tzinfo=timezone.utc)
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    return current - checked > max_age
 
 
 def derive_health_status(
@@ -195,6 +216,11 @@ def get_status(kind: str, url: str) -> dict | None:
     return StreamHealthStore().get(kind, url)
 
 
+def list_health(kind: str | None = None) -> list[dict]:
+    """Lista los diagnósticos persistidos del perfil activo."""
+    return StreamHealthStore().list(kind)
+
+
 def summarize_health(entries: Iterable[Mapping[str, object]]) -> dict[str, int]:
     """Cuenta estados para mostrar el resumen del Centro de salud.
 
@@ -214,6 +240,30 @@ def summarize_health(entries: Iterable[Mapping[str, object]]) -> dict[str, int]:
 def clear_health(kind: str | None = None, url: str | None = None) -> int:
     """Borra estados del perfil activo; sin argumentos borra todo el historial."""
     return StreamHealthStore().clear(kind, url)
+
+
+def select_stale_entries(
+    entries: Iterable[Mapping[str, object]],
+    *,
+    store: StreamHealthStore | None = None,
+    limit: int = 20,
+) -> list[dict]:
+    """Selecciona un lote limitado de streams nunca medidos o antiguos."""
+    if limit < 1:
+        return []
+    health_store = store or StreamHealthStore()
+    selected = []
+    for entry in entries:
+        kind = str(entry.get("kind", ""))
+        url = str(entry.get("url", ""))
+        if not kind or not url:
+            continue
+        current = health_store.get(kind, url)
+        if current is None or is_health_stale(current.get("checked_at")):
+            selected.append(dict(entry))
+            if len(selected) >= limit:
+                break
+    return selected
 
 
 def _event_from_result(result: Mapping[str, object], checked_at: str) -> dict:

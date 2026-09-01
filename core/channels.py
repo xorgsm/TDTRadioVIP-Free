@@ -7,7 +7,7 @@ la comunidad: https://github.com/iptv-org/iptv — una por país.
 import hashlib
 import json
 import re
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, field, asdict
 from typing import List
 
 import requests
@@ -57,6 +57,7 @@ class Channel:
     logo: str = ""
     group: str = ""
     tvg_id: str = ""
+    alternate_urls: List[str] = field(default_factory=list)
 
 
 def dedupe_channels(channels: List[Channel]) -> List[Channel]:
@@ -70,18 +71,21 @@ def dedupe_channels(channels: List[Channel]) -> List[Channel]:
     una sola lista) como al combinar la lista del país con la personalizada
     (entre dos fuentes distintas).
     """
-    vistos = set()
+    vistos = {}
     resultado: List[Channel] = []
     for ch in channels:
         clave = ch.name.strip().casefold()
         if clave in vistos:
+            original = resultado[vistos[clave]]
+            if ch.url and ch.url != original.url and ch.url not in original.alternate_urls:
+                original.alternate_urls.append(ch.url)
             continue
-        vistos.add(clave)
+        vistos[clave] = len(resultado)
         resultado.append(ch)
     return resultado
 
 
-def parse_m3u(text: str) -> List[Channel]:
+def parse_m3u(text: str, *, deduplicate: bool = True) -> List[Channel]:
     lines = [raw.strip() for raw in text.splitlines() if raw.strip()]
     channels: List[Channel] = []
     pending: Channel | None = None
@@ -106,7 +110,7 @@ def parse_m3u(text: str) -> List[Channel]:
                 pending.url = line
                 channels.append(pending)
                 pending = None
-    return dedupe_channels(channels)
+    return dedupe_channels(channels) if deduplicate else channels
 
 
 def fetch_tv_channels(playlist_url: str, force_refresh: bool = False) -> List[Channel]:

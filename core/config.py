@@ -16,8 +16,16 @@ from core.json_store import read_json, write_json_atomic
 logger = logging.getLogger(__name__)
 
 APP_NAME = "TDTRadioVIP"
-APP_ORG = "CoderByXR"
-APP_VERSION = "7.5.7"
+APP_ORG = "CoderByXOR"
+# Esta edición conserva sus ajustes, favoritos, caché y licencia en una
+# carpeta propia, para poder probarla junto a 7.5.11 sin modificar sus datos.
+APP_DATA_NAME = "TDTRadioVIP_7.6.0"
+LEGACY_APP_ORG = "CoderByXOR"
+APP_VERSION = "7.6.2.1"
+# Correo al que el cliente envía su ID de equipo para pedir el código de
+# activación. Centralizado aquí para no tener que buscarlo por el código
+# si algún día cambia.
+SUPPORT_EMAIL = "xordj2020@gmail.com"
 
 SETTINGS_FILE = "settings.json"
 
@@ -44,9 +52,22 @@ DEFAULT_SETTINGS = {
     "tv_country_code": "ES",
     "radio_country_code": "ES",
     "accent_color": "#c9a227",
+    "theme_mode": "dark",
+    # Vista del catálogo compartida por TV y Radio. Se conserva entre
+    # sesiones para que la interfaz no vuelva siempre al modo lista.
+    "catalog_grid_view": False,
+    "catalog_card_size": 168,
+    "catalog_sort_tv": "source",
+    "catalog_sort_radio": "source",
+    "catalog_filters": {},
     # Se pone a True la primera vez que se muestra el tour de bienvenida
     # (ver ui/onboarding.py), para no volver a enseñarlo en cada arranque.
     "onboarding_shown": False,
+    # Se pone a True cuando el usuario pulsa "Continuar en modo gratuito"
+    # en el splash de la edición VIP sin activar licencia: en arranques
+    # siguientes el splash se salta y se entra directo (Configuración >
+    # Activar VIP… lo reabre cuando haga falta). Ver ui/application.run_vip.
+    "splash_free_seen": False,
     # Modo "solo audio" para canales de TV (desactiva la pista de vídeo
     # para ahorrar CPU/batería) -- ver
     # PlaybackController.toggle_audio_only_tv(). Persistente entre
@@ -56,6 +77,12 @@ DEFAULT_SETTINGS = {
     # igual que epg_url) de un JSON {"version": "X.Y.Z", "url": "..."} con
     # la última versión publicada. Ver core/updater.py.
     "update_check_url": "",
+    "automatic_backups_enabled": True,
+    "automatic_backup_interval_days": 1,
+    "automatic_backup_retention": 7,
+    "automatic_stream_diagnostics": True,
+    "automatic_stream_diagnostics_limit": 20,
+    "resume_last_stream": False,
     # Perfil activo -- "Default" es la carpeta raíz de siempre (ver
     # get_profile_data_dir() más abajo), así que instalaciones existentes
     # no cambian de sitio sus datos al actualizar a esta versión.
@@ -68,6 +95,11 @@ DEFAULT_SETTINGS = {
     "equalizer_enabled": False,
     "equalizer_preamp": 0.0,
     "equalizer_bands": [],
+    # Al entrar en pantalla completa del reproductor, ocultar la cabecera
+    # ("AHORA SUENA"/"EN DIRECTO") y la barra inferior de controles hasta
+    # que se mueva el ratón -- ver WindowChrome.enter_player_fullscreen().
+    # Desactivarlo vuelve al comportamiento anterior: siempre visibles.
+    "fullscreen_autohide_ui": True,
 }
 
 # URL fija que usaban las versiones anteriores a la selección de país (solo
@@ -85,7 +117,7 @@ def get_app_data_dir() -> Path:
     tiene sentido repetir los mkdir cada vez.
     """
     base = os.getenv("APPDATA") or str(Path.home())
-    path = Path(base) / APP_ORG / APP_NAME
+    path = Path(base) / APP_ORG / APP_DATA_NAME
     path.mkdir(parents=True, exist_ok=True)
     (path / "recordings").mkdir(exist_ok=True)
     (path / "cache").mkdir(exist_ok=True)
@@ -104,9 +136,10 @@ def get_app_data_dir() -> Path:
 # nuevo no nota ningún cambio -- sus datos ya estaban ahí. Solo los
 # perfiles adicionales que cree el usuario viven en su propia subcarpeta.
 #
-# No todo se separa por perfil: settings.json, logs, cache/
+# No todo se separa por perfil: settings.json, license.json, logs, cache/
 # y tools/ siguen siendo compartidos (son ajustes de la instalación, no
-# datos de "quién los usa"), igual que la guía EPG. Solo lo que de verdad identifica a una persona -- favoritos,
+# datos de "quién los usa"), igual que la guía EPG y los podcasts
+# suscritos. Solo lo que de verdad identifica a una persona -- favoritos,
 # historial, canales/emisoras añadidos a mano y grabaciones programadas --
 # se separa. Ver core/favorites.py, core/history.py, core/channels.py,
 # core/radio.py y core/recording_schedule.py.
@@ -114,12 +147,44 @@ def get_app_data_dir() -> Path:
 PROFILES_DIR_NAME = "profiles"
 DEFAULT_PROFILE = "Default"
 
+_PROFILE_NAME_CHARS_PROHIBIDOS = set('\\/:*?"<>|')
+
+# Nombres de archivo/carpeta reservados por Windows (con o sin extensión).
+_NOMBRES_RESERVADOS_WINDOWS = {
+    "con", "prn", "aux", "nul",
+    *(f"com{d}" for d in "123456789"),
+    *(f"lpt{d}" for d in "123456789"),
+}
+
+
+def _validate_profile_name(name: str) -> str:
+    """Devuelve un nombre de perfil seguro para usar como carpeta."""
+    if not isinstance(name, str):
+        raise ValueError("Nombre de perfil no válido.")
+    clean_name = name.strip()
+    base_name = clean_name.split(".", 1)[0].lower()
+    if (
+        not clean_name
+        or clean_name in (".", "..")
+        or clean_name != clean_name.rstrip(". ")
+        or _PROFILE_NAME_CHARS_PROHIBIDOS & set(clean_name)
+        or base_name in _NOMBRES_RESERVADOS_WINDOWS
+    ):
+        raise ValueError(f"Nombre de perfil no válido: {name!r}")
+    return clean_name
+
 
 @lru_cache(maxsize=None)
 def _profile_dir_for(profile: str) -> Path:
+    profile = _validate_profile_name(profile)
     if profile == DEFAULT_PROFILE:
         return get_app_data_dir()
-    path = get_app_data_dir() / PROFILES_DIR_NAME / profile
+    profiles_dir = get_app_data_dir() / PROFILES_DIR_NAME
+    path = profiles_dir / profile
+    try:
+        path.resolve().relative_to(profiles_dir.resolve())
+    except ValueError as exc:
+        raise ValueError(f"Nombre de perfil no válido: {profile!r}") from exc
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -127,7 +192,7 @@ def _profile_dir_for(profile: str) -> Path:
 def get_profile_data_dir(profile: Optional[str] = None) -> Path:
     """Carpeta de datos del perfil indicado (o del perfil activo, si no se
     especifica ninguno) -- ver el bloque de comentario de arriba."""
-    return _profile_dir_for(profile or get_current_profile())
+    return _profile_dir_for(profile if profile is not None else get_current_profile())
 
 
 def list_profiles() -> list:
@@ -135,21 +200,61 @@ def list_profiles() -> list:
     base = get_app_data_dir() / PROFILES_DIR_NAME
     perfiles = [DEFAULT_PROFILE]
     if base.exists():
-        perfiles += sorted(p.name for p in base.iterdir() if p.is_dir())
+        for path in sorted(base.iterdir(), key=lambda item: item.name):
+            if not path.is_dir():
+                continue
+            try:
+                name = _validate_profile_name(path.name)
+            except ValueError:
+                continue
+            if name != DEFAULT_PROFILE:
+                perfiles.append(name)
     return perfiles
 
 
+def _existing_profile_name(name: str) -> Optional[str]:
+    """Devuelve la grafía real de un perfil, comparando como Windows.
+
+    Windows no distingue mayúsculas en nombres de carpeta. Comparar los
+    perfiles con ``in`` permitía tratar ``Familia`` y ``familia`` como dos
+    destinos distintos aunque ambos apuntasen al mismo directorio.
+    """
+    folded_name = name.casefold()
+    return next(
+        (profile for profile in list_profiles() if profile.casefold() == folded_name),
+        None,
+    )
+
+
 def get_current_profile() -> str:
-    return load_settings().get("active_profile", DEFAULT_PROFILE)
+    profile = load_settings().get("active_profile", DEFAULT_PROFILE)
+    try:
+        profile = _validate_profile_name(profile)
+    except ValueError:
+        return DEFAULT_PROFILE
+    return _existing_profile_name(profile) or DEFAULT_PROFILE
 
 
 def set_current_profile(profile: str) -> bool:
+    profile = _validate_profile_name(profile)
+    existing_profile = _existing_profile_name(profile)
+    if existing_profile is None:
+        raise ValueError("Perfil inexistente.")
     settings = load_settings()
-    settings["active_profile"] = profile
+    settings["active_profile"] = existing_profile
     return save_settings(settings)
 
-
-_PROFILE_NAME_CHARS_PROHIBIDOS = set('\\/:*?"<>|')
+# Datos que pertenecen a una persona concreta. El perfil Default comparte la
+# raíz con ajustes, caché y la carpeta ``profiles``; copiar todo ese directorio
+# al duplicarlo incluiría la copia dentro de su propio origen.
+_PROFILE_DATA_FILES = (
+    "favorites.json", "history.json", "tv_channels_custom.json",
+    "radio_stations_custom.json", "tv_channels_hidden.json",
+    "radio_stations_hidden.json", "tv_channels_failcount.json",
+    "radio_stations_failcount.json", "stream_health.json",
+    "torrent_history.json", "epg_recordings.json", "epg_reminders.json",
+    "recurring_recordings.json", "recurring_recordings_sync.json",
+)
 
 
 def create_profile(name: str) -> str:
@@ -161,11 +266,67 @@ def create_profile(name: str) -> str:
     "..\\Otro" o "../../Escritorio" escaparía de esa carpeta y
     crearía/escribiría rutas fuera del árbol de datos de la app.
     """
-    name = name.strip()
-    if not name or name in (".", "..") or _PROFILE_NAME_CHARS_PROHIBIDOS & set(name):
-        raise ValueError(f"Nombre de perfil no válido: {name!r}")
+    name = _validate_profile_name(name)
+    existing_profile = _existing_profile_name(name)
+    if existing_profile is not None:
+        return existing_profile
     _profile_dir_for(name)  # crea la carpeta y la deja en caché
     return name
+
+
+def duplicate_profile(source: str, destination: str) -> str:
+    source = _validate_profile_name(source)
+    destination = _validate_profile_name(destination)
+    source = _existing_profile_name(source)
+    if source is None:
+        raise ValueError("Perfil de origen inválido.")
+    if _existing_profile_name(destination) is not None:
+        raise ValueError("Ya existe un perfil con ese nombre.")
+
+    destination = create_profile(destination)
+    source_path = _profile_dir_for(source)
+    destination_path = _profile_dir_for(destination)
+    try:
+        for filename in _PROFILE_DATA_FILES:
+            source_file = source_path / filename
+            if source_file.is_file():
+                shutil.copy2(source_file, destination_path / filename)
+    except OSError:
+        shutil.rmtree(destination_path, ignore_errors=True)
+        _profile_dir_for.cache_clear()
+        raise
+    return destination
+
+
+def rename_profile(current: str, new_name: str) -> str:
+    current = _validate_profile_name(current)
+    current = _existing_profile_name(current)
+    if current is None:
+        raise ValueError("Perfil de origen inválido.")
+    if current.casefold() == DEFAULT_PROFILE.casefold():
+        raise ValueError("El perfil Default no se puede renombrar.")
+    new_name = _validate_profile_name(new_name)
+    if _existing_profile_name(new_name) is not None:
+        raise ValueError("Ya existe un perfil con ese nombre.")
+    create_profile(new_name)
+    source, destination = _profile_dir_for(current), _profile_dir_for(new_name)
+    shutil.rmtree(destination)
+    source.rename(destination)
+    _profile_dir_for.cache_clear()
+    return new_name
+
+
+def delete_profile(name: str) -> None:
+    name = _validate_profile_name(name)
+    name = _existing_profile_name(name)
+    if name is None:
+        raise ValueError("Perfil inexistente.")
+    if name.casefold() == DEFAULT_PROFILE.casefold():
+        raise ValueError("El perfil Default no se puede eliminar.")
+    path = _profile_dir_for(name)
+    if path.exists():
+        shutil.rmtree(path)
+    _profile_dir_for.cache_clear()
 
 
 # --------------------------------------------------------------------------
@@ -222,6 +383,19 @@ def get_icon_path() -> Optional[str]:
         sys, "_MEIPASS", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     )
     candidato = os.path.join(base_dir, "resources", "icon.ico")
+    return candidato if os.path.isfile(candidato) else None
+
+
+@lru_cache(maxsize=1)
+def get_font_path() -> Optional[str]:
+    """
+    Ruta a la tipografía Inter empaquetada (resources/fonts/Inter-Variable.ttf),
+    o None si no se encuentra. Mismo patrón que get_icon_path()/get_ffmpeg_dir().
+    """
+    base_dir = getattr(
+        sys, "_MEIPASS", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
+    candidato = os.path.join(base_dir, "resources", "fonts", "Inter-Variable.ttf")
     return candidato if os.path.isfile(candidato) else None
 
 

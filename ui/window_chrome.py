@@ -20,7 +20,7 @@ no se puede mover), que delega aquí en event_filter().
 Coder By X@R
 """
 from PySide6.QtCore import QEvent, Qt
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QCursor, QGuiApplication
 
 from ui import icons as app_icons
 from ui import palette
@@ -171,15 +171,39 @@ class WindowChrome:
         win.nav_rail.setVisible(False)
         win.content_widget.setVisible(False)
         win.library_sidebar.setVisible(False)
+        win.groups_sidebar.setVisible(False)
         win.title_bar.setVisible(False)
         win.statusBar().setVisible(False)
-        win.fullscreen_btn.setText("✕")
+        win.fullscreen_btn.setIcon(app_icons.icon_fullscreen(palette.TEXT_PRIMARY, size=18, close=True))
+        win.fullscreen_btn.setToolTip("Salir de pantalla completa (Esc)")
+        win.fullscreen_btn.setAccessibleName("Salir de pantalla completa")
         win.fullscreen_btn.setToolTip("Salir de pantalla completa (Esc)")
         win.showFullScreen()
 
+        if win.settings.get("fullscreen_autohide_ui", True):
+            # Se ve un momento al entrar (como YouTube/VLC) y luego se
+            # oculta sola -- ver show_fullscreen_overlay/
+            # check_fullscreen_mouse_activity para el resto del ciclo.
+            win._fs_last_cursor_pos = QCursor.pos()
+            win._fs_mouse_poll_timer.start()
+            self.show_fullscreen_overlay()
+
     def exit_player_fullscreen(self):
+        # Import tardío (no a nivel de módulo): NAV_TV vive en
+        # ui.main_window, que a su vez importa este módulo -- un import a
+        # nivel de módulo aquí crearía un ciclo. Mismo patrón que
+        # ui.epg_controller.
+        from ui.main_window import NAV_TV
+
         win = self.win
         win._player_fullscreen = False
+
+        win._fs_mouse_poll_timer.stop()
+        win._fs_overlay_hide_timer.stop()
+        # Fuera de pantalla completa, cabecera y controles se ven siempre,
+        # sin importar el ajuste de auto-ocultado.
+        win.player_header_bar.setVisible(True)
+        win.now_playing_bar.setVisible(True)
 
         win.nav_rail.setVisible(True)
         win.content_widget.setVisible(True)
@@ -187,16 +211,57 @@ class WindowChrome:
         # en vez de forzarlo visible: si lo había ocultado antes de entrar
         # en pantalla completa, debe seguir oculto al salir.
         win.library_sidebar.setVisible(win.library_toggle_btn.isChecked())
+        win.groups_sidebar.setVisible(win._current_nav_id == NAV_TV)
         win.title_bar.setVisible(True)
         win.statusBar().setVisible(True)
 
-        win.fullscreen_btn.setText("⛶")
+        win.fullscreen_btn.setIcon(app_icons.icon_fullscreen(palette.TEXT_PRIMARY, size=18))
+        win.fullscreen_btn.setToolTip("Pantalla completa (F11)")
+        win.fullscreen_btn.setAccessibleName("Pantalla completa")
         win.fullscreen_btn.setToolTip("Pantalla completa (F11)")
 
         win.showNormal()
         if win._was_maximized_before_fs:
             win._pseudo_maximizado = False  # forzar recálculo limpio
             self.maximizar()
+
+    def show_fullscreen_overlay(self):
+        """
+        Muestra cabecera y controles sobre el vídeo en pantalla completa y
+        reinicia la cuenta atrás para volver a ocultarlos. La llama
+        enter_player_fullscreen() al entrar y check_fullscreen_mouse_activity()
+        cada vez que detecta que el cursor se movió.
+        """
+        win = self.win
+        win.player_header_bar.setVisible(True)
+        win.now_playing_bar.setVisible(True)
+        if win._player_fullscreen and win.settings.get("fullscreen_autohide_ui", True):
+            win._fs_overlay_hide_timer.start()
+        else:
+            win._fs_overlay_hide_timer.stop()
+
+    def hide_fullscreen_overlay(self):
+        """Vuelve a ocultar cabecera/controles tras el aviso de inactividad."""
+        win = self.win
+        # El ajuste pudo desactivarse mientras el timer estaba en marcha
+        # (Preferencias abierta encima de la pantalla completa).
+        if win._player_fullscreen and win.settings.get("fullscreen_autohide_ui", True):
+            win.player_header_bar.setVisible(False)
+            win.now_playing_bar.setVisible(False)
+
+    def check_fullscreen_mouse_activity(self):
+        """
+        Sondeo periódico de la posición global del cursor mientras se está
+        en pantalla completa -- ver el comentario en
+        MainWindow._build_player_panel sobre por qué no basta con un
+        eventFilter de Qt (el vídeo es una ventana nativa de libVLC
+        embebida, ajena al bucle de eventos de Qt).
+        """
+        win = self.win
+        pos = QCursor.pos()
+        if pos != win._fs_last_cursor_pos:
+            win._fs_last_cursor_pos = pos
+            self.show_fullscreen_overlay()
 
     # ---------- Ventana flotante (picture-in-picture) ----------
 
@@ -221,12 +286,27 @@ class WindowChrome:
         win.content_widget.setVisible(False)
         win.content_widget.setMinimumWidth(0)
         win.library_sidebar.setVisible(False)
+        # groups_sidebar ("GRUPOS", panel de categorías de TV) vive como
+        # hermano de content_widget en el mismo QHBoxLayout raíz -- no es
+        # parte de content_widget, así que ocultar solo ese no bastaba: si
+        # el usuario entraba en PiP estando en la pestaña de TV, el panel
+        # de grupos se quedaba a ancho completo y aplastaba el vídeo/los
+        # controles contra el borde de la ventana flotante (se veían
+        # cortados, reportado con captura). Se guarda su visibilidad para
+        # devolverla tal cual al salir.
+        win._groups_sidebar_visible_before_pip = win.groups_sidebar.isVisible()
+        win.groups_sidebar.setVisible(False)
+        # La barra de menú (Archivo/Configuración/Ayuda) tampoco cabe en una
+        # ventana flotante de 460px: Qt la resolvía con una flecha ">>" de
+        # desbordamiento en vez de encogerla, lo que no pinta bien en un
+        # mini reproductor.
+        win.menu_bar.setVisible(False)
         win.statusBar().setVisible(False)
         # El PiP funciona como mini reproductor: conserva transporte y mute,
         # pero esconde acciones secundarias para no saturar la ventana.
         win._pip_compact_visibility = {
             widget: widget.isVisible() for widget in (
-                win.fav_btn, win.record_btn, win.more_btn, win.volume_slider,
+                win.fav_btn, win.cast_btn, win.record_btn, win.more_btn, win.volume_slider,
             )
         }
         for widget in win._pip_compact_visibility:
@@ -256,6 +336,8 @@ class WindowChrome:
         win.content_widget.setVisible(True)
         win.content_widget.setMinimumWidth(420)
         win.library_sidebar.setVisible(win.library_toggle_btn.isChecked())
+        win.groups_sidebar.setVisible(getattr(win, "_groups_sidebar_visible_before_pip", False))
+        win.menu_bar.setVisible(True)
         win.statusBar().setVisible(True)
         for widget, was_visible in getattr(win, "_pip_compact_visibility", {}).items():
             widget.setVisible(was_visible)

@@ -18,13 +18,13 @@ Ciclo de vida de una ScheduledRecording:
 
 Coder By X@R
 """
-import json
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from typing import List
 
 from core.config import get_profile_data_dir
-from core.json_store import write_json_atomic
+from core.epg import parse_xmltv_time
+from core.json_store import read_json, write_json_atomic
 
 SCHEDULE_FILE = "epg_recordings.json"
 
@@ -51,13 +51,7 @@ def _path():
 
 
 def load_scheduled() -> List[ScheduledRecording]:
-    path = _path()
-    if not path.exists():
-        return []
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return []
+    data = read_json(_path(), [])
     if not isinstance(data, list):
         return []
     resultado = []
@@ -84,6 +78,43 @@ def _es_la_misma(r: ScheduledRecording, tvg_id: str, title: str, start: str) -> 
 
 def has_scheduled(tvg_id: str, title: str, start: str) -> bool:
     return any(_es_la_misma(r, tvg_id, title, start) for r in load_scheduled())
+
+
+def _parse_interval_value(value: str) -> datetime | None:
+    """Convierte una hora XMLTV a datetime local -- ver core.epg.parse_xmltv_time
+    (antes truncaba a los primeros 14 caracteres, descartando cualquier
+    zona horaria y pudiendo detectar conflictos de horario de forma
+    incorrecta entre grabaciones de guías con huso distinto al del sistema)."""
+    return parse_xmltv_time(value or "")
+
+
+def find_conflicts(
+    rec: ScheduledRecording,
+    items: List[ScheduledRecording] | None = None,
+) -> List[ScheduledRecording]:
+    """Devuelve reservas activas que se solapan con ``rec``.
+
+    Los intervalos se consideran semiabiertos: una grabación que termina
+    exactamente cuando empieza otra no constituye un conflicto.
+    """
+    start = _parse_interval_value(rec.start)
+    stop = _parse_interval_value(rec.stop)
+    if start is None or stop is None or stop <= start:
+        return []
+
+    conflicts = []
+    for current in load_scheduled() if items is None else items:
+        if current.status == "error" or _es_la_misma(
+            current, rec.tvg_id, rec.title, rec.start
+        ):
+            continue
+        current_start = _parse_interval_value(current.start)
+        current_stop = _parse_interval_value(current.stop)
+        if current_start is None or current_stop is None:
+            continue
+        if start < current_stop and current_start < stop:
+            conflicts.append(current)
+    return conflicts
 
 
 def add_scheduled(rec: ScheduledRecording) -> List[ScheduledRecording]:

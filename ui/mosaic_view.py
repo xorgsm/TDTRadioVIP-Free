@@ -21,7 +21,7 @@ Coder By X@R
 """
 from typing import List
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import (
     QCheckBox, QDialog, QGridLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
@@ -109,6 +109,10 @@ class _MosaicTile(QWidget):
 
         self.player = VLCPlayer(self)
         self.player.setMinimumSize(160, 120)
+        # VLCPlayer ocupa prácticamente toda la tarjeta y recibe sus propios
+        # eventos de ratón. Sin este filtro, pinchar el vídeo no llegaba al
+        # QWidget padre y parecía que el foco de audio no cambiaba.
+        self.player.installEventFilter(self)
         layout.addWidget(self.player, stretch=1)
 
         self.nombre_label = QLabel(channel.name)
@@ -117,6 +121,7 @@ class _MosaicTile(QWidget):
             f"background-color: {palette.BG_PANEL}; color: {palette.TEXT_PRIMARY}; "
             f"font-size: 8.5pt; padding: 3px;"
         )
+        self.nombre_label.installEventFilter(self)
         layout.addWidget(self.nombre_label)
 
         self._aplicar_borde()
@@ -135,6 +140,12 @@ class _MosaicTile(QWidget):
         if event.button() == Qt.LeftButton:
             self._on_focus(self.index)
         super().mousePressEvent(event)
+
+    def eventFilter(self, watched, event):
+        if watched in (self.player, self.nombre_label) and event.type() == QEvent.MouseButtonPress:
+            if event.button() == Qt.LeftButton:
+                self._on_focus(self.index)
+        return super().eventFilter(watched, event)
 
 
 class MosaicView(QDialog):
@@ -188,6 +199,10 @@ class MosaicView(QDialog):
             self._tiles.append(tile)
             fila, col = divmod(i, columnas)
             self._grid.addWidget(tile, fila, col)
+            # LibVLC abre la salida de audio de forma asíncrona. Silenciar
+            # antes de play() evita que tres canales lleguen a sonar durante
+            # el arranque antes de que _enfocar() les transfiera el audio.
+            tile.set_focus(False)
             tile.player.play(canal.url)
 
         self._enfocar(0)

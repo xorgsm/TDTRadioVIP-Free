@@ -155,15 +155,36 @@ class LogoLoader:
         self._pendientes = deque()  # URLs únicas pendientes; popleft() es O(1)
         self._solicitudes = {}  # url -> (cache_file, [(callback, size), ...])
         self._en_vuelo = 0
+        # Caché EN MEMORIA de logos ya decodificados y redondeados, por
+        # (url, size). El caché en disco (cache_file de abajo) evita volver
+        # a descargar, pero cada load() con acierto de caché en disco
+        # todavía leía el PNG, lo decodificaba y le redondeaba la esquina
+        # de cero -- con un catálogo grande eso se repite entero cada vez
+        # que se repuebla la lista (al arrancar, al refrescar, al importar
+        # más canales encima...), varias veces para los MISMOS canales.
+        # Con listas de miles de canales y varios poblados seguidos
+        # durante el arranque, esa redecodificación repetida es la que se
+        # notaba como lentitud sostenida (no solo un pico al principio) --
+        # con esto, la segunda vez que se pide el mismo logo al mismo
+        # tamaño sale directo de memoria, sin tocar el disco.
+        self._pixmap_cache = {}
 
     def load(self, url: str, callback, size: int = 44):
         if not url:
             return
+        cache_key = (url, size)
+        cached_pixmap = self._pixmap_cache.get(cache_key)
+        if cached_pixmap is not None:
+            callback(cached_pixmap)
+            return
+
         cache_file = self.cache_dir / (hashlib.md5(url.encode("utf-8")).hexdigest() + ".png")
         if cache_file.exists():
             pix = QPixmap(str(cache_file))
             if not pix.isNull():
-                callback(rounded_pixmap(pix, size, size // 4))
+                redondeado = rounded_pixmap(pix, size, size // 4)
+                self._pixmap_cache[cache_key] = redondeado
+                callback(redondeado)
                 return
 
         solicitud = self._solicitudes.get(url)
@@ -197,6 +218,7 @@ class LogoLoader:
                             if logo is None:
                                 logo = rounded_pixmap(pix, size, size // 4)
                                 redondeados[size] = logo
+                                self._pixmap_cache[(url, size)] = logo
                             callback(logo)
             except RuntimeError:
                 pass
@@ -226,6 +248,7 @@ class LogoLoader:
                         if logo is None:
                             logo = rounded_pixmap(pix, size, size // 4)
                             redondeados[size] = logo
+                            self._pixmap_cache[(url, size)] = logo
                         callback(logo)
                     self._solicitudes.pop(url, None)
                     continue
@@ -312,7 +335,7 @@ class EqualizerWidget(QWidget):
 
 class ChannelGridDelegate(QStyledItemDelegate):
     """
-    Tarjeta cuadrada para la vista en cuadrícula de TV (alternativa a
+    Tarjeta cuadrada para la vista en cuadrícula de TV y Radio (alternativa a
     ChannelDelegate en modo lista, ver el botón junto al filtro de
     categoría en la barra superior de Televisión). Mismo lenguaje visual
     (cristal esmerilado, halo dorado en la que suena) pero pensada para un
@@ -444,8 +467,10 @@ class ChannelDelegate(QStyledItemDelegate):
     (sin QGraphicsEffect, que no aplica a delegados) capa por capa.
     """
 
-    ROW_HEIGHT = 96
-    LOGO_SIZE = 66
+    # Filas densas y legibles como el catálogo de Pencil: más entradas por
+    # pantalla sin sacrificar el logo, el estado de salud o el subtítulo.
+    ROW_HEIGHT = 84
+    LOGO_SIZE = 54
 
     def sizeHint(self, option, index):
         return QSize(option.rect.width(), self.ROW_HEIGHT)
@@ -502,8 +527,11 @@ class ChannelDelegate(QStyledItemDelegate):
         painter.save()
         painter.setRenderHint(QPainter.Antialiasing)
 
-        rect = QRectF(option.rect.adjusted(8, 6, -8, -8))
-        radius = 12
+        # El margen derecho extra evita que, con scrollbar o el splitter
+        # estrecho, la tarjeta se pinte por debajo del borde del viewport y
+        # pierda su esquina redondeada (visible en la captura reducida).
+        rect = QRectF(option.rect.adjusted(8, 5, -16, -6))
+        radius = 11
         data = index.data(ROLE_DATA) or {}
         is_playing = bool(index.data(ROLE_PLAYING))
         is_fav = bool(index.data(ROLE_FAV))
@@ -633,7 +661,7 @@ class ChannelDelegate(QStyledItemDelegate):
         name_font.setPointSize(11)
         name_font.setBold(True)
         painter.setFont(name_font)
-        name_rect = QRectF(text_rect.left(), text_rect.top() + 15, text_rect.width(), 22)
+        name_rect = QRectF(text_rect.left(), text_rect.top() + 10, text_rect.width(), 22)
         elided = painter.fontMetrics().elidedText(data.get("name", ""), Qt.ElideRight, int(name_rect.width()))
         # sombra sutil bajo el texto: un toque de profundidad barato, coherente
         # con el resto de la tarjeta.
@@ -669,7 +697,7 @@ class ChannelDelegate(QStyledItemDelegate):
             sub_font.setPointSize(8.5)
             sub_font.setBold(False)
             painter.setFont(sub_font)
-            sub_rect = QRectF(text_rect.left(), text_rect.top() + 41, text_rect.width(), 16)
+            sub_rect = QRectF(text_rect.left(), text_rect.top() + 35, text_rect.width(), 16)
 
             dot_offset = 0
             if data.get("group"):

@@ -20,7 +20,7 @@ from typing import Callable, List
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget,
+    QFrame, QHBoxLayout, QLabel, QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
 
 from ui import palette
@@ -122,6 +122,8 @@ class Carousel(QWidget):
 
         self.empty_label = QLabel(empty_text)
         self.empty_label.setObjectName("carouselEmpty")
+        self.empty_label.setWordWrap(True)
+        self.empty_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         set_visual_state(self.empty_label, "empty")
         outer.addWidget(self.empty_label)
         self.empty_label.setVisible(False)

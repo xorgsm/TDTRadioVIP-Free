@@ -3,7 +3,7 @@ Cliente para la API pública y gratuita Radio-Browser (radio-browser.info).
 No requiere clave de API. https://api.radio-browser.info/
 """
 import json
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, field, asdict
 from typing import List
 
 import requests
@@ -23,7 +23,7 @@ API_MIRRORS = (
     "https://at1.api.radio-browser.info",
     "https://all.api.radio-browser.info",
 )
-USER_AGENT = "TDTRadioVIP/2.0 (CoderByXR)"
+USER_AGENT = "TDTRadioVIP/2.0 (CoderByXOR)"
 
 
 @dataclass
@@ -34,6 +34,27 @@ class Station:
     tags: str = ""
     bitrate: int = 0
     country: str = ""
+    alternate_urls: List[str] = field(default_factory=list)
+
+
+def dedupe_stations(stations: List[Station]) -> List[Station]:
+    """Agrupa emisoras repetidas y conserva sus URLs como respaldo."""
+    positions = {}
+    result = []
+    for station in stations:
+        key = station.name.strip().casefold()
+        if key in positions:
+            original = result[positions[key]]
+            if (
+                station.url
+                and station.url != original.url
+                and station.url not in original.alternate_urls
+            ):
+                original.alternate_urls.append(station.url)
+            continue
+        positions[key] = len(result)
+        result.append(station)
+    return result
 
 
 def _cache_path_for(country_code: str):
@@ -80,7 +101,7 @@ def fetch_radio_stations(country_code: str = "ES", limit: int = 250, force_refre
         except (requests.RequestException, ValueError):
             continue  # este espejo falla: probar el siguiente
 
-        stations = [
+        stations = dedupe_stations([
             Station(
                 name=(s.get("name") or "").strip() or "Sin nombre",
                 url=s.get("url_resolved") or s.get("url", ""),
@@ -91,7 +112,7 @@ def fetch_radio_stations(country_code: str = "ES", limit: int = 250, force_refre
             )
             for s in raw
             if s.get("url_resolved") or s.get("url")
-        ]
+        ])
         if stations:
             try:
                 write_json_atomic(cache_path, [asdict(s) for s in stations])

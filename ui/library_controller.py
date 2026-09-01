@@ -22,7 +22,7 @@ from core import channels as tv_channels
 from core import favorites as fav_store
 from core.playlist_export import export_m3u
 from core import radio as radio_stations
-from ui.dialogs import AddEntryDialog, ExportPlaylistDialog, ImportPlaylistDialog, ManageChannelsDialog, RecordingsLibraryDialog
+from ui.dialogs import AddEntryDialog, ExportPlaylistDialog, ImportPlaylistDialog, ManageChannelsDialog, M3UEditorDialog, RecordingsLibraryDialog
 from ui.fetch_worker import FetchWorker
 from ui.toast import show_toast
 
@@ -36,6 +36,10 @@ class LibraryController:
     def open_recordings_library(self):
         """Abre la biblioteca local usando la carpeta configurada actualmente."""
         RecordingsLibraryDialog(self.win.recordings_dir, self.win).exec()
+
+    def open_m3u_editor(self):
+        """Abre el editor visual de listas personales M3U."""
+        M3UEditorDialog(self.win).exec()
 
     # ---------- Añadir / editar / eliminar manual ----------
 
@@ -309,9 +313,9 @@ class LibraryController:
 
     # ---------- Importar lista M3U ----------
 
-    def open_import_playlist_dialog(self):
+    def open_import_playlist_dialog(self, entry_type: str | None = None):
         win = self.win
-        dialog = ImportPlaylistDialog(win)
+        dialog = ImportPlaylistDialog(win, entry_type=entry_type)
         if dialog.exec() != QDialog.Accepted:
             return
         entry_type, source = dialog.get_values()
@@ -406,18 +410,18 @@ class LibraryController:
             f"({len(parsed) - added} ya estaban en tu lista)."
         )
 
-    def export_current_playlist(self):
-        """Exporta TV y radio visibles a una lista M3U reutilizable."""
+    def export_current_playlist(self, entry_type: str | None = None):
+        """Exporta la biblioteca elegida (o ambas, por compatibilidad) a M3U."""
         win = self.win
-        entries = [
+        entries = ([] if entry_type == "radio" else [
             {"name": channel.name, "url": channel.url, "logo": channel.logo,
              "group": channel.group, "tvg_id": channel.tvg_id}
             for channel in win.tv_channels_data
-        ] + [
+        ]) + ([] if entry_type == "tv" else [
             {"name": station.name, "url": station.url, "logo": station.favicon,
              "tags": station.tags}
             for station in win.radio_stations_data
-        ]
+        ])
         preview = ExportPlaylistDialog(entries, win)
         if preview.exec() != QDialog.Accepted:
             return
@@ -426,7 +430,9 @@ class LibraryController:
             QMessageBox.information(win, "Lista vacía", "No has seleccionado ningún stream para exportar.")
             return
         destination, _ = QFileDialog.getSaveFileName(
-            win, "Exportar lista M3U", "TDTRadioVIP_lista.m3u", "Listas M3U (*.m3u)"
+            win, "Exportar lista M3U",
+            f"TDTRadioVIP_{'tv' if entry_type == 'tv' else 'radio' if entry_type == 'radio' else 'lista'}.m3u",
+            "Listas M3U (*.m3u)"
         )
         if not destination:
             return

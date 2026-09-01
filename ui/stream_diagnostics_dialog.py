@@ -99,9 +99,9 @@ class StreamDiagnosticsDialog(QDialog):
         self.export_btn.setEnabled(False)
         self.export_btn.clicked.connect(self._export_csv)
         footer.addWidget(self.export_btn)
-        self.remove_failed_btn = QPushButton("Ocultar/eliminar fallidos")
+        self.remove_failed_btn = QPushButton("Ocultar/eliminar caídos y restringidos")
         self.remove_failed_btn.setToolTip(
-            "Oculta los elementos fallidos del catálogo público y elimina los personalizados."
+            "Oculta los elementos caídos o restringidos del catálogo público y elimina los personalizados."
         )
         self.remove_failed_btn.setEnabled(False)
         self.remove_failed_btn.clicked.connect(self._remove_failed)
@@ -191,17 +191,21 @@ class StreamDiagnosticsDialog(QDialog):
             self.table.setSortingEnabled(True)
             self.table.sortItems(0, Qt.AscendingOrder)
             self.remove_failed_btn.setEnabled(
-                any(derive_health_status(result) != "stable" for result in self._results)
+                derive_health_status(result) in {"down", "restricted"}
+                for result in self._results
             )
 
     def _remove_failed(self):
-        failed = [result for result in self._results if derive_health_status(result) != "stable"]
-        if not failed:
+        removable = [
+            result for result in self._results
+            if derive_health_status(result) in {"down", "restricted"}
+        ]
+        if not removable:
             return
         confirmation = QMessageBox.question(
             self,
-            "Quitar elementos fallidos",
-            f"Se quitarán {len(failed)} elementos lentos, con error o acceso restringido.\n\n"
+            "Quitar elementos caídos o restringidos",
+            f"Se quitarán {len(removable)} elementos caídos o con acceso restringido.\n\n"
             "Los elementos públicos quedarán ocultos para que no reaparezcan al actualizar. "
             "Los personalizados se eliminarán de forma permanente.",
             QMessageBox.Yes | QMessageBox.No,
@@ -214,7 +218,7 @@ class StreamDiagnosticsDialog(QDialog):
         hidden_tv = set()
         custom_radio = set()
         hidden_radio = set()
-        for result in failed:
+        for result in removable:
             key = (result.get("name", ""), result.get("url", ""))
             if result.get("kind") == "tv":
                 (custom_tv if key in self._custom_tv_keys else hidden_tv).add(key[0])

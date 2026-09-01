@@ -53,12 +53,19 @@ class VLCPlayer(QFrame):
     # Señales públicas: se emiten SIEMPRE en el hilo de la interfaz.
     error_occurred = Signal(str)
     end_reached = Signal()
+    # Título "now playing" que algunos streams de radio (ICY/Shoutcast)
+    # emiten dentro del propio flujo -- canción o programa actual, cuando el
+    # servidor lo manda. Cadena vacía si el stream deja de mandarlo o no lo
+    # soporta; quien escuche esta señal debe tratar "" como "sin dato", no
+    # como una emisión con título vacío.
+    meta_changed = Signal(str)
 
     # Señales internas: las emiten los callbacks de libVLC desde sus propios
     # hilos. Se reenvían a las públicas con conexión en cola (ver __init__).
     _error_desde_vlc = Signal(str)
     _fin_desde_vlc = Signal()
     _vout_desde_vlc = Signal()
+    _meta_desde_vlc = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -89,6 +96,7 @@ class VLCPlayer(QFrame):
         self._error_desde_vlc.connect(self.error_occurred, Qt.QueuedConnection)
         self._fin_desde_vlc.connect(self.end_reached, Qt.QueuedConnection)
         self._vout_desde_vlc.connect(self._on_vout_ready, Qt.QueuedConnection)
+        self._meta_desde_vlc.connect(self.meta_changed, Qt.QueuedConnection)
 
         self._crear_instancia()
 
@@ -119,6 +127,20 @@ class VLCPlayer(QFrame):
             self._attach_events()
         except Exception:
             log.exception("No se pudo inicializar libVLC (Instance/media_player_new)")
+            # Sin release() aquí, un fallo justo en _attach_events() (tras
+            # haber creado instance/media_player con éxito) los dejaba
+            # huérfanos: la referencia de Python se descarta abajo pero el
+            # objeto nativo de libVLC nunca se liberaba.
+            if self.media_player is not None:
+                try:
+                    self.media_player.release()
+                except Exception:
+                    pass
+            if self.instance is not None:
+                try:
+                    self.instance.release()
+                except Exception:
+                    pass
             self.instance = None
             self.media_player = None
 
@@ -140,6 +162,21 @@ class VLCPlayer(QFrame):
         events.event_attach(vlc.EventType.MediaPlayerEndReached, self._on_vlc_end_reached)
         events.event_attach(vlc.EventType.MediaPlayerVout, self._on_vlc_vout)
 
+    def _detach_events(self):
+        """Contraparte de _attach_events(): desregistra los callbacks a
+        nivel de libVLC (no solo en el lado Python), para que el
+        media_player que se va a liberar no pueda emitir ya ningún evento
+        más -- ver el comentario en _recrear_media_player()."""
+        if self.media_player is None:
+            return
+        try:
+            events = self.media_player.event_manager()
+            events.event_detach(vlc.EventType.MediaPlayerEncounteredError)
+            events.event_detach(vlc.EventType.MediaPlayerEndReached)
+            events.event_detach(vlc.EventType.MediaPlayerVout)
+        except Exception:
+            log.warning("No se pudieron desenganchar los eventos del media_player anterior", exc_info=True)
+
     # ---------- callbacks de libVLC (se ejecutan en hilos de libVLC) ----------
 
     def _on_vlc_error(self, _event):
@@ -150,6 +187,13 @@ class VLCPlayer(QFrame):
 
     def _on_vlc_vout(self, _event):
         self._vout_desde_vlc.emit()
+
+    def _on_vlc_meta_changed(self, _event):
+        try:
+            texto = self._media_actual.get_meta(vlc.Meta.NowPlaying) if self._media_actual else None
+        except Exception:
+            texto = None
+        self._meta_desde_vlc.emit((texto or "").strip())
 
     def _on_vout_ready(self):
         """
@@ -191,19 +235,76 @@ class VLCPlayer(QFrame):
         if self.media_player is None:
             self.error_occurred.emit(self.motivo_no_disponible())
             return
-        media = self.instance.media_new(url)
-        self.media_player.set_media(media)
-        # set_media se queda con su propia referencia del medio. Si no soltamos
-        # la nuestra, cada zapeo deja un objeto Media sin liberar y la memoria
-        # crece sin parar, que es justo el uso habitual de esta aplicación.
-        self._liberar_media_anterior()
-        self._media_actual = media
-        self._attach_output()
-        self.media_player.play()
-        # El escalado a "ajustar ventana" se aplica en _on_vout_ready(), que
-        # dispara con el evento MediaPlayerVout — más fiable que hacerlo aquí
-        # mismo, porque en este punto la salida de vídeo todavía puede no
-        # existir (play() es asíncrono).
+        # A diferencia de casi todo lo demás en este archivo, esta ruta no
+        # llevaba try/except: cualquier fallo de libVLC/ctypes aquí se
+        # propagaba sin control en vez de convertirse en error_occurred (lo
+        # que el resto de la app espera para reaccionar), y si el fallo
+        # ocurría entre media_new() y _media_actual, el objeto Media recién
+        # creado quedaba huérfano sin liberar.
+        media = None
+        try:
+            media = self.instance.media_new(url)
+            # El "now playing" (ICY/Shoutcast) es del STREAM anterior hasta
+            # que este medio nuevo mande el suyo propio (o nunca, si no lo
+            # soporta) -- se limpia aquí para no dejar el título de la
+            # emisora vieja pegado en la interfaz durante el cambio.
+            self._meta_desde_vlc.emit("")
+            media.event_manager().event_attach(vlc.EventType.MediaMetaChanged, self._on_vlc_meta_changed)
+            self.media_player.set_media(media)
+            # set_media se queda con su propia referencia del medio. Si no
+            # soltamos la nuestra, cada zapeo deja un objeto Media sin
+            # liberar y la memoria crece sin parar, que es justo el uso
+            # habitual de esta aplicación.
+            self._liberar_media_anterior()
+            self._media_actual = media
+            media = None  # ya asumida por _media_actual; no liberarla abajo
+            self._attach_output()
+            self.media_player.play()
+            # El escalado a "ajustar ventana" se aplica en _on_vout_ready(),
+            # que dispara con el evento MediaPlayerVout — más fiable que
+            # hacerlo aquí mismo, porque en este punto la salida de vídeo
+            # todavía puede no existir (play() es asíncrono).
+        except Exception:
+            log.exception("Fallo al arrancar la reproducción de %s", url)
+            if media is not None:
+                try:
+                    media.release()
+                except Exception:
+                    pass
+            self.error_occurred.emit(self.motivo_no_disponible())
+
+    def technical_info(self) -> dict:
+        """Devuelve datos técnicos disponibles sin asumir que VLC los ofrece."""
+        if not self.media_player:
+            return {}
+        info = {}
+        try:
+            width, height = self.media_player.video_get_size(0)
+            if width and height:
+                info["resolution"] = f"{width} × {height}"
+        except Exception:
+            pass
+        for key, getter in (
+            ("volume", self.media_player.audio_get_volume),
+            ("audio_tracks", self.media_player.audio_get_track_count),
+            ("subtitle_tracks", self.media_player.video_get_spu_count),
+        ):
+            try:
+                info[key] = max(0, getter())
+            except Exception:
+                pass
+        try:
+            info["state"] = str(self.media_player.get_state()).split(".")[-1]
+        except Exception:
+            pass
+        try:
+            stats = self._media_actual.get_stats() if self._media_actual else None
+            if isinstance(stats, dict):
+                info["input_bitrate"] = float(stats.get("input_bitrate", 0) or 0)
+                info["demux_bitrate"] = float(stats.get("demux_bitrate", 0) or 0)
+        except Exception:
+            pass
+        return info
 
     def _recrear_media_player(self):
         """
@@ -237,19 +338,41 @@ class VLCPlayer(QFrame):
             muted = False
 
         try:
+            # Sin desengancharlos primero, el media_player VIEJO puede
+            # seguir emitiendo eventos (error, fin de stream) desde su
+            # propio hilo de libVLC mientras el NUEVO ya está reproduciendo
+            # -- como las señales van en cola a Qt, ese evento tardío se
+            # procesaría después del cambio de canal y mostraría un error
+            # falso (o dispararía un auto-salto) sobre el canal nuevo.
+            # Zapear dos veces muy rápido, justo cuando el primer canal
+            # estaba fallando, era el escenario que lo disparaba.
+            self._detach_events()
             self.media_player.stop()
             self._liberar_media_anterior()
             self.media_player.release()
         except Exception:
             log.warning("Fallo liberando el media_player anterior al recrearlo", exc_info=True)
 
-        self.media_player = self.instance.media_player_new()
-        self._attach_events()
-        self._salida_asignada = False  # el nuevo media_player necesita su propia asignación de ventana
-        if volumen >= 0:
-            self.media_player.audio_set_volume(volumen)
-        self.media_player.audio_set_mute(muted)
-        self._aplicar_equalizer()
+        try:
+            self.media_player = self.instance.media_player_new()
+            self._attach_events()
+            self._salida_asignada = False  # el nuevo media_player necesita su propia asignación de ventana
+            if volumen >= 0:
+                self.media_player.audio_set_volume(volumen)
+            self.media_player.audio_set_mute(muted)
+            self._aplicar_equalizer()
+        except Exception:
+            log.exception("No se pudo recrear el media_player (media_player_new)")
+            # Mismo motivo que en _crear_instancia(): sin release() aquí, un
+            # fallo tras haber creado el media_player con éxito (p. ej. en
+            # _attach_events()) lo dejaría huérfano a nivel de libVLC aunque
+            # la referencia de Python se descarte abajo.
+            if self.media_player is not None:
+                try:
+                    self.media_player.release()
+                except Exception:
+                    pass
+            self.media_player = None
 
     def _liberar_media_anterior(self):
         if self._media_actual is not None:
@@ -305,6 +428,39 @@ class VLCPlayer(QFrame):
 
     def get_state(self):
         return self.media_player.get_state() if self.media_player else None
+
+    # ---------- avance rápido / retroceso ----------
+    #
+    # Solo tiene efecto real en contenido que libVLC pueda posicionar (VOD,
+    # ficheros locales, streams con ventana de time-shift); un canal de TV
+    # o una emisora de radio en directo "puro" no es_seekable() y set_time()
+    # ahí no hace nada -- por eso seek_relative() comprueba is_seekable()
+    # antes de tocar nada, en vez de fallar en silencio o mover un contador
+    # que no se refleja en el audio/vídeo real.
+
+    def is_seekable(self) -> bool:
+        return bool(self.media_player.is_seekable()) if self.media_player else False
+
+    def get_time(self) -> int:
+        """Posición actual en ms, o -1 si no se puede determinar."""
+        return self.media_player.get_time() if self.media_player else -1
+
+    def get_length(self) -> int:
+        """Duración total en ms, o <= 0 si no se conoce (típico en directo)."""
+        return self.media_player.get_length() if self.media_player else -1
+
+    def seek_relative(self, offset_ms: int) -> None:
+        """Adelanta (offset_ms > 0) o retrasa (offset_ms < 0) la reproducción."""
+        if self.media_player is None or not self.media_player.is_seekable():
+            return
+        actual = self.media_player.get_time()
+        if actual < 0:
+            return
+        nuevo = max(0, actual + offset_ms)
+        length = self.media_player.get_length()
+        if length and length > 0:
+            nuevo = min(nuevo, max(0, length - 500))
+        self.media_player.set_time(nuevo)
 
     # ---------- pistas de audio / subtítulos ----------
     #
@@ -433,8 +589,15 @@ class VLCPlayer(QFrame):
         eq = vlc.libvlc_audio_equalizer_new_from_preset(index)
         if eq is None:
             return 0.0, []
-        bandas = [eq.get_amp_at_index(i) for i in range(self.equalizer_band_count())]
-        return eq.get_preamp(), bandas
+        try:
+            bandas = [eq.get_amp_at_index(i) for i in range(self.equalizer_band_count())]
+            return eq.get_preamp(), bandas
+        finally:
+            # AudioEqualizer no tiene __del__: sin release() explícito, cada
+            # preset que el usuario prueba desde el combo filtra el objeto
+            # nativo -- este solo se usa para leer sus valores, nunca se
+            # aplica (ver set_equalizer para el que sí queda "vivo").
+            eq.release()
 
     def set_equalizer(self, preamp: float, bandas: list) -> None:
         """Activa (o actualiza, si ya estaba activo) el ecualizador con esta preamplificación y amplitud por banda, en dB."""
@@ -451,21 +614,46 @@ class VLCPlayer(QFrame):
                 self.media_player.set_equalizer(None)
             except Exception:
                 log.warning("No se pudo desactivar el ecualizador", exc_info=True)
+        self._liberar_eq_object()
+
+    def _liberar_eq_object(self) -> None:
+        """AudioEqualizer no tiene __del__ (confirmado en python-vlc): hay
+        que llamar a release() a mano o el objeto nativo se queda filtrado
+        para siempre, aunque Python recolecte la referencia de Python."""
+        if self._eq_object is not None:
+            try:
+                self._eq_object.release()
+            except Exception:
+                log.warning("No se pudo liberar el ecualizador anterior", exc_info=True)
+            self._eq_object = None
 
     def _aplicar_equalizer(self) -> None:
         if not self._eq_enabled or self.media_player is None or vlc is None:
             return
+        eq = None
         try:
             eq = vlc.AudioEqualizer()
             eq.set_preamp(self._eq_preamp)
             for i, amp in enumerate(self._eq_bands):
                 eq.set_amp_at_index(amp, i)
             self.media_player.set_equalizer(eq)
+            # Cada llamada crea un objeto nativo nuevo (arrastrar el slider
+            # del ecualizador dispara esto docenas de veces por segundo):
+            # hay que liberar el anterior antes de sustituir la referencia,
+            # o cada ajuste filtra memoria nativa sin límite.
+            self._liberar_eq_object()
             # Referencia viva obligatoria: si "eq" se recolectara, libVLC se
             # quedaría con un puntero a un objeto ya liberado por Python.
             self._eq_object = eq
+            eq = None
         except Exception:
             log.warning("No se pudo aplicar el ecualizador", exc_info=True)
+        finally:
+            if eq is not None:
+                try:
+                    eq.release()
+                except Exception:
+                    log.warning("No se pudo liberar el ecualizador fallido", exc_info=True)
 
     # ---------- cierre ordenado ----------
 
@@ -476,6 +664,7 @@ class VLCPlayer(QFrame):
         el cierre del proceso.
         """
         try:
+            self._liberar_eq_object()
             if self.media_player is not None:
                 self.media_player.stop()
                 self._liberar_media_anterior()

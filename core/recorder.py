@@ -11,6 +11,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple
+from urllib.parse import urlsplit
 
 from core.config import get_ffmpeg_exe
 from core.logger import get_logger
@@ -79,7 +80,21 @@ _MIN_VALID_SIZE_BYTES = 4096
 class Recorder:
     def __init__(self, output_dir: str):
         self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.output_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            # Ruta no válida en este equipo (p. ej. de otro usuario/máquina
+            # tras copiar los ajustes, o una unidad ya desconectada) --
+            # se cae a la carpeta de grabaciones por defecto de la app en
+            # vez de impedir arrancar toda la aplicación por esto.
+            from core.config import get_app_data_dir
+
+            log.warning(
+                "No se pudo usar la carpeta de grabaciones %r, se usará la "
+                "carpeta por defecto de la aplicación", str(self.output_dir)
+            )
+            self.output_dir = get_app_data_dir() / "recordings"
+            self.output_dir.mkdir(parents=True, exist_ok=True)
         self.process: Optional[subprocess.Popen] = None
         self.current_file: Optional[Path] = None
         self.current_log: Optional[Path] = None
@@ -102,6 +117,16 @@ class Recorder:
     def start(self, stream_url: str, channel_name: str, kind: str = "tv") -> Path:
         if self.process is not None:
             raise RuntimeError("Ya hay una grabación en curso.")
+
+        # stream_url puede venir de una lista M3U/IPTV importada por el
+        # usuario (no siempre de un canal preconfigurado): sin esta
+        # comprobación se pasaba tal cual a "-i" de ffmpeg, que interpreta
+        # el prefijo de la URL como selector de protocolo/demuxer (concat:,
+        # pipe:, subfile:...) -- limitarlo a http(s) real evita usar
+        # cualquier otro protocolo de ffmpeg a través de este campo.
+        esquema = urlsplit(stream_url or "").scheme.lower()
+        if esquema not in ("http", "https"):
+            raise RuntimeError("La URL del stream no es válida: debe ser http:// o https://.")
 
         ffmpeg = get_ffmpeg_exe()
         if ffmpeg is None:
