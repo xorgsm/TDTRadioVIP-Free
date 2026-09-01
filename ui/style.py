@@ -637,8 +637,8 @@ QLabel#catalogCount {
     letter-spacing: 0.8px;
 }
 QLabel#navCaption {
-    color: #6e7787;
-    font-size: 7.5pt;
+    color: #8b96a8;
+    font-size: 11pt;
     font-weight: 800;
     letter-spacing: 1.4px;
     padding: 0 10px 6px 10px;
@@ -712,21 +712,6 @@ QLabel#nowSubtitle {
     color: #bcc9da;
     font-size: 8.5pt;
 }
-QLabel#brandLabel {
-    color: #c9a227;
-    font-weight: 800;
-    font-size: 13pt;
-    letter-spacing: 1.2px;
-    padding: 0 10px;
-}
-QLabel#versionLabel {
-    color: #8b949e;
-    font-size: 7.5pt;
-    font-weight: 700;
-    letter-spacing: 0.7px;
-    padding: 0 10px;
-}
-
 /* ---------- Botones de control ---------- */
 QPushButton#playCircle {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -1031,8 +1016,15 @@ QWidget#titleBar {
 QLabel#titleBrand {
     color: #c9a227;
     font-weight: 800;
-    font-size: 10pt;
-    letter-spacing: 1px;
+    font-size: 12pt;
+    letter-spacing: 0.3px;
+    background: transparent;
+}
+QLabel#titleVersion {
+    color: #8b949e;
+    font-size: 7.5pt;
+    font-weight: 700;
+    letter-spacing: 0.7px;
     background: transparent;
 }
 QMenuBar#appMenuBar {

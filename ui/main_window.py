@@ -416,20 +416,12 @@ class MainWindow(QMainWindow):
         # de un vistazo y siguen conservando los iconos como anclas visuales.
         rail.setFixedWidth(NAV_RAIL_WIDTH)
         layout = QVBoxLayout(rail)
-        layout.setContentsMargins(12, 18, 12, 14)
+        layout.setContentsMargins(12, 24, 12, 14)
         layout.setSpacing(5)
 
-        brand = QLabel("TDT & RADIO")
-        brand.setObjectName("brandLabel")
-        brand.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        layout.addWidget(brand)
-
-        version_label = QLabel(f"VIP  ·  {cfg.APP_VERSION}")
-        version_label.setObjectName("versionLabel")
-        version_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        layout.addWidget(version_label)
-        layout.addSpacing(16)
-
+        # La marca y la versión ya no se repiten aquí -- viven una sola vez,
+        # más grandes, en la barra de título (_build_title_bar, titleBrand/
+        # titleVersion). EXPLORAR pasa a ser lo primero que se ve del riel.
         nav_caption = QLabel("EXPLORAR")
         nav_caption.setObjectName("navCaption")
         layout.addWidget(nav_caption)
@@ -1553,18 +1545,25 @@ class MainWindow(QMainWindow):
         """
         barra = QWidget()
         barra.setObjectName("titleBar")
-        barra.setFixedHeight(44)
+        barra.setFixedHeight(58)
 
         fila = QHBoxLayout(barra)
         fila.setContentsMargins(18, 0, 8, 0)
         fila.setSpacing(12)
 
-        # Sin la versión aquí a propósito: esta barra comparte fila con el
-        # menú y los controles de ventana, y ya se veía apretada contra
-        # "Archivo" en ventanas no muy anchas. La versión ya se ve en el
-        # riel de navegación (versionLabel, más abajo) y en Acerca de.
+        # Marca + versión, apiladas: antes la versión no vivía aquí (esta
+        # barra se veía apretada contra "Archivo" en ventanas no muy
+        # anchas con la marca en una sola línea) y en su lugar se repetía
+        # en el riel de navegación (brandLabel/versionLabel). Con la barra
+        # ya más alta para dos líneas, la marca+versión viven una sola vez,
+        # más grandes, y el riel ya no las repite (ver _build_nav_rail).
         marca = QLabel("TDT & Radio VIP")
         marca.setObjectName("titleBrand")
+        marca.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
+        version_label = QLabel(f"Versión {cfg.APP_VERSION}")
+        version_label.setObjectName("titleVersion")
+        version_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
         # La marca vive en una columna de ancho fijo, igual que el riel
         # lateral de debajo (NAV_RAIL_WIDTH): asi el menu que viene a
@@ -1573,9 +1572,12 @@ class MainWindow(QMainWindow):
         # texto de la marca.
         marca_col = QWidget()
         marca_col.setFixedWidth(NAV_RAIL_WIDTH - fila.contentsMargins().left())
-        marca_col_layout = QHBoxLayout(marca_col)
+        marca_col_layout = QVBoxLayout(marca_col)
         marca_col_layout.setContentsMargins(0, 0, 0, 0)
+        marca_col_layout.setSpacing(0)
+        marca_col_layout.addStretch(1)
         marca_col_layout.addWidget(marca)
+        marca_col_layout.addWidget(version_label)
         marca_col_layout.addStretch(1)
         fila.addWidget(marca_col)
 
