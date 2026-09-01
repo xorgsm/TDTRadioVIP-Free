@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-31T00:00:00+02:00",
+  "title": "Design System: TDT & Radio VIP",
+  "extensions": {
+    "colorMeta": {
+      "signal-gold": { "role": "primary", "displayName": "Oro de Señal", "canonical": "#c9a227", "tonalRamp": ["oklch(22% 0.05 91)", "oklch(32% 0.07 91)", "oklch(43% 0.09 91)", "#c9a227", "oklch(68% 0.11 91)", "#e8c360", "#f4d476", "oklch(95% 0.03 91)"] },
+      "signal-gold-light": { "role": "primary", "displayName": "Oro de Señal Claro", "canonical": "#e8c360", "tonalRamp": ["oklch(20% 0.04 91)", "oklch(31% 0.06 91)", "oklch(43% 0.08 91)", "oklch(56% 0.10 91)", "oklch(68% 0.10 91)", "#e8c360", "oklch(87% 0.07 91)", "oklch(95% 0.025 91)"] },
+      "signal-gold-lighter": { "role": "primary", "displayName": "Oro de Señal Luminoso", "canonical": "#f4d476", "tonalRamp": ["oklch(20% 0.035 91)", "oklch(31% 0.05 91)", "oklch(43% 0.07 91)", "oklch(56% 0.085 91)", "oklch(68% 0.09 91)", "oklch(78% 0.085 91)", "#f4d476", "oklch(95% 0.02 91)"] },
+      "midnight-root": { "role": "neutral", "displayName": "Medianoche Raíz", "canonical": "#0d1b2a", "tonalRamp": ["#0d1b2a", "#16223a", "#1b2a41", "#223350", "#283c5e", "#2f466d", "#3d5578", "oklch(95% 0.018 250)"] },
+      "midnight-panel": { "role": "neutral", "displayName": "Medianoche Panel", "canonical": "#1b2a41", "tonalRamp": ["#0d1b2a", "#16223a", "#1b2a41", "#223350", "#283c5e", "#2f466d", "#3d5578", "oklch(95% 0.018 250)"] },
+      "midnight-card": { "role": "neutral", "displayName": "Medianoche Tarjeta", "canonical": "#223350", "tonalRamp": ["#0d1b2a", "#16223a", "#1b2a41", "#223350", "#283c5e", "#2f466d", "#3d5578", "oklch(95% 0.018 250)"] },
+      "midnight-raised": { "role": "neutral", "displayName": "Medianoche Elevada", "canonical": "#283c5e", "tonalRamp": ["#0d1b2a", "#16223a", "#1b2a41", "#223350", "#283c5e", "#2f466d", "#3d5578", "oklch(95% 0.018 250)"] },
+      "midnight-hover": { "role": "neutral", "displayName": "Medianoche Hover", "canonical": "#2f466d", "tonalRamp": ["#0d1b2a", "#16223a", "#1b2a41", "#223350", "#283c5e", "#2f466d", "#3d5578", "oklch(95% 0.018 250)"] },
+      "boundary": { "role": "neutral", "displayName": "Límite Naval", "canonical": "#2a3b55", "tonalRamp": ["oklch(15% 0.025 250)", "oklch(25% 0.035 250)", "#2a3b55", "oklch(45% 0.045 250)", "oklch(58% 0.04 250)", "oklch(70% 0.032 250)", "oklch(83% 0.024 250)", "oklch(95% 0.012 250)"] },
+      "boundary-strong": { "role": "neutral", "displayName": "Límite Firme", "canonical": "#3d5578", "tonalRamp": ["oklch(15% 0.03 250)", "oklch(25% 0.04 250)", "oklch(35% 0.05 250)", "#3d5578", "oklch(58% 0.045 250)", "oklch(70% 0.035 250)", "oklch(83% 0.025 250)", "oklch(95% 0.012 250)"] },
+      "text-primary": { "role": "neutral", "displayName": "Marfil Primario", "canonical": "#f2efe6", "tonalRamp": ["oklch(15% 0.01 85)", "oklch(27% 0.012 85)", "oklch(40% 0.014 85)", "oklch(54% 0.016 85)", "oklch(67% 0.018 85)", "oklch(79% 0.019 85)", "oklch(89% 0.018 85)", "#f2efe6"] },
+      "text-secondary": { "role": "neutral", "displayName": "Niebla Secundaria", "canonical": "#bcc9da", "tonalRamp": ["oklch(15% 0.015 250)", "oklch(27% 0.022 250)", "oklch(40% 0.028 250)", "oklch(54% 0.032 250)", "oklch(67% 0.034 250)", "#bcc9da", "oklch(87% 0.024 250)", "oklch(95% 0.012 250)"] },
+      "text-muted": { "role": "neutral", "displayName": "Niebla Atenuada", "canonical": "#a6b5c7", "tonalRamp": ["oklch(15% 0.014 250)", "oklch(27% 0.02 250)", "oklch(40% 0.026 250)", "oklch(54% 0.03 250)", "#a6b5c7", "oklch(76% 0.028 250)", "oklch(87% 0.021 250)", "oklch(95% 0.01 250)"] },
+      "text-dim": { "role": "neutral", "displayName": "Niebla Lejana", "canonical": "#8e9daf", "tonalRamp": ["oklch(15% 0.014 250)", "oklch(27% 0.02 250)", "oklch(40% 0.025 250)", "#8e9daf", "oklch(65% 0.03 250)", "oklch(76% 0.026 250)", "oklch(87% 0.019 250)", "oklch(95% 0.01 250)"] },
+      "status-danger": { "role": "tertiary", "displayName": "Coral de Alerta", "canonical": "#f26f6c", "tonalRamp": ["oklch(15% 0.05 25)", "oklch(27% 0.09 25)", "oklch(40% 0.14 25)", "oklch(53% 0.18 25)", "#f26f6c", "oklch(75% 0.13 25)", "oklch(86% 0.08 25)", "oklch(95% 0.03 25)"] },
+      "status-success": { "role": "tertiary", "displayName": "Verde de Sistema", "canonical": "#42c985", "tonalRamp": ["oklch(15% 0.04 155)", "oklch(27% 0.07 155)", "oklch(40% 0.10 155)", "oklch(53% 0.13 155)", "#42c985", "oklch(75% 0.11 155)", "oklch(86% 0.07 155)", "oklch(95% 0.025 155)"] },
+      "function-cast": { "role": "secondary", "displayName": "Turquesa de Emisión", "canonical": "#31c7b2", "tonalRamp": ["oklch(15% 0.035 180)", "oklch(27% 0.065 180)", "oklch(40% 0.09 180)", "oklch(53% 0.12 180)", "#31c7b2", "oklch(75% 0.10 180)", "oklch(86% 0.065 180)", "oklch(95% 0.022 180)"] },
+      "function-sleep": { "role": "secondary", "displayName": "Violeta de Descanso", "canonical": "#9b7bea", "tonalRamp": ["oklch(15% 0.045 295)", "oklch(27% 0.08 295)", "oklch(40% 0.12 295)", "oklch(53% 0.16 295)", "#9b7bea", "oklch(75% 0.13 295)", "oklch(86% 0.08 295)", "oklch(95% 0.028 295)"] },
+      "function-info": { "role": "secondary", "displayName": "Azul de Información", "canonical": "#55a7e8", "tonalRamp": ["oklch(15% 0.04 245)", "oklch(27% 0.075 245)", "oklch(40% 0.11 245)", "oklch(53% 0.145 245)", "#55a7e8", "oklch(75% 0.11 245)", "oklch(86% 0.07 245)", "oklch(95% 0.025 245)"] },
+      "function-media": { "role": "secondary", "displayName": "Naranja de Medios", "canonical": "#f39a55", "tonalRamp": ["oklch(15% 0.045 55)", "oklch(27% 0.08 55)", "oklch(40% 0.12 55)", "oklch(53% 0.15 55)", "#f39a55", "oklch(75% 0.12 55)", "oklch(86% 0.075 55)", "oklch(95% 0.026 55)"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Saludo y orientación principal de Inicio." },
+      "headline": { "displayName": "Headline", "purpose": "Títulos de sección y diálogo." },
+      "title": { "displayName": "Title", "purpose": "Contenido en reproducción y encabezados relevantes." },
+      "body": { "displayName": "Body", "purpose": "Controles, menús y contenido operativo." },
+      "label": { "displayName": "Label", "purpose": "Captions, badges y contexto compacto." }
+    },
+    "shadows": [],
+    "motion": [
+      { "name": "content-fade", "value": "OutCubic opacity transition", "purpose": "Actualización breve del título de reproducción sin desplazar el layout." }
+    ],
+    "breakpoints": [
+      { "name": "window-min", "value": "860px × 580px" },
+      { "name": "home-compact", "value": "520px" },
+      { "name": "now-playing-compact", "value": "390px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Acción principal compacta con señal dorada y contraste máximo.",
+      "html": "<button class=\"ds-btn-primary\">REPRODUCIR</button>",
+      "css": ".ds-btn-primary{background:linear-gradient(#e8c360,#8d711b);color:#0d1b2a;border:1px solid rgba(255,255,255,.22);border-radius:10px;padding:8px 14px;font:600 13px Inter,'Segoe UI',sans-serif;transition:background .16s ease,border-color .16s ease}.ds-btn-primary:hover{background:linear-gradient(#f4d476,#c9a227)}.ds-btn-primary:focus-visible{outline:2px solid #e8c360;outline-offset:2px}.ds-btn-primary:active{background:#a38420}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Acción secundaria de bajo ruido sobre una capa naval.",
+      "html": "<button class=\"ds-btn-secondary\">CANCELAR</button>",
+      "css": ".ds-btn-secondary{background:#223350;color:#bcc9da;border:1px solid #2a3b55;border-radius:10px;padding:7px 12px;font:600 13px Inter,'Segoe UI',sans-serif;transition:background .16s ease,border-color .16s ease,color .16s ease}.ds-btn-secondary:hover{background:#2f466d;border-color:#3d5578;color:#f2efe6}.ds-btn-secondary:focus-visible{outline:2px solid #e8c360;outline-offset:2px}.ds-btn-secondary:active{background:#1b2a41}"
+    },
+    {
+      "name": "Search Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Campo de búsqueda naval con foco de señal inequívoco.",
+      "html": "<input class=\"ds-input-search\" aria-label=\"Buscar canales\" placeholder=\"Buscar canales…\">",
+      "css": ".ds-input-search{width:250px;background:#0d1b2a;color:#f2efe6;border:1px solid #2a3b55;border-radius:10px;padding:9px 14px;font:400 13px Inter,'Segoe UI',sans-serif;transition:background .16s ease,border-color .16s ease}.ds-input-search::placeholder{color:#8e9daf}.ds-input-search:hover{border-color:#3d5578}.ds-input-search:focus-visible{outline:none;border-color:#c9a227;background:#16243a;box-shadow:0 0 0 2px rgba(201,162,39,.22)}"
+    },
+    {
+      "name": "Navigation Item Active",
+      "kind": "nav",
+      "refersTo": "navigation-item-active",
+      "description": "Ruta activa neutral con una sola línea de acento contextual.",
+      "html": "<button class=\"ds-nav-active\" aria-current=\"page\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M4 11.5 12 5l8 6.5V20h-5v-5H9v5H4z\"/></svg><span>Inicio</span></button>",
+      "css": ".ds-nav-active{width:180px;display:flex;align-items:center;gap:10px;background:#283c5e;color:#f2efe6;border:0;border-left:2px solid #c9a227;border-radius:10px;padding:9px 12px;font:650 13px Inter,'Segoe UI',sans-serif;text-align:left;transition:background .16s ease}.ds-nav-active svg{width:18px;height:18px;fill:currentColor}.ds-nav-active:hover{background:#2f466d}.ds-nav-active:focus-visible{outline:2px solid #e8c360;outline-offset:2px}.ds-nav-active:active{background:#223350}"
+    },
+    {
+      "name": "Live Badge",
+      "kind": "chip",
+      "description": "Badge compacto para identificar una emisión activa sin rellenar la superficie.",
+      "html": "<span class=\"ds-live-badge\">EN DIRECTO</span>",
+      "css": ".ds-live-badge{display:inline-flex;align-items:center;color:#c9a227;background:transparent;border:1px solid #c9a227;border-radius:14px;padding:5px 11px;font:800 11px Inter,'Segoe UI',sans-serif;letter-spacing:1px}.ds-live-badge:hover{background:rgba(201,162,39,.10)}.ds-live-badge:focus-visible{outline:2px solid #e8c360;outline-offset:2px}"
+    },
+    {
+      "name": "Carousel Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Tarjeta compacta de descubrimiento con categoría funcional persistente.",
+      "html": "<article class=\"ds-carousel-card\" tabindex=\"0\"><div class=\"ds-carousel-logo\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\"/><path d=\"m8 2 4 3 4-3\"/></svg></div><strong>Canal 24h</strong><small>TELEVISIÓN</small></article>",
+      "css": ".ds-carousel-card{width:128px;background:#223350;color:#f2efe6;border:1px solid #2a3b55;border-bottom:3px solid #55a7e8;border-radius:14px;padding:14px;font-family:Inter,'Segoe UI',sans-serif;transition:background .16s ease,border-color .16s ease}.ds-carousel-card:hover{background:#2f466d;border-color:#3d5578;border-bottom-color:#55a7e8}.ds-carousel-card:focus-visible{outline:2px solid #e8c360;outline-offset:2px}.ds-carousel-logo{width:96px;height:96px;display:grid;place-items:center;background:#1b2a41;border-radius:10px;margin:0 auto 10px}.ds-carousel-logo svg{width:38px;fill:none;stroke:#55a7e8;stroke-width:1.8}.ds-carousel-card strong{display:block;font-size:12px}.ds-carousel-card small{display:block;margin-top:5px;color:#a6b5c7;font-size:10px;letter-spacing:.7px}"
+    },
+    {
+      "name": "Now Playing",
+      "kind": "custom",
+      "description": "Barra persistente que mantiene estado y acciones esenciales legibles.",
+      "html": "<section class=\"ds-now-playing\"><div class=\"ds-now-art\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M9 18V5l10-2v13\"/><circle cx=\"6\" cy=\"18\" r=\"3\"/><circle cx=\"16\" cy=\"16\" r=\"3\"/></svg></div><div class=\"ds-now-copy\"><strong>Ahora suena</strong><span>Selecciona una emisora</span></div><button aria-label=\"Reproducir\" class=\"ds-now-play\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"m8 5 11 7-11 7z\"/></svg></button></section>",
+      "css": ".ds-now-playing{display:flex;align-items:center;gap:14px;min-width:330px;background:linear-gradient(#1e2c3e,#111d2a 55%,#0d1b2a);color:#f2efe6;border:1px solid #3d5578;border-radius:18px;padding:16px;font-family:Inter,'Segoe UI',sans-serif}.ds-now-art{width:50px;height:50px;display:grid;place-items:center;background:#283c5e;border-radius:12px}.ds-now-art svg{width:24px;fill:none;stroke:#a6b5c7;stroke-width:1.8}.ds-now-copy{display:flex;flex:1;flex-direction:column;min-width:0}.ds-now-copy strong{font-size:18px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ds-now-copy span{color:#a6b5c7;font-size:11px}.ds-now-play{width:38px;height:38px;display:grid;place-items:center;background:linear-gradient(#e8c360,#8d711b);color:#0d1b2a;border:1px solid rgba(255,255,255,.22);border-radius:19px}.ds-now-play svg{width:18px;fill:currentColor}.ds-now-play:hover{background:linear-gradient(#f4d476,#c9a227)}.ds-now-play:focus-visible{outline:2px solid #e8c360;outline-offset:2px}.ds-now-play:active{background:#a38420}"
+    }
+  ],
+  "narrative": {
+    "northStar": "La Cabina Nocturna",
+    "overview": "TDT & Radio VIP se comporta como una cabina de emisión personal: oscura, estable y preparada para sesiones largas. La base azul marino reduce el ruido de catálogos densos; el dorado configurable aparece como señal de acción o foco, mientras que los colores funcionales distinguen TV, radio, emisión, temporizador y estados sin competir con la marca.\n\nLa interfaz es una herramienta nativa de Windows en modo Operate. Su personalidad vive en la precisión de las capas, los bordes finos, las esquinas suaves, los degradados contenidos y la iconografía vectorial pintada con QPainter. La información y el estado de reproducción mandan sobre el ornamento.",
+    "keyCharacteristics": [
+      "Jerarquía naval por superficies tonales, con contraste cálido en texto y acento.",
+      "Densidad de escritorio legible, preparada para ratón y teclado.",
+      "Estado activo neutral con una línea de acento contextual, nunca una masa de color gratuita.",
+      "Inicio y Ahora suena se recomponen para conservar controles esenciales en ventanas estrechas.",
+      "Iconos geométricos consistentes, sin depender de glifos tipográficos."
+    ],
+    "rules": [
+      { "name": "The Signal, Not Wallpaper Rule", "body": "El acento identifica acción, selección, progreso o foco; no sustituye las superficies navales.", "section": "colors" },
+      { "name": "The Functional Color Rule", "body": "Turquesa, violeta, azul, naranja, verde y coral conservan su significado funcional y no se intercambian por variedad visual.", "section": "colors" },
+      { "name": "The One Family Rule", "body": "Toda la interfaz usa Inter; Segoe UI existe únicamente como fallback técnico.", "section": "typography" },
+      { "name": "The Weight Before Color Rule", "body": "La jerarquía principal se establece con peso y tamaño antes de añadir un color funcional.", "section": "typography" },
+      { "name": "The Essential Controls Survive Rule", "body": "Reducir la ventana puede reordenar contenido u ocultar ayudas secundarias, pero nunca elimina la ruta para reproducir, detener, recuperar o abrir más opciones.", "section": "layout" },
+      { "name": "The Tonal Depth Rule", "body": "La jerarquía de profundidad se construye primero con Medianoche Raíz → Panel → Tarjeta → Elevada → Hover; un borde refuerza la separación solo cuando dos capas adyacentes lo necesitan.", "section": "elevation" },
+      { "name": "The No Floating Slabs Rule", "body": "No se añaden sombras grandes a listas, formularios o tarjetas ordinarias.", "section": "elevation" },
+      { "name": "The Radius Follows Scale Rule", "body": "El radio aumenta con el tamaño y protagonismo del contenedor; una fila compacta no adopta la silueta de un héroe.", "section": "shapes" },
+      { "name": "The Painted Icon Rule", "body": "Los controles usan iconos QPainter del sistema existente; no se introducen emojis, caracteres Unicode ni fuentes de iconos como sustitutos.", "section": "shapes" }
+    ],
+    "dos": [
+      "Do construir nuevas superficies con la escala naval compartida y reservar el acento para interacción y estado.",
+      "Do conservar Inter, la marca TDT & Radio VIP, la firma Coder By X@R y el icono empaquetado.",
+      "Do ofrecer foco visible, tooltip y nombre accesible en controles solo-icono.",
+      "Do verificar Inicio y Ahora suena a 860 × 580px y en sus umbrales internos de 520px y 390px.",
+      "Do usar los iconos QPainter existentes o ampliar ese mismo vocabulario geométrico."
+    ],
+    "donts": [
+      "Don't usar el dorado configurable como fondo dominante de navegación activa; la selección se apoya en una superficie neutral y un acento contextual.",
+      "Don't introducir glifos, emojis o fuentes de iconos en controles de producto.",
+      "Don't ocultar controles esenciales ni provocar overflow para conservar una composición amplia.",
+      "Don't añadir sombras pesadas, glassmorphism o tarjetas flotantes ajenas a la profundidad tonal existente.",
+      "Don't asignar un color funcional por gusto: cada tono semántico conserva su significado."
+    ]
+  }
+}

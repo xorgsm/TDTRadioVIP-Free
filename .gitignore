@@ -1,0 +1,49 @@
+# Entornos virtuales
+venv/
+.venv/
+env/
+
+# Bytecode y cachés de Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+
+# Artefactos de compilación (PyInstaller, Cython build/, setup.py build_ext)
+# Ojo: NO se ignoran *.exe/*.zip en general -- resources/ffmpeg/ffmpeg.exe
+# es una dependencia empaquetada a propósito (ver README), no un artefacto
+# generado. Solo se ignora lo que sale de compilar/empaquetar esta app.
+build/
+dist/
+*.spec.bak
+
+# Estado de sesión de Claude Code (no es parte del proyecto)
+.claude/
+
+# Datos temporales / logs locales
+*.log
+.coverage
+htmlcov/
+
+# Material privado de licencias y credenciales de desarrollo.
+# No debe formar parte de una futura publicación del código fuente ni de
+# artefactos distribuibles.
+tools/licencias_emitidas.csv
+tools/*.pem
+tools/*.key
+tools/*.pfx
+tools/*.p12
+.env
+.env.*
+
+# Datos personales del usuario, no del proyecto (backups exportados, listas
+# M3U propias con credenciales/tokens de suscripción incrustados en la URL).
+/*backup*.json
+/*.m3u
+
+# Artefactos generados del grafo de conocimiento (graphify) y del instalador.
+installer_output/
+graphify-out/*.html
+graphify-out/graph.json
+graphify-out/cache/

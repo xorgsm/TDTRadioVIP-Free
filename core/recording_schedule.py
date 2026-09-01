@@ -1,0 +1,216 @@
+"""
+Grabaciones programadas desde la guía EPG ("grabar este programa").
+
+Mismo patrón que core/epg_reminders.py: una lista de pendientes persistida
+en disco (sobrevive a cerrar y reabrir la app), comprobada periódicamente
+por un QTimer en MainWindow. Este módulo NO depende de PySide6 ni toca
+Recorder directamente -- solo lleva la contabilidad de qué grabación toca
+arrancar o parar ahora mismo; quien llama (ui/main_window.py) es quien de
+verdad arranca/para core.recorder.Recorder y actualiza la interfaz.
+
+Ciclo de vida de una ScheduledRecording:
+    pending   -> (llega la hora de inicio) -> recording
+    recording -> (llega la hora de fin, o el usuario para a mano)   -> se borra (mark_done)
+    pending/recording -> (algo falla al arrancar, o se llegó demasiado
+                           tarde al inicio) -> error (se deja visible en
+                           vez de borrarla en silencio, hasta que algo la
+                           quite explícitamente)
+
+Coder By X@R
+"""
+from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta
+from typing import List
+
+from core.config import get_profile_data_dir
+from core.epg import parse_xmltv_time
+from core.json_store import read_json, write_json_atomic
+
+SCHEDULE_FILE = "epg_recordings.json"
+
+# Si la app estuvo cerrada y se reabre pasado este margen desde el inicio
+# del programa, ya no tiene sentido arrancar una grabación a la que le
+# faltaría el principio entero -- se descarta en vez de grabar solo el
+# final. Mismo margen que epg_reminders.MARGEN_TOLERANCIA por consistencia.
+MARGEN_INICIO = timedelta(minutes=10)
+
+
+@dataclass
+class ScheduledRecording:
+    tvg_id: str
+    channel_name: str
+    channel_url: str
+    title: str
+    start: str  # formato XMLTV: YYYYMMDDHHMMSS
+    stop: str
+    status: str = "pending"  # pending | recording | error
+
+
+def _path():
+    return get_profile_data_dir() / SCHEDULE_FILE
+
+
+def load_scheduled() -> List[ScheduledRecording]:
+    data = read_json(_path(), [])
+    if not isinstance(data, list):
+        return []
+    resultado = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        try:
+            resultado.append(ScheduledRecording(**item))
+        except TypeError:
+            continue  # entrada con campos que no encajan; se descarta sola
+    return resultado
+
+
+def _save(items: List[ScheduledRecording]) -> None:
+    try:
+        write_json_atomic(_path(), [asdict(i) for i in items], indent=2)
+    except OSError:
+        pass
+
+
+def _es_la_misma(r: ScheduledRecording, tvg_id: str, title: str, start: str) -> bool:
+    return r.tvg_id == tvg_id and r.title == title and r.start == start
+
+
+def has_scheduled(tvg_id: str, title: str, start: str) -> bool:
+    return any(_es_la_misma(r, tvg_id, title, start) for r in load_scheduled())
+
+
+def _parse_interval_value(value: str) -> datetime | None:
+    """Convierte una hora XMLTV a datetime local -- ver core.epg.parse_xmltv_time
+    (antes truncaba a los primeros 14 caracteres, descartando cualquier
+    zona horaria y pudiendo detectar conflictos de horario de forma
+    incorrecta entre grabaciones de guías con huso distinto al del sistema)."""
+    return parse_xmltv_time(value or "")
+
+
+def find_conflicts(
+    rec: ScheduledRecording,
+    items: List[ScheduledRecording] | None = None,
+) -> List[ScheduledRecording]:
+    """Devuelve reservas activas que se solapan con ``rec``.
+
+    Los intervalos se consideran semiabiertos: una grabación que termina
+    exactamente cuando empieza otra no constituye un conflicto.
+    """
+    start = _parse_interval_value(rec.start)
+    stop = _parse_interval_value(rec.stop)
+    if start is None or stop is None or stop <= start:
+        return []
+
+    conflicts = []
+    for current in load_scheduled() if items is None else items:
+        if current.status == "error" or _es_la_misma(
+            current, rec.tvg_id, rec.title, rec.start
+        ):
+            continue
+        current_start = _parse_interval_value(current.start)
+        current_stop = _parse_interval_value(current.stop)
+        if current_start is None or current_stop is None:
+            continue
+        if start < current_stop and current_start < stop:
+            conflicts.append(current)
+    return conflicts
+
+
+def add_scheduled(rec: ScheduledRecording) -> List[ScheduledRecording]:
+    """Añade una grabación programada si no existía ya una igual (mismo
+    canal+programa+hora de inicio)."""
+    items = load_scheduled()
+    if not any(_es_la_misma(r, rec.tvg_id, rec.title, rec.start) for r in items):
+        items.append(rec)
+        _save(items)
+    return items
+
+
+def remove_scheduled(tvg_id: str, title: str, start: str) -> List[ScheduledRecording]:
+    items = [r for r in load_scheduled() if not _es_la_misma(r, tvg_id, title, start)]
+    _save(items)
+    return items
+
+
+def check_starts_due(parse_time_fn) -> List[ScheduledRecording]:
+    """
+    Devuelve las grabaciones "pending" cuya hora de inicio ya ha llegado
+    (con margen de tolerancia hacia atrás -- ver MARGEN_INICIO) y las deja
+    marcadas como "recording" en disco. Quien llama es responsable de
+    arrancar Recorder.start() de verdad para cada una devuelta; si falla,
+    debe llamar a mark_error() para no dejarla colgada en "recording" para
+    siempre sin que nada la esté grabando de verdad.
+
+    Las que llevan demasiado tiempo pendientes (se pasó de largo el margen
+    de inicio -- típicamente la app estuvo cerrada) se marcan "error" en
+    vez de arrancarlas ya mediadas: grabar solo el final de un programa no
+    sirve de mucho y confundiría más que ayudar.
+    """
+    ahora = datetime.now()
+    items = load_scheduled()
+    listas = []
+    cambiado = False
+    for r in items:
+        if r.status != "pending":
+            continue
+        inicio = parse_time_fn(r.start)
+        if inicio is None:
+            # Hora corrupta: no se puede arrancar, pero dejarla "pending"
+            # la reevaluaría cada 30s para siempre sin que nada cambie
+            # nunca -- se marca "error" (igual que un fallo real al
+            # arrancar) para que quede visible y se pueda quitar a mano.
+            r.status = "error"
+            cambiado = True
+            continue
+        if inicio <= ahora <= inicio + MARGEN_INICIO:
+            r.status = "recording"
+            cambiado = True
+            listas.append(r)
+        elif inicio > ahora:
+            continue  # todavía no toca
+        else:
+            r.status = "error"
+            cambiado = True
+    if cambiado:
+        _save(items)
+    return listas
+
+
+def check_stops_due(parse_time_fn) -> List[ScheduledRecording]:
+    """
+    Devuelve las grabaciones "recording" cuya hora de fin ya ha llegado --
+    quien llama debe parar Recorder de verdad para cada una y después
+    llamar a mark_done() (grabación cerrada con normalidad) o mark_error()
+    (algo fue mal al pararla). Una hora de fin corrupta se trata como "ya
+    tocaba pararla" en vez de dejarla grabando para siempre sin control.
+    """
+    ahora = datetime.now()
+    items = load_scheduled()
+    resultado = []
+    for r in items:
+        if r.status != "recording":
+            continue
+        fin = parse_time_fn(r.stop)
+        if fin is None or fin <= ahora:
+            resultado.append(r)
+    return resultado
+
+
+def mark_done(tvg_id: str, title: str, start: str) -> None:
+    """Grabación terminada con normalidad: se quita de la lista de
+    pendientes/activas (el archivo .mp4 ya vive en la carpeta de
+    grabaciones, esto solo limpia la programación en sí)."""
+    remove_scheduled(tvg_id, title, start)
+
+
+def mark_error(tvg_id: str, title: str, start: str) -> None:
+    """Deja la entrada visible como fallida en vez de borrarla en
+    silencio, para que quien revise la parrilla vea que algo no salió
+    bien (ver EpgDialog: una entrada 'error' se puede quitar a mano igual
+    que una pendiente)."""
+    items = load_scheduled()
+    for r in items:
+        if _es_la_misma(r, tvg_id, title, start):
+            r.status = "error"
+    _save(items)
