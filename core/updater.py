@@ -60,6 +60,9 @@ def check_for_update(update_check_url: str, current_version: str = APP_VERSION) 
     """
     if not update_check_url:
         return None
+    if not _is_https_url(update_check_url):
+        log.warning("La URL de comprobación de actualizaciones no es HTTPS válida")
+        return None
     try:
         resp = requests.get(update_check_url, timeout=8)
         resp.raise_for_status()

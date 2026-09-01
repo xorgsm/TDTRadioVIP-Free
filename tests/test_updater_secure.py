@@ -81,6 +81,19 @@ def test_update_check_rejects_unsafe_release_url(monkeypatch):
     assert check_for_update("https://updates.test/manifest.json", "7.6.1") is None
 
 
+@pytest.mark.parametrize("url", [
+    "http://updates.test/manifest.json",
+    "file:///C:/Windows/System32/manifest.json",
+    "https:///missing-host/manifest.json",
+])
+def test_update_check_rejects_unsafe_manifest_url_before_request(monkeypatch, url):
+    def unexpected_request(*args, **kwargs):
+        pytest.fail("an unsafe manifest URL must not reach the network client")
+
+    monkeypatch.setattr(updater.requests, "get", unexpected_request)
+    assert check_for_update(url, "7.6.1") is None
+
+
 def test_update_check_does_not_crash_on_giant_version(monkeypatch):
     monkeypatch.setattr(
         updater.requests,
