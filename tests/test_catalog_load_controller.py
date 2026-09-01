@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import Mock
 
 from ui.catalog_load_controller import CatalogLoadController
@@ -54,6 +55,25 @@ def test_background_diagnostics_updates_health_without_repopulating(monkeypatch)
     lists.populate_tv_list.assert_not_called()
     lists.populate_radio_list.assert_not_called()
     lists.filter_current_list.assert_called_once_with()
+    window.home.refresh_home_health.assert_called_once_with()
+
+
+def test_no_call_site_bypasses_home_controller_for_home_refreshes():
+    """_refresh_home_now_playing()/refresh_home_health() live on
+    ui.home_controller.HomeController (window.home), not on MainWindow
+    itself (see the comment in ui/main_window.py). A call written as
+    ``win._refresh_home_now_playing()``/``win._refresh_home_health()``
+    instead of going through ``win.home`` raises AttributeError on a real
+    MainWindow -- silently, since Qt just logs the traceback from the slot
+    and keeps running, so nothing else here would catch it. Guard the two
+    call sites (ui/playback_controller.py, ui/catalog_load_controller.py)
+    statically instead of trying to mock the whole MainWindow.
+    """
+    root = Path(__file__).resolve().parent.parent
+    for relative in ("ui/playback_controller.py", "ui/catalog_load_controller.py"):
+        source = (root / relative).read_text(encoding="utf-8")
+        assert "win._refresh_home_now_playing(" not in source, relative
+        assert "win._refresh_home_health(" not in source, relative
 
 
 def test_health_update_changes_matching_items_in_place():

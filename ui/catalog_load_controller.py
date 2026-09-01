@@ -128,7 +128,7 @@ class CatalogLoadController:
             return
         try:
             recorded = record_results(win._background_health_results)
-            win._refresh_home_health()
+            win.home.refresh_home_health()
             # El diagnóstico solo cambia ROLE_HEALTH y la fecha asociada.
             # No se borran/recrean miles de filas (ni se reencolan sus logos)
             # mientras el usuario puede estar reproduciendo un stream.
