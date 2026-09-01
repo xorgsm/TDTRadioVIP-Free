@@ -108,3 +108,80 @@ Filename: "{app}\{#FolderFree}\{#MyAppExeFree}"; Description: "Abrir {#MyAppName
 ; los toca. Si alguna vez quieres que el desinstalador también los borre,
 ; añade aquí: Type: filesandordirs; Name: "{userappdata}\CoderByXOR\TDTRadioVIP_7.6.0"
 Type: filesandordirs; Name: "{app}"
+
+[Code]
+// Con AppId fijo, Inno ya actualiza en el mismo {app} las revisiones de ESTA
+// rama (ver comentario de [Setup] arriba) -- esto es para el caso aparte:
+// instalaciones de OTRAS ramas/versiones (AppId distinto, p. ej. una 7.5.x o
+// una carpeta vieja de antes del fix de [InstallDelete]), que Inno no puede
+// detectar ni sustituir solo porque no comparten AppId. Se buscan por
+// coincidencia de nombre en el registro de desinstalación de Windows, no por
+// AppId conocido de antemano, para no tener que mantener aquí una lista fija
+// de versiones viejas.
+const
+  MyAppIdKey = '{{34D6C3B2-8D44-4CB8-AC56-2BEE9AC6D9A1}_is1';
+
+procedure FindOldInstalls(RootKey: Integer; const SubKeyBase: string; List: TStringList);
+var
+  Names: TArrayOfString;
+  I: Integer;
+  DisplayName, UninstallStr: string;
+begin
+  if not RegGetSubkeyNames(RootKey, SubKeyBase, Names) then
+    Exit;
+  for I := 0 to GetArrayLength(Names) - 1 do
+  begin
+    // Nuestra propia clave (esta rama 7.6.x) no es una "versión vieja".
+    if Names[I] = MyAppIdKey then
+      Continue;
+    if not RegQueryStringValue(RootKey, SubKeyBase + '\' + Names[I], 'DisplayName', DisplayName) then
+      Continue;
+    if (Pos('TDT', DisplayName) = 0) or (Pos('Radio', DisplayName) = 0) then
+      Continue;
+    if not RegQueryStringValue(RootKey, SubKeyBase + '\' + Names[I], 'UninstallString', UninstallStr) then
+      Continue;
+    if UninstallStr <> '' then
+      List.Add(DisplayName + '=' + UninstallStr);
+  end;
+end;
+
+function InitializeSetup(): Boolean;
+var
+  Found: TStringList;
+  I: Integer;
+  Msg: string;
+  UninstPath: string;
+  ResultCode: Integer;
+begin
+  Result := True;
+  Found := TStringList.Create;
+  try
+    FindOldInstalls(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Uninstall', Found);
+    FindOldInstalls(HKLM, 'Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall', Found);
+    FindOldInstalls(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall', Found);
+
+    if Found.Count = 0 then
+      Exit;
+
+    Msg := 'Se detectaron versiones de TDT & Radio VIP instaladas por separado ' +
+      '(con un desinstalador propio, distinto del de esta rama):' + #13#10#13#10;
+    for I := 0 to Found.Count - 1 do
+      Msg := Msg + '   • ' + Copy(Found[I], 1, Pos('=', Found[I]) - 1) + #13#10;
+    Msg := Msg + #13#10 +
+      'Tus favoritos, historial y ajustes viven aparte (%APPDATA%) y no se ' +
+      'pierden al desinstalarlas.' + #13#10#13#10 +
+      '¿Querés desinstalarlas ahora, antes de continuar con esta instalación?';
+
+    if MsgBox(Msg, mbConfirmation, MB_YESNO) = IDYES then
+    begin
+      for I := 0 to Found.Count - 1 do
+      begin
+        UninstPath := Copy(Found[I], Pos('=', Found[I]) + 1, Length(Found[I]));
+        if UninstPath <> '' then
+          Exec(RemoveQuotes(UninstPath), '/SILENT', '', SW_SHOWNORMAL, ewWaitUntilTerminated, ResultCode);
+      end;
+    end;
+  finally
+    Found.Free;
+  end;
+end;
