@@ -22,6 +22,10 @@ APP_ORG = "CoderByXOR"
 APP_DATA_NAME = "TDTRadioVIP_7.6.0"
 LEGACY_APP_ORG = "CoderByXOR"
 APP_VERSION = "7.6.2.1"
+# Correo al que el cliente envía su ID de equipo para pedir el código de
+# activación. Centralizado aquí para no tener que buscarlo por el código
+# si algún día cambia.
+SUPPORT_EMAIL = "xordj2020@gmail.com"
 
 SETTINGS_FILE = "settings.json"
 
@@ -72,7 +76,18 @@ DEFAULT_SETTINGS = {
     # URL opcional (vacía = comprobación de actualizaciones desactivada,
     # igual que epg_url) de un JSON {"version": "X.Y.Z", "url": "..."} con
     # la última versión publicada. Ver core/updater.py.
-    "update_check_url": "",
+    #
+    # Manifiesto público en el repo Free (github.com/xorgsm/TDTRadioVIP-Free):
+    # /releases/latest/download/manifest.json es una URL estable de GitHub
+    # que siempre resuelve al asset "manifest.json" de la ÚLTIMA release, sin
+    # necesidad de cambiar esta URL en cada versión -- solo hay que subir un
+    # manifest.json nuevo (con su propio sha256) a cada release futura.
+    # El instalador que describe trae ambas ediciones (Licenciada + Free);
+    # se sirve desde el repo público aunque la con licencia no publique su
+    # código fuente -- ver la conversación de la release 7.6.2.1 sobre por
+    # qué un repo privado no sirve aquí (GitHub bloquea la descarga anónima
+    # de assets privados, y no hay forma segura de meter un token en la app).
+    "update_check_url": "https://github.com/xorgsm/TDTRadioVIP-Free/releases/latest/download/manifest.json",
     "automatic_backups_enabled": True,
     "automatic_backup_interval_days": 1,
     "automatic_backup_retention": 7,
