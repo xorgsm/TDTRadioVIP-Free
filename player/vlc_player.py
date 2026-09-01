@@ -630,6 +630,7 @@ class VLCPlayer(QFrame):
     def _aplicar_equalizer(self) -> None:
         if not self._eq_enabled or self.media_player is None or vlc is None:
             return
+        eq = None
         try:
             eq = vlc.AudioEqualizer()
             eq.set_preamp(self._eq_preamp)
@@ -644,8 +645,15 @@ class VLCPlayer(QFrame):
             # Referencia viva obligatoria: si "eq" se recolectara, libVLC se
             # quedaría con un puntero a un objeto ya liberado por Python.
             self._eq_object = eq
+            eq = None
         except Exception:
             log.warning("No se pudo aplicar el ecualizador", exc_info=True)
+        finally:
+            if eq is not None:
+                try:
+                    eq.release()
+                except Exception:
+                    log.warning("No se pudo liberar el ecualizador fallido", exc_info=True)
 
     # ---------- cierre ordenado ----------
 
