@@ -123,3 +123,22 @@ coll = COLLECT(
     upx_exclude=[],
     name='TDTRadioVIP_Free',
 )
+
+# Ver el mismo bloque al final de TDTRadioVIP.spec para el porqué completo:
+# el backend TLS propio de Qt (con su copia de OpenSSL, libssl-3-x64.dll/
+# libcrypto-3-x64.dll -- distintas de libssl-3.dll/libcrypto-3.dll que usa
+# el _ssl de Python, esas se quedan) crashea esta app con una violación de
+# acceso bajo carga, y Qt lo carga igual aunque el código no use
+# QNetworkAccessManager/QSslSocket para nada. Se borra del todo tras el
+# COLLECT.
+_dist_root = os.path.join('dist', 'TDTRadioVIP_Free')
+_tls_dir = os.path.join(_dist_root, '_internal', 'PySide6', 'plugins', 'tls')
+if os.path.isdir(_tls_dir):
+    import shutil
+    shutil.rmtree(_tls_dir, ignore_errors=True)
+    print(f'[TDTRadioVIP_Free] Quitado el backend TLS de Qt (no usado): {_tls_dir}')
+for _dll_name in ('libssl-3-x64.dll', 'libcrypto-3-x64.dll'):
+    _dll_path = os.path.join(_dist_root, '_internal', _dll_name)
+    if os.path.isfile(_dll_path):
+        os.remove(_dll_path)
+        print(f'[TDTRadioVIP_Free] Quitado {_dll_name} (copia de OpenSSL de Qt, no usada)')

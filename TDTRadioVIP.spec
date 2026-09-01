@@ -195,3 +195,33 @@ coll = COLLECT(
     upx_exclude=[],
     name='TDTRadioVIP',
 )
+
+# Qt trae su propio backend TLS (PySide6/plugins/tls/) con su propia copia
+# de OpenSSL -- libssl-3-x64.dll/libcrypto-3-x64.dll, DISTINTAS de
+# libssl-3.dll/libcrypto-3.dll (esas sí se quedan: son las que usa el _ssl
+# de Python para las peticiones HTTPS de requests/urllib3 -- EPG, canales,
+# radio, actualizaciones -- que nunca han dado problema).
+#
+# Nada en esta app usa QNetworkAccessManager/QSslSocket (ver el comentario
+# de LogoLoader en ui/widgets.py, que se pasó a requests+FetchWorker por
+# este mismo motivo), pero Qt igual prueba/carga ese backend al arrancar,
+# y esa copia de libssl/libcrypto que trae PySide6 crashea la app entera
+# con una violación de acceso (0xc0000005, llamada a través de un puntero
+# de función nulo dentro de libssl/libcrypto) bajo la carga de arrancar
+# con un catálogo grande -- confirmado con volcados de memoria reales
+# (Windows los deja en %LOCALAPPDATA%\CrashDumps), reproducido en la
+# máquina que lo reportó, y AÚN presente después de quitar el único uso
+# de QNetworkAccessManager del código: Qt sigue cargando el plugin igual.
+# Se borra del todo tras el COLLECT para que Qt ni pueda intentar
+# cargarlo -- la app no pierde nada (no usa TLS por el lado de Qt).
+_dist_root = os.path.join('dist', 'TDTRadioVIP')
+_tls_dir = os.path.join(_dist_root, '_internal', 'PySide6', 'plugins', 'tls')
+if os.path.isdir(_tls_dir):
+    import shutil
+    shutil.rmtree(_tls_dir, ignore_errors=True)
+    print(f'[TDTRadioVIP] Quitado el backend TLS de Qt (no usado): {_tls_dir}')
+for _dll_name in ('libssl-3-x64.dll', 'libcrypto-3-x64.dll'):
+    _dll_path = os.path.join(_dist_root, '_internal', _dll_name)
+    if os.path.isfile(_dll_path):
+        os.remove(_dll_path)
+        print(f'[TDTRadioVIP] Quitado {_dll_name} (copia de OpenSSL de Qt, no usada)')
