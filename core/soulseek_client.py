@@ -14,6 +14,7 @@ import hmac
 import json
 import os
 import subprocess
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -193,6 +194,7 @@ class SoulseekClient:
         # que cerrar() ya ha pasado queda huérfano, porque nadie vuelve a
         # llamar a cerrar() sobre él.
         self._cerrando = False
+        self._cancelar_esperas = threading.Event()
 
     @property
     def conectado(self) -> bool:
@@ -282,6 +284,7 @@ class SoulseekClient:
         # QThread) que aborte en el próximo punto de comprobación, para que
         # no deje un slskd.exe nuevo arrancando justo después de este cierre.
         self._cerrando = True
+        self._cancelar_esperas.set()
         proceso = self._proceso
         if proceso is None:
             return
@@ -333,6 +336,8 @@ class SoulseekClient:
 
         resultado = creada
         for _ in range(_BUSQUEDA_INTENTOS):
+            if self._cerrando:
+                break
             resultado = self._get(f"/api/v0/searches/{id_busqueda}?includeResponses=true")
             # slskd marca isComplete cuando expira SU propia ventana de
             # espera, no cuando la red ha dejado de responder de verdad --
@@ -342,7 +347,8 @@ class SoulseekClient:
             # insistiendo hasta agotar los intentos en vez de rendirse.
             if resultado.get("isComplete") and resultado.get("responses"):
                 break
-            time.sleep(_BUSQUEDA_ESPERA)
+            if self._cancelar_esperas.wait(_BUSQUEDA_ESPERA):
+                break
 
         archivos = []
         for respuesta in resultado.get("responses", []):

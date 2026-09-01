@@ -686,4 +686,7 @@ class TorrentPanel(QWidget):
         # sesión de libtorrent nueva justo después de este cierre.
         self.client.cerrar(on_wait=on_wait)
         if self._connect_worker is not None and self._connect_worker.isRunning():
-            self._connect_worker.wait(1000)
+            while self._connect_worker.isRunning():
+                self._connect_worker.wait(50)
+                if on_wait:
+                    on_wait()

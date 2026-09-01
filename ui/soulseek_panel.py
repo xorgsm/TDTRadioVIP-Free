@@ -596,7 +596,10 @@ class SoulseekPanel(QWidget):
         # puerto libre -- así el wait() de abajo ya no compite contra una
         # conexión en marcha que puede tardar mucho más que 1s.
         self.client.cerrar(on_wait=on_wait)
-        if self._ensure_worker is not None and self._ensure_worker.isRunning():
-            self._ensure_worker.wait(1000)
-        if self._search_worker is not None and self._search_worker.isRunning():
-            self._search_worker.wait(1000)
+        for worker in (self._ensure_worker, self._search_worker):
+            if worker is None:
+                continue
+            while worker.isRunning():
+                worker.wait(50)
+                if on_wait:
+                    on_wait()
