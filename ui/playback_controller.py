@@ -140,7 +140,7 @@ class PlaybackController:
         win.history = hist_store.add_entry(item_type, name, url)
         win.lists.refresh_history_tab()
         win.lists.mark_playing_everywhere()
-        win._refresh_home_now_playing()
+        win.home._refresh_home_now_playing()
 
         self.update_epg_display()
 
@@ -235,7 +235,7 @@ class PlaybackController:
         win._taskbar.update_play_state(playing)
         if win.current_type == "radio":
             win.equalizer.start() if playing else win.equalizer.stop()
-        win._refresh_home_now_playing()
+        win.home._refresh_home_now_playing()
 
     def seek(self, offset_ms: int):
         """Salta offset_ms hacia adelante (positivo) o atrás (negativo) --
@@ -410,7 +410,7 @@ class PlaybackController:
         win.current_url = None
         win._current_alternate_urls = []
         win.lists.mark_playing_everywhere()
-        win._refresh_home_now_playing()
+        win.home._refresh_home_now_playing()
 
     def on_volume_changed(self, value: int):
         win = self.win
