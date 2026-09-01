@@ -185,3 +185,46 @@ begin
     Found.Free;
   end;
 end;
+
+// Actualizar desde dentro de la app (ver core/updater.py) baja siempre este
+// MISMO instalador combinado para cualquier edición -- no hay un .exe
+// "solo Free" ni "solo con licencia" aparte. En vez de mantener dos
+// manifiestos/descargas separados, el asistente detecta qué había instalado
+// antes (mirando qué carpetas de edición existen bajo la instalación previa
+// de ESTA rama, si la hay) y preselecciona el mismo Type/Components, para
+// que actualizar no obligue a elegir de nuevo qué edición querés.
+function GetPreviousInstallDir(): string;
+var
+  sPath: string;
+begin
+  Result := '';
+  if RegQueryStringValue(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\' + MyAppIdKey, 'InstallLocation', sPath) then
+    Result := sPath
+  else if RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\' + MyAppIdKey, 'InstallLocation', sPath) then
+    Result := sPath;
+end;
+
+procedure InitializeWizard();
+var
+  BaseDir: string;
+  HasLicensed, HasFree: Boolean;
+begin
+  BaseDir := GetPreviousInstallDir();
+  if BaseDir = '' then
+    BaseDir := ExpandConstant('{autopf}\{#MyAppInstallName}');
+  if (Length(BaseDir) > 0) and (BaseDir[Length(BaseDir)] = '\') then
+    Delete(BaseDir, Length(BaseDir), 1);
+
+  HasLicensed := DirExists(BaseDir + '\{#FolderLicensed}');
+  HasFree := DirExists(BaseDir + '\{#FolderFree}');
+
+  // Si no había nada instalado antes (o no se pudo determinar), se deja el
+  // Type por defecto de [Types] (full = con licencia, ya marcado como
+  // recomendado) tal cual estaba.
+  if HasLicensed and HasFree then
+    WizardSelectComponents('licensed,free')
+  else if HasFree and not HasLicensed then
+    WizardSelectComponents('free')
+  else if HasLicensed and not HasFree then
+    WizardSelectComponents('licensed');
+end;
