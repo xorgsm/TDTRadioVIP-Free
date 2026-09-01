@@ -1,17 +1,27 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-PyInstaller spec para TDT & Radio VIP - VERSION FREE COMPLETA.
-Todas las funciones activas, sin splash ni codigo de activacion.
+PyInstaller spec para TDT & Radio VIP - VERSION FREE.
+TV y Radio incluidos; sin Descargas (yt-dlp/Torrents/Soulseek/audio/
+Podcasts) ni Chromecast/DLNA -- ver MainWindow._show_about() en
+ui/main_window.py, que es la fuente de verdad de este límite. Sin splash
+ni código de activación tampoco (main_free.py entra directo).
 Compilar con:  pyinstaller TDTRadioVIP_Free.spec
 """
 import os, sys
 
-from PyInstaller.utils.hooks import collect_submodules
-
-hidden_imports = (
-    collect_submodules('pychromecast') + collect_submodules('zeroconf')
-    + collect_submodules('libtorrent')
-)
+# Sin hidden_imports de pychromecast/zeroconf/libtorrent aquí a propósito:
+# ui/main_window.py solo los importa (dentro de sus métodos, no arriba del
+# módulo) cuando es_version_free es False, así que un Analysis normal no
+# los encuentra en el camino real de ejecución de esta build. `excludes`
+# de abajo es lo que de verdad los deja fuera del bundle -- ver el
+# comentario junto a self._cast_session en ui/main_window.py para el
+# porqué de fondo (un import a nivel de módulo los habría colado aquí
+# igual, sin importar ningún condicional en tiempo de ejecución).
+excludes = [
+    'pychromecast', 'zeroconf', 'libtorrent',
+    'ui.download_panel', 'ui.cast_controller',
+    'core.caster', 'core.dlna_caster',
+]
 
 
 def buscar_vlc():
@@ -66,11 +76,11 @@ a = Analysis(
     pathex=[],
     binaries=binaries,
     datas=datas,
-    hiddenimports=hidden_imports,
+    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=excludes,
     noarchive=False,
     optimize=0,
 )

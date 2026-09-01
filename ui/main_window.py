@@ -27,16 +27,12 @@ from core import history as hist_store
 from core import recorder as rec_module
 from core import recording_schedule
 from core import backup as backup_module
-from core.caster import CastSession
-from core.dlna_caster import DLNASession
 from player.vlc_player import VLCPlayer
 from ui.dialogs import SettingsDialog
 from ui.equalizer_dialog import EqualizerDialog
 from ui.style import ACCENT_PRESETS, build_style
 from ui.visual import set_variant
-from ui.download_panel import DownloadPanel
 from ui import palette
-from ui.cast_controller import CastController
 from ui.channel_menu_controller import ChannelMenuController
 from ui.catalog_load_controller import CatalogLoadController
 from ui.home_controller import HomeController
@@ -202,8 +198,22 @@ class MainWindow(QMainWindow):
         # si el usuario para a mano una grabación que en realidad venía de
         # la EPG.
         self._scheduled_recording_active: Optional[recording_schedule.ScheduledRecording] = None
-        self._cast_session = CastSession()
-        self._dlna_session = DLNASession()
+        # Cast (Chromecast/DLNA) no está incluido en la versión free (ver
+        # _show_about). Los imports de core.caster/core.dlna_caster (y por
+        # tanto de pychromecast/zeroconf) se hacen aquí dentro, no arriba del
+        # módulo, para que TDTRadioVIP_Free.spec pueda excluir esos paquetes
+        # de verdad -- un import a nivel de módulo los habría colado en el
+        # build free sin importar este condicional (PyInstaller analiza el
+        # árbol de imports estáticamente). self.casting/cast_btn/
+        # download_panel siguen el mismo criterio más abajo.
+        if self.es_version_free:
+            self._cast_session = None
+            self._dlna_session = None
+        else:
+            from core.caster import CastSession
+            from core.dlna_caster import DLNASession
+            self._cast_session = CastSession()
+            self._dlna_session = DLNASession()
         self._player_fullscreen = False
         self._was_maximized_before_fs = False
         self._pseudo_maximizado = False
@@ -230,7 +240,11 @@ class MainWindow(QMainWindow):
         self.tray = TrayReminderController(self)
         self.catalog = CatalogLoadController(self)
         self.updates = UpdateCheckController(self)
-        self.casting = CastController(self)
+        if self.es_version_free:
+            self.casting = None
+        else:
+            from ui.cast_controller import CastController
+            self.casting = CastController(self)
         self.home = HomeController(self)
         self.channel_menu = ChannelMenuController(self)
 
@@ -446,8 +460,13 @@ class MainWindow(QMainWindow):
             (NAV_RADIO, "Radio"),
             (NAV_FAV, "Favoritos"),
             (NAV_HIST, "Historial"),
-            (NAV_DOWNLOAD, "Descargas"),
         ]
+        # Nunca se construye en la versión free -- no hay import de
+        # ui.download_panel que lo respalde (ver comentario junto a
+        # self.download_panel más arriba), así que ni siquiera puede
+        # activarse en tiempo de ejecución como en la edición con licencia.
+        if not self.es_version_free:
+            nav_defs.append((NAV_DOWNLOAD, "Descargas"))
         for nav_id, tooltip in nav_defs:
             btn = QToolButton()
             btn.setObjectName("navButton")
@@ -468,10 +487,10 @@ class MainWindow(QMainWindow):
             self.nav_group.addButton(btn, nav_id)
             layout.addWidget(btn)
             # El botón de descargas solo aparece con licencia activada de
-            # verdad -- nunca en la versión free, aunque esta arranque con
-            # activated=True para desbloquear TV/radio (ver comentario en
-            # __init__).
-            if nav_id == NAV_DOWNLOAD and (not self.activated or self.es_version_free):
+            # verdad. En la versión free ni siquiera se construye (ver
+            # nav_defs más arriba), así que este condicional solo puede
+            # afectar a la edición con licencia sin activar todavía.
+            if nav_id == NAV_DOWNLOAD and not self.activated:
                 btn.setVisible(False)
 
         self.nav_group.button(NAV_HOME).setChecked(True)
@@ -714,17 +733,26 @@ class MainWindow(QMainWindow):
         self.radio_list = self._make_list()
         self.fav_list = self._make_list(reorderable=True)
         self.hist_list = self._make_list()
-        self.download_panel = DownloadPanel(
-            dest_dir=self.downloads_dir,
-            on_dest_changed=self._on_downloads_dir_changed,
-            on_cast=self.casting.cast_local_file,
-            on_finished=self._on_download_finished,
-            on_play_audio=self._play_podcast_episode,
-        )
+        # Descargas (Torrents/Soulseek/audio/Podcasts) no está incluido en
+        # la versión free -- ver el comentario junto a self._cast_session
+        # sobre por qué el import va aquí dentro y no arriba del módulo.
+        if self.es_version_free:
+            self.download_panel = None
+        else:
+            from ui.download_panel import DownloadPanel
+            self.download_panel = DownloadPanel(
+                dest_dir=self.downloads_dir,
+                on_dest_changed=self._on_downloads_dir_changed,
+                on_cast=self.casting.cast_local_file,
+                on_finished=self._on_download_finished,
+                on_play_audio=self._play_podcast_episode,
+            )
         self.home_page = self._build_home_page()
 
-        for page in (self.home_page, self.tv_list, self.radio_list, self.fav_list,
-                     self.hist_list, self.download_panel):
+        pages = [self.home_page, self.tv_list, self.radio_list, self.fav_list, self.hist_list]
+        if self.download_panel is not None:
+            pages.append(self.download_panel)
+        for page in pages:
             self.stack.addWidget(page)
 
         return self.stack
@@ -1211,26 +1239,29 @@ class MainWindow(QMainWindow):
         self.fav_btn.clicked.connect(self.playback.toggle_favorite_current)
         left_group.addWidget(self.fav_btn)
 
-        self.cast_btn = QPushButton()
-        self.cast_btn.setObjectName("castButton")
-        set_variant(self.cast_btn, "cast")
-        self.cast_btn.setIconSize(QSize(15, 15))
-        self.cast_btn.setIcon(app_icons.icon_cast(palette.ACCENT_CAST))
-        self.cast_btn.setCheckable(True)
-        self.cast_btn.setToolTip("Enviar a Chromecast / TV")
-        self.cast_btn.setAccessibleName("Enviar a Chromecast o TV")
-        self.cast_btn.clicked.connect(self.casting.on_cast_live_clicked)
-        self.cast_btn.toggled.connect(
-            # "checked" pinta el icono con palette.BG_ROOT, igual que
-            # #castButton[uiVariant="cast"]:checked en ui/style.py sobre el
-            # fondo palette.ACCENT_CAST -- ver comentario equivalente en
-            # tv_btn más arriba.
-            lambda checked: self.cast_btn.setIcon(app_icons.icon_cast(palette.BG_ROOT if checked else palette.ACCENT_CAST))
-        )
-        # Mismo criterio que NAV_DOWNLOAD: Chromecast tampoco está incluido
-        # en la versión free.
-        self.cast_btn.setVisible(self.activated and not self.es_version_free)
-        left_group.addWidget(self.cast_btn)
+        # Igual que NAV_DOWNLOAD/download_panel: en la versión free ni
+        # siquiera se construye (self.casting es None ahí, ver __init__).
+        if self.es_version_free:
+            self.cast_btn = None
+        else:
+            self.cast_btn = QPushButton()
+            self.cast_btn.setObjectName("castButton")
+            set_variant(self.cast_btn, "cast")
+            self.cast_btn.setIconSize(QSize(15, 15))
+            self.cast_btn.setIcon(app_icons.icon_cast(palette.ACCENT_CAST))
+            self.cast_btn.setCheckable(True)
+            self.cast_btn.setToolTip("Enviar a Chromecast / TV")
+            self.cast_btn.setAccessibleName("Enviar a Chromecast o TV")
+            self.cast_btn.clicked.connect(self.casting.on_cast_live_clicked)
+            self.cast_btn.toggled.connect(
+                # "checked" pinta el icono con palette.BG_ROOT, igual que
+                # #castButton[uiVariant="cast"]:checked en ui/style.py sobre
+                # el fondo palette.ACCENT_CAST -- ver comentario equivalente
+                # en tv_btn más arriba.
+                lambda checked: self.cast_btn.setIcon(app_icons.icon_cast(palette.BG_ROOT if checked else palette.ACCENT_CAST))
+            )
+            self.cast_btn.setVisible(self.activated)
+            left_group.addWidget(self.cast_btn)
 
         self.stop_btn = QPushButton()
         self.stop_btn.setObjectName("ctrlButton")
@@ -2193,13 +2224,16 @@ class MainWindow(QMainWindow):
                 self._scheduled_recording_active = None
         self.player.stop()
         self.equalizer.stop()
-        self._cast_session.disconnect()
-        self._dlna_session.disconnect()
-        # on_wait: se reenvía por compatibilidad con la firma anterior (ver
-        # el comentario del recorder.stop() más arriba) -- con libtorrent
-        # embebido en el proceso ya no hay un aria2c.exe aparte que esperar
-        # a que se apague, así que en la práctica ya no bloquea nada.
-        self.download_panel.shutdown(on_wait=process_events_during_shutdown)
+        if self._cast_session is not None:
+            self._cast_session.disconnect()
+            self._dlna_session.disconnect()
+        if self.download_panel is not None:
+            # on_wait: se reenvía por compatibilidad con la firma anterior
+            # (ver el comentario del recorder.stop() más arriba) -- con
+            # libtorrent embebido en el proceso ya no hay un aria2c.exe
+            # aparte que esperar a que se apague, así que en la práctica ya
+            # no bloquea nada.
+            self.download_panel.shutdown(on_wait=process_events_during_shutdown)
         self._taskbar.cleanup()
         shutdown_workers(FetchWorker.active_workers())
         self.player.release()
