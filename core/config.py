@@ -22,10 +22,6 @@ APP_ORG = "CoderByXOR"
 APP_DATA_NAME = "TDTRadioVIP_7.6.0"
 LEGACY_APP_ORG = "CoderByXOR"
 APP_VERSION = "7.6.2.1"
-# Correo al que el cliente envía su ID de equipo para pedir el código de
-# activación. Centralizado aquí para no tener que buscarlo por el código
-# si algún día cambia.
-SUPPORT_EMAIL = "xordj2020@gmail.com"
 
 SETTINGS_FILE = "settings.json"
 
