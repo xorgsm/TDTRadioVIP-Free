@@ -2,7 +2,38 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
-## [7.6.2] \u2014 En desarrollo
+## [7.6.2.1] — 2026-09-01
+
+### Fixed
+- El ecualizador de VLC ya no fuga el objeto nativo cuando aplicarlo falla
+  a medias.
+- Cerrar la app (o los paneles de Torrents/Soulseek) mientras una conexión
+  o búsqueda en segundo plano seguía en marcha podía destruir su QThread
+  mientras corría; ahora el cierre espera cooperativamente en vez de un
+  tope fijo de 1 segundo.
+- La comprobación de actualizaciones valida también la URL del
+  manifiesto (HTTPS con host), no solo la del instalador.
+- La importación de copias de seguridad vuelve a comprobar el límite de
+  tamaño sobre la lectura real, no solo sobre el `stat()` previo (evita
+  un hueco TOCTOU entre comprobar y leer).
+- La tarjeta "reproduciendo ahora" y el resumen de salud de streams de la
+  portada de Inicio se habían quedado sin actualizarse tras un refactor
+  anterior; vuelven a sincronizarse.
+
+### Changed
+- El texto "Ahora: <programa>" del mini-EPG ya no reordena ni reparsea la
+  guía completa en cada repoblado de lista de canales -- se prepara una
+  sola vez al cargar la guía. Con catálogos de varios miles de canales,
+  esto es lo que hacía notarse la app lenta al arrancar.
+- El diagnóstico automático de salud de streams ya no reconstruye las
+  listas de TV/radio enteras al terminar -- actualiza solo las filas
+  afectadas, evitando el tirón que se notaba si terminaba mientras se
+  estaba reproduciendo algo.
+- Rediseño de la marca: "TDT & Radio VIP" más grande en la barra de
+  título, con la versión debajo. Se quita el banner duplicado del riel
+  de navegación y "EXPLORAR" pasa a ser lo primero que se ve, más grande.
+
+## [7.6.2] — En desarrollo
 
 ### Fixed
 - La comprobación de actualizaciones rechaza enlaces que no sean HTTPS con
@@ -12,10 +43,10 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
   archivo con fecha futura, ignoran directorios con apariencia de backup y
   evitan reescribir dos copias creadas en el mismo segundo. La importación
   también limita el tamaño antes de cargar el JSON en memoria.
-- Los nombres de perfil ahora se comparan sin distinguir may\u00fasculas,
+- Los nombres de perfil ahora se comparan sin distinguir mayúsculas,
   igual que hace Windows con las carpetas. Esto impide que duplicar o
   renombrar `Familia` como `familia` opere sobre el mismo directorio y pueda
-  mezclar o eliminar datos; la graf\u00eda original tambi\u00e9n se recupera al
+  mezclar o eliminar datos; la grafía original también se recupera al
   cargar el perfil activo.
 
 ### Changed
@@ -27,38 +58,38 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 - Los controles de reproducción dejan de depender de glifos Unicode y exponen
   nombres accesibles para tecnologías de asistencia.
 
-## [7.6.1] \u2014 En desarrollo
+## [7.6.1] — En desarrollo
 
 ### Fixed
-- Al eliminar un grupo de Televisi\u00f3n desde el panel GRUPOS, los canales
-  personalizados (importados a mano) de ese grupo volv\u00edan a aparecer al
+- Al eliminar un grupo de Televisión desde el panel GRUPOS, los canales
+  personalizados (importados a mano) de ese grupo volvían a aparecer al
   reabrir la app -- el borrado de grupos usaba siempre el mecanismo de
-  "ocultar por nombre" pensado solo para la lista p\u00fablica, que nunca se
+  "ocultar por nombre" pensado solo para la lista pública, que nunca se
   aplica a los canales personalizados al recargarlos. Ahora los canales
-  personalizados del grupo se borran de verdad y los p\u00fablicos se siguen
+  personalizados del grupo se borran de verdad y los públicos se siguen
   ocultando como antes (reversible desde Archivo > Gestionar canales
   personalizados > Ocultados).
-- Arranque mucho m\u00e1s r\u00e1pido: el c\u00e1lculo del ID de hardware (licencia)
+- Arranque mucho más rápido: el cálculo del ID de hardware (licencia)
   lanzaba WMIC y hasta tres procesos `powershell.exe` en cadena, uno tras
-  otro; medido en una m\u00e1quina real lleg\u00f3 a tardar 4m35s en un solo
+  otro; medido en una máquina real llegó a tardar 4m35s en un solo
   arranque. Ahora los tres componentes se lanzan en paralelo (peor caso
   ~3s en vez de la suma de los tres) y, sobre todo, el resultado se
   guarda en disco (`hardware_id_cache.json`) para no volver a lanzar
-  ning\u00fan proceso en arranques posteriores.
-- Los botones de la barra "en reproducci\u00f3n" (favorito, cast, stop,
-  retroceder/avanzar, grabar, silenciar, m\u00e1s opciones) se solapaban y se
-  ve\u00edan cortados en ventanas estrechas; reducidos de 32px/46px a
-  26px/38px con sus iconos y espaciados ajustados en proporci\u00f3n.
+  ningún proceso en arranques posteriores.
+- Los botones de la barra "en reproducción" (favorito, cast, stop,
+  retroceder/avanzar, grabar, silenciar, más opciones) se solapaban y se
+  veían cortados en ventanas estrechas; reducidos de 32px/46px a
+  26px/38px con sus iconos y espaciados ajustados en proporción.
 
 ### Security
 - El ID de hardware cacheado en disco es editable por cualquiera con
-  acceso de escritura al perfil de la app, lo que en teor\u00eda permite
-  clonar una activaci\u00f3n a otro PC copiando ese archivo junto con un
-  c\u00f3digo de licencia v\u00e1lido. Riesgo aceptado deliberadamente a cambio de
+  acceso de escritura al perfil de la app, lo que en teoría permite
+  clonar una activación a otro PC copiando ese archivo junto con un
+  código de licencia válido. Riesgo aceptado deliberadamente a cambio de
   eliminar minutos de espera en cada arranque -- ver el docstring de
   `generate_hardware_id()` en `core/license.py`.
 
-## [7.6.0] \u2014 En desarrollo
+## [7.6.0] — En desarrollo
 
 ### Changed
 - Nueva rama de desarrollo independiente de 7.5.11. La versión 7.6.0 usa
@@ -70,7 +101,7 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 - Los nombres de perfil se validan en todas las operaciones para impedir que
   rutas manipuladas salgan de la carpeta de perfiles.
 
-## [7.5.11] \u2014 En desarrollo
+## [7.5.11] — En desarrollo
 
 ### Added
 - La portada de Inicio muestra ahora un resumen de salud de streams: número
@@ -89,7 +120,7 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 - `.gitignore` protege el registro de licencias emitidas, claves privadas y
   ficheros de entorno frente a inclusiones accidentales en un repositorio.
 
-## [7.5.10] \u2014 En desarrollo
+## [7.5.10] — En desarrollo
 
 ### Added
 - Importación y exportación M3U separadas para TV y Radio: cada acceso abre
