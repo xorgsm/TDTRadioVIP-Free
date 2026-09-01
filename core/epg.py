@@ -111,6 +111,21 @@ def _parse_xmltv_time(value: str) -> Optional[datetime]:
 parse_xmltv_time = _parse_xmltv_time
 
 
+def _prepare_guide(guide: Dict[str, List[Programme]]) -> Dict[str, List[Programme]]:
+    """Parsea y ordena una guía una sola vez, al entrar en memoria.
+
+    ``Programme`` no usa ``slots``, así que las fechas preparadas pueden
+    guardarse como atributos internos sin contaminar ``asdict()`` ni el
+    formato compatible del caché JSON.
+    """
+    for programmes in guide.values():
+        for programme in programmes:
+            programme._start_dt = _parse_xmltv_time(programme.start)
+            programme._stop_dt = _parse_xmltv_time(programme.stop)
+        programmes.sort(key=lambda programme: programme._start_dt or datetime.max)
+    return guide
+
+
 def fetch_epg(epg_url: str, force_refresh: bool = False) -> Dict[str, List[Programme]]:
     if not epg_url:
         return {}
@@ -124,7 +139,8 @@ def fetch_epg(epg_url: str, force_refresh: bool = False) -> Dict[str, List[Progr
             raw = json.loads(cache_path.read_text(encoding="utf-8"))
             if not isinstance(raw, dict):
                 return {}
-            return {cid: [Programme(**p) for p in progs] for cid, progs in raw.items()}
+            guide = {cid: [Programme(**p) for p in progs] for cid, progs in raw.items()}
+            return _prepare_guide(guide)
         except (json.JSONDecodeError, OSError, TypeError):
             return {}
 
@@ -183,6 +199,7 @@ def fetch_epg(epg_url: str, force_refresh: bool = False) -> Dict[str, List[Progr
                 guide.setdefault(clave, []).append(programme)
 
     if guide:
+        _prepare_guide(guide)
         try:
             write_json_atomic(
                 cache_path,
@@ -201,14 +218,25 @@ def get_now_next(
     # guide está indexado por channel_key(), no por el tvg-id/id crudo --
     # ver el docstring del módulo y channel_key() para el porqué.
     programmes = guide.get(channel_key(channel_id), [])
+    if programmes and not hasattr(programmes[0], "_start_dt"):
+        programmes = sorted(programmes, key=lambda programme: programme.start)
     now = datetime.now()
     current = None
     upcoming = None
-    for prog in sorted(programmes, key=lambda p: p.start):
-        start = _parse_xmltv_time(prog.start)
-        stop = _parse_xmltv_time(prog.stop)
+    for prog in programmes:
+        # Las guías de fetch_epg ya traen ambos valores preparados. El
+        # fallback conserva compatibilidad con guías construidas a mano por
+        # integraciones/pruebas, sin volver a parsear las ya preparadas.
+        start = getattr(prog, "_start_dt", None)
+        stop = getattr(prog, "_stop_dt", None)
+        if not hasattr(prog, "_start_dt"):
+            start = _parse_xmltv_time(prog.start)
+            stop = _parse_xmltv_time(prog.stop)
         if start and stop and start <= now <= stop:
             current = prog
         elif start and start > now and upcoming is None:
             upcoming = prog
+            # La lista está ordenada: después del primer programa futuro no
+            # puede aparecer otro programa actual.
+            break
     return current, upcoming
