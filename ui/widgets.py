@@ -6,13 +6,14 @@ import random
 from collections import deque
 from functools import lru_cache
 
-from PySide6.QtCore import QRectF, QSize, Qt, QTimer, QUrl
+import requests
+from PySide6.QtCore import QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
-from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 from PySide6.QtWidgets import QStyle, QStyledItemDelegate, QWidget
 
 from core.config import get_app_data_dir
 from ui import palette
+from ui.fetch_worker import FetchWorker
 from ui.icons import icon_radio, icon_tv
 
 ROLE_DATA = Qt.UserRole
@@ -128,6 +129,19 @@ def dominant_color(pixmap: QPixmap) -> QColor | None:
     return QColor(suma_r // total, suma_g // total, suma_b // total)
 
 
+def _download_logo_bytes(url: str) -> bytes:
+    """
+    Descarga cruda con ``requests`` (mismo mecanismo que EPG/canales/radio/
+    actualizaciones en vez de QNetworkAccessManager -- ver el porqué en el
+    docstring de LogoLoader). FetchWorker.run() ya envuelve la llamada en
+    try/except y convierte cualquier excepción en ``None`` para el
+    callback, así que aquí no hace falta capturar nada a mano.
+    """
+    resp = requests.get(url, timeout=8)
+    resp.raise_for_status()
+    return resp.content
+
+
 class LogoLoader:
     """
     Descarga logos de canales/emisoras en segundo plano y los cachea en
@@ -143,15 +157,27 @@ class LogoLoader:
     solo país ya grandes.
     Las peticiones de más se encolan y se lanzan según van terminando las
     anteriores, sin cambiar nada de cara a quien llama a load().
+
+    Cada descarga corre en su propio FetchWorker (QThread) en vez de por
+    QNetworkAccessManager: con catálogos grandes, cientos de peticiones
+    HTTPS concurrentes contra el backend TLS empaquetado de Qt
+    (PySide6/plugins/tls/qopensslbackend.dll + libssl/libcrypto propios)
+    terminaban crasheando la app entera con una violación de acceso
+    (0xc0000005, llamada a través de un puntero de función nulo dentro de
+    libssl/libcrypto) -- justo al arrancar, que es cuando se piden más
+    logos de golpe. FetchWorker usa el módulo ssl de Python (el mismo
+    stack que ya usan EPG/canales/radio/actualizaciones sin problema), y
+    además ya se integra solo con el cierre ordenado de la app
+    (shutdown_workers(FetchWorker.active_workers()) en MainWindow), cosa
+    que las QNetworkReply sueltas de antes no hacían.
     """
 
     _MAX_CONCURRENTES = 8
 
     def __init__(self):
-        self.manager = QNetworkAccessManager()
         self.cache_dir = get_app_data_dir() / "cache" / "logos"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self._replies = []
+        self._workers = []
         self._pendientes = deque()  # URLs únicas pendientes; popleft() es O(1)
         self._solicitudes = {}  # url -> (cache_file, [(callback, size), ...])
         self._en_vuelo = 0
@@ -201,36 +227,36 @@ class LogoLoader:
     def _lanzar(self, url: str):
         cache_file, callbacks = self._solicitudes[url]
         self._en_vuelo += 1
-        request = QNetworkRequest(QUrl(url))
-        reply = self.manager.get(request)
-        self._replies.append(reply)
+        worker = FetchWorker(_download_logo_bytes, url)
+        self._workers.append(worker)
 
-        def _on_finished():
+        def _on_finished(data):
             pix = QPixmap()
             try:
-                if reply.error() == QNetworkReply.NetworkError.NoError:
-                    data = reply.readAll()
-                    if pix.loadFromData(data):
-                        pix.save(str(cache_file))
-                        redondeados = {}
-                        for callback, size in callbacks:
-                            logo = redondeados.get(size)
-                            if logo is None:
-                                logo = rounded_pixmap(pix, size, size // 4)
-                                redondeados[size] = logo
-                                self._pixmap_cache[(url, size)] = logo
-                            callback(logo)
+                # data es None si _download_logo_bytes lanzó cualquier
+                # excepción (ver FetchWorker.run()) -- misma semántica que
+                # antes comprobar reply.error() != NoError.
+                if data and pix.loadFromData(data):
+                    pix.save(str(cache_file))
+                    redondeados = {}
+                    for callback, size in callbacks:
+                        logo = redondeados.get(size)
+                        if logo is None:
+                            logo = rounded_pixmap(pix, size, size // 4)
+                            redondeados[size] = logo
+                            self._pixmap_cache[(url, size)] = logo
+                        callback(logo)
             except RuntimeError:
                 pass
             finally:
                 self._solicitudes.pop(url, None)
-                if reply in self._replies:
-                    self._replies.remove(reply)
-                reply.deleteLater()
+                if worker in self._workers:
+                    self._workers.remove(worker)
                 self._en_vuelo -= 1
                 self._lanzar_siguiente_pendiente()
 
-        reply.finished.connect(_on_finished)
+        worker.done.connect(_on_finished)
+        worker.start()
 
     def _lanzar_siguiente_pendiente(self):
         while self._pendientes and self._en_vuelo < self._MAX_CONCURRENTES:
