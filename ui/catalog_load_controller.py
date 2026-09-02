@@ -122,6 +122,24 @@ class CatalogLoadController:
         win._background_diagnostics_worker = worker
         worker.start()
 
+    def cancel_background_diagnostics(self):
+        """
+        Cancela el diagnóstico automático en curso (si lo hay) y devuelve su
+        worker para que MainWindow.closeEvent() pueda esperarlo
+        cooperativamente junto al resto de FetchWorker activos -- antes se
+        dejaba corriendo mientras la ventana se destruía, el mismo patrón
+        que ya causó la carrera de Torrents/Soulseek (ver CHANGELOG).
+
+        _background_diagnostics_worker solo existe una vez que
+        _maybe_start_background_diagnostics() arrancó uno de verdad, así
+        que cerrar la app antes de eso no debe reventar por atributo
+        ausente.
+        """
+        worker = getattr(self.win, "_background_diagnostics_worker", None)
+        if worker is not None:
+            worker.cancel()
+        return worker
+
     def _on_background_diagnostics_completed(self, cancelled):
         win = self.win
         if cancelled or win._is_closing:

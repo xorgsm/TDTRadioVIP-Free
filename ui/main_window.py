@@ -2242,6 +2242,16 @@ class MainWindow(QMainWindow):
             # no bloquea nada.
             self.download_panel.shutdown(on_wait=process_events_during_shutdown)
         self._taskbar.cleanup()
-        shutdown_workers(FetchWorker.active_workers())
+        # El diagnóstico automático de streams corre en un QThread propio
+        # que no pasa por ActiveWorkerRegistry (StreamDiagnosticsWorker no
+        # es un FetchWorker) -- sin cancelarlo y esperarlo aquí, cerrar la
+        # app mientras seguía corriendo lo dejaba vivo destruyéndose la
+        # ventana debajo, la misma clase de carrera que ya se corrigió para
+        # Torrents/Soulseek (ver CHANGELOG).
+        diagnostics_worker = self.catalog.cancel_background_diagnostics()
+        workers = FetchWorker.active_workers()
+        if diagnostics_worker is not None:
+            workers = (*workers, diagnostics_worker)
+        shutdown_workers(workers)
         self.player.release()
         event.accept()

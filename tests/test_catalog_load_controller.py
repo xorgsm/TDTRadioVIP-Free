@@ -1,9 +1,31 @@
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 from ui.catalog_load_controller import CatalogLoadController
 from ui.channel_lists_controller import ChannelListsController
 from ui.widgets import ROLE_DATA, ROLE_HEALTH
+
+
+def test_cancel_background_diagnostics_cancels_and_returns_the_running_worker():
+    worker = Mock()
+    window = Mock(_background_diagnostics_worker=worker)
+
+    result = CatalogLoadController(window).cancel_background_diagnostics()
+
+    worker.cancel.assert_called_once_with()
+    assert result is worker
+
+
+def test_cancel_background_diagnostics_is_a_noop_when_nothing_ever_started():
+    # _background_diagnostics_worker is only ever set once diagnostics
+    # actually start (see _maybe_start_background_diagnostics) -- closing
+    # the app before that happens must not crash on a missing attribute.
+    window = SimpleNamespace()
+
+    result = CatalogLoadController(window).cancel_background_diagnostics()
+
+    assert result is None
 
 
 class FakeItem:
