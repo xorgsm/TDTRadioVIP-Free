@@ -25,6 +25,14 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
   guía completa en cada repoblado de lista de canales -- se prepara una
   sola vez al cargar la guía. Con catálogos de varios miles de canales,
   esto es lo que hacía notarse la app lenta al arrancar.
+- Cuando la guía EPG termina de descargarse ya no repuebla la lista de TV
+  entera para refrescar el "Ahora: ..." de cada fila -- solo actualiza ese
+  texto en las filas ya existentes. Repoblar recreaba todas las filas,
+  las reordenaba y volvía a encolar el logo de cada canal, justo detrás
+  del poblado inicial (canales, radio y EPG se cargan casi a la vez al
+  arrancar); con catálogos de 500 canales o más esa reconstrucción
+  duplicada era la que se notaba como "se pone lento y se bloquea" al
+  cargar, reportado por usuarios.
 - El diagnóstico automático de salud de streams ya no reconstruye las
   listas de TV/radio enteras al terminar -- actualiza solo las filas
   afectadas, evitando el tirón que se notaba si terminaba mientras se

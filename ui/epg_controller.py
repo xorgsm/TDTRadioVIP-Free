@@ -38,11 +38,16 @@ class EpgController:
         # La lista de canales de TV normalmente ya se pobló antes de que
         # esta guía terminara de descargarse (_load_tv_channels() se lanza
         # al arrancar, y esta carga va aparte, ver MainWindow.__init__) --
-        # sin repoblar aquí, el mini-EPG de cada fila ("Ahora: ...", ver
+        # sin actualizar aquí, el mini-EPG de cada fila ("Ahora: ...", ver
         # ChannelListsController._epg_now_text) se quedaría vacío hasta el
         # próximo "Actualizar canales" aunque la guía ya esté disponible.
+        # update_epg_subtitles() en vez de populate_tv_list(): repoblar
+        # entera solo para cambiar un texto recreaba todas las filas,
+        # volvía a ordenar y volvía a encolar el logo de cada canal -- ver
+        # el docstring de update_epg_subtitles para el porqué importaba con
+        # catálogos grandes.
         if win.tv_channels_data:
-            win.lists.populate_tv_list(win.tv_channels_data)
+            win.lists.update_epg_subtitles()
 
     def open_dialog(self):
         win = self.win
