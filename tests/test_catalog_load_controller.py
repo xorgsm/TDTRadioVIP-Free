@@ -3,12 +3,13 @@ from unittest.mock import Mock
 
 from ui.catalog_load_controller import CatalogLoadController
 from ui.channel_lists_controller import ChannelListsController
+from ui.epg_controller import EpgController
 from ui.widgets import ROLE_DATA, ROLE_HEALTH
 
 
 class FakeItem:
-    def __init__(self, url):
-        self.values = {ROLE_DATA: {"url": url}}
+    def __init__(self, url="", **extra_data):
+        self.values = {ROLE_DATA: {"url": url, **extra_data}}
         self.tooltip = ""
 
     def data(self, role):
@@ -92,3 +93,36 @@ def test_health_update_changes_matching_items_in_place():
     assert "1800 ms" in tv_list.items[1].tooltip
     assert tv_list.updates == [False, True]
     assert radio_list.updates == [False, True]
+
+
+def test_epg_loaded_updates_subtitles_without_repopulating():
+    """La guía EPG termina de cargar -- ver EpgController._on_loaded().
+    Con catálogos grandes, repoblar la lista de TV entera solo para
+    refrescar el "Ahora: ..." de cada fila (como hacía antes) recreaba
+    todos los QListWidgetItem, reordenaba y volvía a encolar el logo de
+    cada canal -- justo lo que ya se evita para el diagnóstico de salud
+    (test_background_diagnostics_updates_health_without_repopulating).
+    """
+    lists = Mock()
+    window = Mock(_is_closing=False, tv_channels_data=[object()], lists=lists)
+
+    EpgController(window)._on_loaded({"canal": []})
+
+    lists.update_epg_subtitles.assert_called_once_with()
+    lists.populate_tv_list.assert_not_called()
+
+
+def test_update_epg_subtitles_changes_items_in_place():
+    tv_list = FakeList()
+    tv_list.items = [
+        FakeItem("https://one.test", tvg_id="uno", group="Generalistas", subtitle="Generalistas"),
+        FakeItem("https://two.test", tvg_id="dos", group="", subtitle=""),
+    ]
+    controller = ChannelListsController(Mock(tv_list=tv_list))
+    controller._epg_now_text = lambda tvg_id: "Ahora: Programa" if tvg_id == "uno" else ""
+
+    controller.update_epg_subtitles()
+
+    assert tv_list.items[0].data(ROLE_DATA)["subtitle"] == "Generalistas · Ahora: Programa"
+    assert tv_list.items[1].data(ROLE_DATA)["subtitle"] == ""
+    assert tv_list.updates == [False, True]

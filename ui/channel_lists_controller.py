@@ -200,6 +200,36 @@ class ChannelListsController:
             finally:
                 list_widget.setUpdatesEnabled(True)
 
+    def update_epg_subtitles(self) -> None:
+        """Actualiza el "Ahora: <programa>" de cada fila de TV cuando la
+        guía EPG termina de cargar, sin repoblar la lista entera (ver
+        EpgController._on_loaded). Repoblar (como se hacía antes) recreaba
+        todos los QListWidgetItem, volvía a ordenar la lista entera y
+        volvía a encolar el logo de cada canal -- con catálogos de varios
+        cientos de canales, esa reconstrucción completa apilada justo
+        detrás del poblado inicial (load_tv_channels/load_radio_stations/
+        epg.load() se lanzan casi a la vez al arrancar, ver
+        MainWindow.__init__) era la que se notaba como lentitud/bloqueo al
+        cargar. Mismo patrón que update_stream_health(): solo se toca el
+        dato que de verdad cambió (aquí, el subtítulo) en las filas ya
+        existentes.
+        """
+        win = self.win
+        win.tv_list.setUpdatesEnabled(False)
+        try:
+            for index in range(win.tv_list.count()):
+                item = win.tv_list.item(index)
+                data = item.data(ROLE_DATA) or {}
+                epg_now = self._epg_now_text(data.get("tvg_id", ""))
+                group = data.get("group") or ""
+                subtitle = f"{group} · {epg_now}" if (group and epg_now) else (epg_now or group)
+                if data.get("subtitle") == subtitle:
+                    continue
+                data["subtitle"] = subtitle
+                item.setData(ROLE_DATA, data)
+        finally:
+            win.tv_list.setUpdatesEnabled(True)
+
     def _queue_logo_batch(self, pending, list_widget, batch_size=150):
         """
         Pide los logos en tandas pequeñas con QTimer.singleShot(0, ...) en

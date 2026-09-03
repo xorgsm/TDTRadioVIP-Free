@@ -2,6 +2,18 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [7.6.2.2] — 2026-09-03
+
+### Changed
+- Cuando la guía EPG termina de descargarse ya no repuebla la lista de TV
+  entera para refrescar el "Ahora: ..." de cada fila -- solo actualiza ese
+  texto en las filas ya existentes. Repoblar recreaba todas las filas, las
+  reordenaba y volvía a encolar el logo de cada canal, justo detrás del
+  poblado inicial (canales, radio y EPG se cargan casi a la vez al
+  arrancar); con catálogos de 500 canales o más esa reconstrucción
+  duplicada era la que se notaba como "se pone lento y se bloquea" al
+  cargar.
+
 ## [7.5.7] — 2026-08-22
 
 ### Added
