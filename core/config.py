@@ -420,6 +420,7 @@ def load_settings() -> dict:
         settings["recordings_dir"] = str(get_app_data_dir() / "recordings")
     _migrate_legacy_country_settings(settings)
     _migrate_legacy_epg_url(settings)
+    _migrate_legacy_update_check_url(settings)
     return settings
 
 
@@ -436,6 +437,20 @@ def _migrate_legacy_epg_url(settings: dict) -> None:
     """
     if settings.get("epg_url") == _LEGACY_EPG_URL:
         settings["epg_url"] = DEFAULT_SETTINGS["epg_url"]
+
+
+def _migrate_legacy_update_check_url(settings: dict) -> None:
+    """
+    "update_check_url" no tiene ningún campo en Preferencias (a diferencia
+    de "epg_url", ver ui/dialogs.py) -- solo se lee/escribe desde este
+    módulo. Por tanto un valor vacío en settings.json nunca puede venir de
+    una elección deliberada del usuario: solo pasa en instalaciones cuyo
+    settings.json se creó antes de que este ajuste tuviera un valor por
+    defecto real (ver DEFAULT_SETTINGS más arriba), y sin esto se quedarían
+    ancladas para siempre a "comprobación de actualizaciones desactivada".
+    """
+    if not settings.get("update_check_url"):
+        settings["update_check_url"] = DEFAULT_SETTINGS["update_check_url"]
 
 
 def _migrate_legacy_country_settings(settings: dict) -> None:
