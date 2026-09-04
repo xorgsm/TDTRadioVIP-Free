@@ -120,8 +120,8 @@ con una lista M3U representativa.
 
 ## Próximas mejoras recomendadas
 
-1. Sustituir `QListWidget` por `QAbstractListModel` + delegado/modelo de
-   filtrado cuando el catálogo habitual supere varios miles de entradas.
+1. **Completado en 7.6.3.1:** sustituir `QListWidget` por
+   `QAbstractListModel` + `QListView` para los catálogos grandes de TV y radio.
 2. Crear índices en memoria para la búsqueda universal y para el acceso
    `tvg_id -> programa actual` del EPG.
 3. Aplicar el filtro en un modelo proxy para no recorrer ni ocultar todas las

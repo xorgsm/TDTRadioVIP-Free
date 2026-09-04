@@ -2,6 +2,25 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [7.6.3.1] — 2026-09-04
+
+### Changed
+- Los catálogos grandes de TV y radio usan `QAbstractListModel` con
+  `QListView`: se conservan todas las entradas en memoria, pero Qt solo crea
+  y pinta las filas visibles.
+- El filtrado y el orden se aplican en el modelo, sin ocultar ni reconstruir
+  miles de widgets individuales.
+- Se mantienen los comportamientos existentes de reproducción, menú
+  contextual, favoritos, salud, EPG y carga diferida de logos.
+
+### Performance
+- En una prueba sintética con 10.000 entradas, preparar el modelo tardó
+  aproximadamente 0,006 s y filtrar 0,003 s, frente a 0,469 s y 0,108 s con
+  la lista basada en widgets.
+
+El detalle de implementación y las mediciones está en
+[PERFORMANCE_NOTES_7.6.3.1.md](PERFORMANCE_NOTES_7.6.3.1.md).
+
 ## [7.6.3.0] — 2026-09-04
 
 ### Changed
