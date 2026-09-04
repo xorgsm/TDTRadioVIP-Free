@@ -136,3 +136,23 @@ def test_select_stale_entries_respects_limit(tmp_path):
         for index in range(5)
     ]
     assert len(select_stale_entries(entries, store=store, limit=2)) == 2
+
+
+def test_record_results_writes_a_batch_only_once(tmp_path, monkeypatch):
+    store = StreamHealthStore(tmp_path / "health.json")
+    save_calls = []
+    original_save = store._save_streams
+
+    def save_once(streams):
+        save_calls.append(len(streams))
+        original_save(streams)
+
+    monkeypatch.setattr(store, "_save_streams", save_once)
+
+    recorded = store.record_results([
+        {"kind": "tv", "url": "https://one.test", "status": "ok"},
+        {"kind": "radio", "url": "https://two.test", "status": "error"},
+    ])
+
+    assert len(recorded) == 2
+    assert save_calls == [2]

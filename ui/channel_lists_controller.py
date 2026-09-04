@@ -12,7 +12,7 @@ con la reproducción, el cromado de ventana y el resto de secciones.
 
 Coder By X@R
 """
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QPoint, QTimer
 from PySide6.QtWidgets import QListWidget, QListWidgetItem
 
 from core import channels as tv_channels
@@ -21,7 +21,8 @@ from core import favorites as fav_store
 from core import radio as radio_stations
 from core.stream_health_store import StreamHealthStore, is_health_stale, matches_health_filter
 from ui.widgets import (
-    ROLE_CUSTOM, ROLE_DATA, ROLE_FAV, ROLE_HEALTH, ROLE_LOGO, ROLE_PLAYING, ChannelDelegate,
+    ROLE_CUSTOM, ROLE_DATA, ROLE_FAV, ROLE_HEALTH, ROLE_LOGO, ROLE_LOGO_REQUESTED,
+    ROLE_PLAYING, ChannelDelegate,
 )
 
 
@@ -49,6 +50,32 @@ class ChannelListsController:
                 list_widget.viewport().update(rect)
 
         self.win.logo_loader.load(url, _on_ready, size=ChannelDelegate.LOGO_SIZE)
+
+    def load_visible_logos(self, list_widget: QListWidget) -> None:
+        """Solicita solo los logos de las filas actualmente visibles."""
+        if not list_widget.isVisible() or not list_widget.count():
+            return
+
+        top = list_widget.indexAt(QPoint(0, 0))
+        bottom = list_widget.indexAt(
+            QPoint(
+                max(0, list_widget.viewport().width() - 1),
+                max(0, list_widget.viewport().height() - 1),
+            )
+        )
+        if not top.isValid() or not bottom.isValid():
+            return
+
+        first = max(0, top.row())
+        last = min(list_widget.count() - 1, bottom.row())
+        for row in range(first, last + 1):
+            item = list_widget.item(row)
+            data = item.data(ROLE_DATA) or {}
+            url = data.get("logo", "")
+            if not url or item.data(ROLE_LOGO_REQUESTED):
+                continue
+            item.setData(ROLE_LOGO_REQUESTED, True)
+            self.request_logo(url, item, list_widget)
 
     def _epg_now_text(self, tvg_id: str) -> str:
         """
@@ -80,6 +107,7 @@ class ChannelListsController:
     def populate_tv_list(self, channels_list):
         win = self.win
         custom_names = {c.name for c in tv_channels.load_custom_channels()}
+        favorite_keys = {(f.get("type"), f.get("name")) for f in win.favorites}
         health_by_stream = self._health_by_stream()
         # setUpdatesEnabled(False): con listas grandes (importar un M3U de
         # varios miles de canales, o simplemente un país con muchos canales)
@@ -89,7 +117,6 @@ class ChannelListsController:
         # repintados hasta que la lista entera está poblada, Qt hace un
         # único repintado al final en vez de miles.
         win.tv_list.setUpdatesEnabled(False)
-        pending_logos = []
         try:
             win.tv_list.clear()
             for ch in channels_list:
@@ -110,7 +137,7 @@ class ChannelListsController:
                     "logo": ch.logo, "tvg_id": ch.tvg_id, "group": ch.group,
                     "subtitle": subtitle, "alternate_urls": ch.alternate_urls,
                 })
-                item.setData(ROLE_FAV, fav_store.is_favorite(win.favorites, "tv", ch.name))
+                item.setData(ROLE_FAV, ("tv", ch.name) in favorite_keys)
                 item.setData(ROLE_PLAYING, win.current_type == "tv" and win.current_name == ch.name)
                 item.setData(ROLE_CUSTOM, ch.name in custom_names)
                 health = health_by_stream.get(("tv", ch.url))
@@ -124,23 +151,17 @@ class ChannelListsController:
                         f"{health.get('latency_ms', 0)} ms"
                     )
                 win.tv_list.addItem(item)
-                if ch.logo:
-                    pending_logos.append((ch.logo, item))
         finally:
             win.tv_list.setUpdatesEnabled(True)
         self.sort_catalog(win.tv_list)
-        # Ver _queue_logo_batch: incluso con el logo ya en caché en disco,
-        # pedirlo implica leer el archivo y decodificarlo -- con catálogos
-        # de decenas de miles de canales, hacer eso de golpe para todos en
-        # el mismo bucle era lo que congelaba la app ("no responde").
-        self._queue_logo_batch(pending_logos, win.tv_list)
+        self.load_visible_logos(win.tv_list)
 
     def populate_radio_list(self, stations_list):
         win = self.win
         custom_names = {s.name for s in radio_stations.load_custom_stations()}
+        favorite_keys = {(f.get("type"), f.get("name")) for f in win.favorites}
         health_by_stream = self._health_by_stream()
         win.radio_list.setUpdatesEnabled(False)  # ver comentario en populate_tv_list
-        pending_logos = []
         try:
             win.radio_list.clear()
             for st in stations_list:
@@ -151,7 +172,7 @@ class ChannelListsController:
                     "logo": st.favicon, "subtitle": subtitle,
                     "alternate_urls": st.alternate_urls,
                 })
-                item.setData(ROLE_FAV, fav_store.is_favorite(win.favorites, "radio", st.name))
+                item.setData(ROLE_FAV, ("radio", st.name) in favorite_keys)
                 item.setData(ROLE_PLAYING, win.current_type == "radio" and win.current_name == st.name)
                 item.setData(ROLE_CUSTOM, st.name in custom_names)
                 health = health_by_stream.get(("radio", st.url))
@@ -165,12 +186,10 @@ class ChannelListsController:
                         f"{health.get('latency_ms', 0)} ms"
                     )
                 win.radio_list.addItem(item)
-                if st.favicon:
-                    pending_logos.append((st.favicon, item))
         finally:
             win.radio_list.setUpdatesEnabled(True)
         self.sort_catalog(win.radio_list)
-        self._queue_logo_batch(pending_logos, win.radio_list)
+        self.load_visible_logos(win.radio_list)
 
     def update_stream_health(self, health_entries) -> None:
         """Actualiza solo las filas afectadas por un diagnóstico terminado."""
@@ -269,18 +288,11 @@ class ChannelListsController:
         kind = "tv" if list_widget is win.tv_list else "radio"
         mode = win.settings.get(f"catalog_sort_{kind}", "source")
         if mode == "source":
-            source = win.tv_channels_data if kind == "tv" else win.radio_stations_data
-            source_order = {
-                (entry.name.strip().casefold(), entry.url): index
-                for index, entry in enumerate(source)
-            }
-
-            def key(item):
-                data = item.data(ROLE_DATA) or {}
-                return source_order.get(
-                    (data.get("name", "").strip().casefold(), data.get("url", "")),
-                    len(source_order),
-                )
+            # populate_* ya añade las entradas en el mismo orden que los
+            # datos fuente. Evitar takeItem()/addItem() aquí ahorra una
+            # reconstrucción completa en cada carga, que es el caso
+            # predeterminado de la aplicación.
+            return
         elif mode == "favorites":
             def key(item):
                 data = item.data(ROLE_DATA) or {}
@@ -327,6 +339,7 @@ class ChannelListsController:
             list_widget.setUpdatesEnabled(True)
         if active_item is not None:
             win._active_row = list_widget.row(active_item)
+        self.load_visible_logos(list_widget)
 
     def refresh_favorites_tab(self):
         win = self.win
@@ -347,7 +360,8 @@ class ChannelListsController:
             is_custom = fav["name"] in (custom_tv if fav["type"] == "tv" else custom_radio)
             item.setData(ROLE_CUSTOM, is_custom)
             win.fav_list.addItem(item)
-            self.request_logo(fav.get("logo", ""), item, win.fav_list)
+
+        self.load_visible_logos(win.fav_list)
 
         sidebar = getattr(win, "library_sidebar", None)
         if sidebar is not None:
@@ -384,12 +398,14 @@ class ChannelListsController:
         win = self.win
         vistos = set()
         nuevo_orden = []
+        favorites_by_key = {
+            (f.get("type"), f.get("name")): f
+            for f in win.favorites
+        }
         for i in range(win.fav_list.count()):
             data = win.fav_list.item(i).data(ROLE_DATA) or {}
             clave = (data.get("type"), data.get("name"))
-            original = next(
-                (f for f in win.favorites if (f.get("type"), f.get("name")) == clave), None
-            )
+            original = favorites_by_key.get(clave)
             if original is not None and clave not in vistos:
                 nuevo_orden.append(original)
                 vistos.add(clave)
@@ -420,11 +436,12 @@ class ChannelListsController:
 
     def mark_favorites_everywhere(self):
         win = self.win
+        favorite_keys = {(f.get("type"), f.get("name")) for f in win.favorites}
         for lst in (win.tv_list, win.radio_list, win.hist_list):
             for i in range(lst.count()):
                 item = lst.item(i)
                 data = item.data(ROLE_DATA) or {}
-                item.setData(ROLE_FAV, fav_store.is_favorite(win.favorites, data.get("type"), data.get("name")))
+                item.setData(ROLE_FAV, (data.get("type"), data.get("name")) in favorite_keys)
             lst.viewport().update()
 
     # ---------- Filtros de categoría / carpeta ----------
@@ -527,3 +544,4 @@ class ChannelListsController:
                 item.setHidden(not (matches_text and matches_group and matches_health))
         finally:
             current_widget.setUpdatesEnabled(True)
+        self.load_visible_logos(current_widget)

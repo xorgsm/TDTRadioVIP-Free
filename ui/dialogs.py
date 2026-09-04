@@ -7,7 +7,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QAbstractItemView, QButtonGroup, QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
@@ -683,6 +683,8 @@ class M3UEditorDialog(QDialog):
         load_btn.setObjectName("primaryButton")
         load_btn.clicked.connect(self._load_source)
         source_row.addWidget(load_btn)
+        self._load_btn = load_btn
+        self._load_worker = None
         root.addLayout(source_row)
 
         content = QHBoxLayout()
@@ -704,7 +706,11 @@ class M3UEditorDialog(QDialog):
         search_row.addWidget(QLabel("Buscar:"))
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Nombre, grupo o URL")
-        self.search_input.textChanged.connect(self._apply_filters)
+        self._filter_timer = QTimer(self)
+        self._filter_timer.setSingleShot(True)
+        self._filter_timer.setInterval(150)
+        self._filter_timer.timeout.connect(self._apply_filters)
+        self.search_input.textChanged.connect(lambda _text: self._filter_timer.start())
         search_row.addWidget(self.search_input, 1)
         clear_btn = QPushButton("Quitar filtro")
         clear_btn.clicked.connect(self._clear_filters)
@@ -755,8 +761,20 @@ class M3UEditorDialog(QDialog):
 
     def _load_source(self):
         source = self.source_input.text().strip()
-        if not source:
+        if not source or self._load_worker is not None:
             return
+
+        self._load_btn.setEnabled(False)
+        self._load_btn.setText("Cargando…")
+        worker = FetchWorker(self._fetch_and_parse_source, source)
+        worker.done.connect(self._on_source_loaded)
+        worker.finished.connect(self._on_source_worker_finished)
+        self._load_worker = worker
+        worker.start()
+
+    @staticmethod
+    def _fetch_and_parse_source(source: str):
+        """Lee y parsea una lista fuera del hilo de interfaz."""
         try:
             if source.lower().startswith(("http://", "https://")):
                 response = requests.get(source, timeout=15)
@@ -764,30 +782,46 @@ class M3UEditorDialog(QDialog):
                 text = response.text
             else:
                 text = Path(source).read_text(encoding="utf-8", errors="ignore")
-        except (OSError, requests.RequestException, ValueError) as exc:
-            QMessageBox.warning(self, "No se pudo cargar", str(exc))
+        except (OSError, requests.RequestException, ValueError):
+            return None
+        return tv_channels.parse_m3u(text, deduplicate=False)
+
+    def _on_source_loaded(self, channels):
+        if self._load_worker is None:
             return
-        channels = tv_channels.parse_m3u(text, deduplicate=False)
+        if channels is None:
+            QMessageBox.warning(
+                self, "No se pudo cargar",
+                "No se pudo leer la lista. Revisa la URL o la ruta del archivo e inténtalo de nuevo.",
+            )
+            return
         if not channels:
             QMessageBox.information(self, "Lista vacía", "No se encontraron canales M3U válidos.")
             return
         self._populate(channels)
 
+    def _on_source_worker_finished(self):
+        self._load_worker = None
+        self._load_btn.setEnabled(True)
+        self._load_btn.setText("Cargar")
+
     def _populate(self, channels):
-        self.table.setRowCount(0)
-        for channel in channels:
-            row = self.table.rowCount()
-            self.table.insertRow(row)
-            include = QTableWidgetItem()
-            include.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
-            include.setCheckState(Qt.Checked)
-            self.table.setItem(row, 0, include)
-            self.table.setItem(row, 1, QTableWidgetItem(channel.group))
-            self.table.setItem(row, 2, QTableWidgetItem(channel.name))
-            self.table.setItem(row, 3, QTableWidgetItem(channel.url))
-            status = QTableWidgetItem("Pendiente")
-            status.setFlags(Qt.ItemIsEnabled)
-            self.table.setItem(row, 4, status)
+        self.table.setUpdatesEnabled(False)
+        try:
+            self.table.setRowCount(len(channels))
+            for row, channel in enumerate(channels):
+                include = QTableWidgetItem()
+                include.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
+                include.setCheckState(Qt.Checked)
+                self.table.setItem(row, 0, include)
+                self.table.setItem(row, 1, QTableWidgetItem(channel.group))
+                self.table.setItem(row, 2, QTableWidgetItem(channel.name))
+                self.table.setItem(row, 3, QTableWidgetItem(channel.url))
+                status = QTableWidgetItem("Pendiente")
+                status.setFlags(Qt.ItemIsEnabled)
+                self.table.setItem(row, 4, status)
+        finally:
+            self.table.setUpdatesEnabled(True)
         self._mark_duplicates()
         self._refresh_groups()
 
@@ -835,11 +869,17 @@ class M3UEditorDialog(QDialog):
     def _apply_filters(self):
         groups = {item.text() for item in self.groups_list.selectedItems()}
         query = self.search_input.text().strip().casefold()
-        for row in range(self.table.rowCount()):
-            values = [self.table.item(row, column).text() for column in range(1, 5)]
-            group = values[0].strip() or "Sin grupo"
-            visible = (not groups or group in groups) and (not query or query in " ".join(values).casefold())
-            self.table.setRowHidden(row, not visible)
+        self.table.setUpdatesEnabled(False)
+        try:
+            for row in range(self.table.rowCount()):
+                values = [self.table.item(row, column).text() for column in range(1, 5)]
+                group = values[0].strip() or "Sin grupo"
+                visible = (not groups or group in groups) and (
+                    not query or query in " ".join(values).casefold()
+                )
+                self.table.setRowHidden(row, not visible)
+        finally:
+            self.table.setUpdatesEnabled(True)
 
     def _set_visible_checked(self, state):
         for row in range(self.table.rowCount()):

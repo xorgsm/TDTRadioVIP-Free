@@ -2,6 +2,32 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [7.6.3.0] — 2026-09-04
+
+### Changed
+- Se crea esta rama de trabajo/versionado separado para continuar la mejora
+  de rendimiento con catálogos grandes.
+- El poblado de listas y tablas reduce repintados intermedios, reutiliza
+  tamaños uniformes y evita ordenar de nuevo cuando se conserva el orden de
+  origen.
+- Los logos se solicitan solo para las filas visibles, con caché LRU en
+  memoria y límite de 2.048 imágenes decodificadas.
+- La carga y el parseo de listas M3U pasan a segundo plano y el buscador del
+  editor usa un pequeño antirrebote.
+- El diagnóstico de streams mantiene acotadas las tareas en vuelo y guarda
+  todo el lote de resultados con una sola lectura/escritura del historial.
+- Las cargas consecutivas de TV/radio descartan respuestas antiguas para que
+  una actualización lenta no sobrescriba un catálogo más reciente.
+
+### Fixed
+- Restaurar canales o emisoras ocultos vuelve a usar el controlador de
+  catálogo actual; ya no llama a métodos eliminados de `MainWindow`.
+- El diálogo de diagnóstico ya no pasa un generador a `setEnabled()` y no
+  recalcula todos los resúmenes ni inserta filas desde cero en cada resultado.
+
+El detalle técnico, las mediciones y las siguientes líneas de trabajo están
+en [PERFORMANCE_NOTES_7.6.3.0.md](PERFORMANCE_NOTES_7.6.3.0.md).
+
 ## [7.6.2.1] — 2026-09-01
 
 ### Fixed

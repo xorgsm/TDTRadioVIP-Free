@@ -3,7 +3,7 @@ Widgets reutilizables para la interfaz moderna de TDT & Radio VIP.
 """
 import hashlib
 import random
-from collections import deque
+from collections import OrderedDict, deque
 from functools import lru_cache
 
 import requests
@@ -22,6 +22,7 @@ ROLE_PLAYING = Qt.UserRole + 2
 ROLE_FAV = Qt.UserRole + 3
 ROLE_CUSTOM = Qt.UserRole + 4
 ROLE_HEALTH = Qt.UserRole + 5
+ROLE_LOGO_REQUESTED = Qt.UserRole + 6
 
 # Paleta de acento por categoría (Deportes, Infantiles, Noticias...). No es
 # un mapeo fijo nombre->color: con canales internacionales las categorías
@@ -173,6 +174,7 @@ class LogoLoader:
     """
 
     _MAX_CONCURRENTES = 8
+    _MAX_CACHE_ENTRIES = 2048
 
     def __init__(self):
         self.cache_dir = get_app_data_dir() / "cache" / "logos"
@@ -193,13 +195,25 @@ class LogoLoader:
         # notaba como lentitud sostenida (no solo un pico al principio) --
         # con esto, la segunda vez que se pide el mismo logo al mismo
         # tamaño sale directo de memoria, sin tocar el disco.
-        self._pixmap_cache = {}
+        self._pixmap_cache = OrderedDict()
+
+    def _get_cached_pixmap(self, cache_key):
+        pixmap = self._pixmap_cache.get(cache_key)
+        if pixmap is not None:
+            self._pixmap_cache.move_to_end(cache_key)
+        return pixmap
+
+    def _cache_pixmap(self, cache_key, pixmap):
+        self._pixmap_cache[cache_key] = pixmap
+        self._pixmap_cache.move_to_end(cache_key)
+        while len(self._pixmap_cache) > self._MAX_CACHE_ENTRIES:
+            self._pixmap_cache.popitem(last=False)
 
     def load(self, url: str, callback, size: int = 44):
         if not url:
             return
         cache_key = (url, size)
-        cached_pixmap = self._pixmap_cache.get(cache_key)
+        cached_pixmap = self._get_cached_pixmap(cache_key)
         if cached_pixmap is not None:
             callback(cached_pixmap)
             return
@@ -209,7 +223,7 @@ class LogoLoader:
             pix = QPixmap(str(cache_file))
             if not pix.isNull():
                 redondeado = rounded_pixmap(pix, size, size // 4)
-                self._pixmap_cache[cache_key] = redondeado
+                self._cache_pixmap(cache_key, redondeado)
                 callback(redondeado)
                 return
 
@@ -244,7 +258,7 @@ class LogoLoader:
                         if logo is None:
                             logo = rounded_pixmap(pix, size, size // 4)
                             redondeados[size] = logo
-                            self._pixmap_cache[(url, size)] = logo
+                            self._cache_pixmap((url, size), logo)
                         callback(logo)
             except RuntimeError:
                 pass
@@ -274,7 +288,7 @@ class LogoLoader:
                         if logo is None:
                             logo = rounded_pixmap(pix, size, size // 4)
                             redondeados[size] = logo
-                            self._pixmap_cache[(url, size)] = logo
+                            self._cache_pixmap((url, size), logo)
                         callback(logo)
                     self._solicitudes.pop(url, None)
                     continue

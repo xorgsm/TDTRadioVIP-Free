@@ -303,10 +303,10 @@ class LibraryController:
 
         if entry_type == "tv":
             restaurados = tv_channels.unhide_channels(nombres)
-            win._load_tv_channels()
+            win.catalog.load_tv_channels()
         else:
             restaurados = radio_stations.unhide_stations(nombres)
-            win._load_radio_stations()
+            win.catalog.load_radio_stations()
 
         win.statusBar().showMessage(f"Se restauraron {restaurados} elemento(s).", 5000)
         return restaurados
