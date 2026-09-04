@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from typing import Callable, Iterable
 
 import requests
@@ -66,23 +66,43 @@ def diagnose_catalog(
         return []
     cancel_event = cancel_event or threading.Event()
     results: list[dict] = []
-    executor = ThreadPoolExecutor(max_workers=max(1, min(max_workers, total)))
-    futures = {executor.submit(probe, entry): entry for entry in items}
+    worker_count = max(1, min(max_workers, total))
+    executor = ThreadPoolExecutor(max_workers=worker_count)
+    pending = {}
+    entries = iter(items)
+
+    def submit_next() -> bool:
+        try:
+            entry = next(entries)
+        except StopIteration:
+            return False
+        pending[executor.submit(probe, entry)] = entry
+        return True
+
+    # Mantener solo unas pocas peticiones en vuelo evita crear miles de
+    # Future al abrir el diagnóstico de un catálogo grande. El número total
+    # de entradas sigue apareciendo en el progreso, pero la memoria ocupada
+    # por la cola queda acotada al tamaño del pool.
+    for _ in range(worker_count):
+        if not submit_next():
+            break
     try:
-        for future in as_completed(futures):
-            if cancel_event.is_set():
-                break
-            try:
-                result = future.result()
-            except Exception as exc:  # un probe personalizado no debe romper el lote
-                result = {**futures[future], "status": "error", "http_status": 0,
-                          "latency_ms": 0, "content_type": "", "final_url": "",
-                          "error": str(exc)}
-            results.append(result)
-            if progress:
-                progress(result, len(results), total)
+        while pending and not cancel_event.is_set():
+            completed, _ = wait(pending, return_when=FIRST_COMPLETED)
+            for future in completed:
+                entry = pending.pop(future)
+                try:
+                    result = future.result()
+                except Exception as exc:  # un probe personalizado no debe romper el lote
+                    result = {**entry, "status": "error", "http_status": 0,
+                              "latency_ms": 0, "content_type": "", "final_url": "",
+                              "error": str(exc)}
+                results.append(result)
+                if progress:
+                    progress(result, len(results), total)
+                submit_next()
     finally:
-        for future in futures:
+        for future in pending:
             if not future.done():
                 future.cancel()
         # No esperamos las peticiones que ya estaban en vuelo: ``requests``

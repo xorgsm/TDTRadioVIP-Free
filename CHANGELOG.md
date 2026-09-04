@@ -2,6 +2,14 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [7.6.3.1] — 2026-09-04
+
+### Changed
+- Los catálogos grandes de TV y radio usan `QAbstractListModel` con
+  `QListView`, reduciendo los objetos Qt y el trabajo de repintado por canal.
+- El filtrado y la ordenación se realizan en el modelo, manteniendo la
+  reproducción, favoritos, EPG, salud y carga diferida de logos.
+
 ## [7.6.2.2] — 2026-09-03
 
 ### Changed

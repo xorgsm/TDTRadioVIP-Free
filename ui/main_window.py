@@ -931,11 +931,18 @@ class MainWindow(QMainWindow):
         lst = QListWidget()
         lst.setObjectName("channelList")
         lst.setItemDelegate(self.delegate)
+        lst.setUniformItemSizes(True)
         lst.setMouseTracking(True)
         lst.setVerticalScrollMode(QListWidget.ScrollPerPixel)
         lst.itemClicked.connect(lambda item, w=lst: self.playback.on_item_activated(item, w))
         lst.setContextMenuPolicy(Qt.CustomContextMenu)
         lst.customContextMenuRequested.connect(lambda pos, w=lst: self.channel_menu.show_context_menu(pos, w))
+        lst.verticalScrollBar().valueChanged.connect(
+            lambda _value, w=lst: self.lists.load_visible_logos(w)
+        )
+        lst.horizontalScrollBar().valueChanged.connect(
+            lambda _value, w=lst: self.lists.load_visible_logos(w)
+        )
         if reorderable:
             # Solo Favoritos se puede reordenar a mano arrastrando filas --
             # el resto de listas reflejan un orden que viene de fuera (la
@@ -1828,6 +1835,12 @@ class MainWindow(QMainWindow):
             self.search_box.clear()
         if nav_id != NAV_HOME:
             self.lists.filter_current_list()
+        if nav_id == NAV_TV:
+            self.lists.load_visible_logos(self.tv_list)
+        elif nav_id == NAV_RADIO:
+            self.lists.load_visible_logos(self.radio_list)
+        elif nav_id == NAV_FAV:
+            self.lists.load_visible_logos(self.fav_list)
         self._animate_page(self.stack.currentWidget())
 
     # _update_catalog_count vive ahora en

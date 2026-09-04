@@ -135,12 +135,41 @@ class StreamHealthStore:
 
     def record_results(self, results: Iterable[Mapping[str, object]]) -> list[dict]:
         """Registra un lote de resultados válidos y devuelve sus estados."""
+        # Cargar y guardar una sola vez. El diagnóstico completo puede traer
+        # miles de resultados; delegar en record_result() hacía una lectura,
+        # normalización y escritura fsync del JSON por cada fila (O(N²) y con
+        # mucha E/S innecesaria).
+        streams = self._load_streams()
+        by_identity = {
+            (stream["kind"], stream["url"]): stream
+            for stream in streams
+        }
         recorded = []
+        changed = False
         for result in results:
-            kind = str(result.get("kind", ""))
-            url = str(result.get("url", ""))
-            if kind and url:
-                recorded.append(self.record_result(kind, url, result))
+            kind = str(result.get("kind", "")).strip()
+            url = str(result.get("url", "")).strip()
+            if not kind or not url:
+                continue
+
+            stream = by_identity.get((kind, url))
+            if stream is None:
+                stream = {"kind": kind, "url": url, "history": []}
+                streams.append(stream)
+                by_identity[(kind, url)] = stream
+
+            checked_at = _utc_now()
+            event = _event_from_result(result, checked_at)
+            history = stream.setdefault("history", [])
+            history.insert(0, event)
+            del history[self.max_history :]
+            stream.update(event)
+            stream["history"] = history
+            recorded.append(_public_stream(stream))
+            changed = True
+
+        if changed:
+            self._save_streams(streams)
         return recorded
 
     def get(self, kind: str, url: str) -> dict | None:
@@ -252,13 +281,21 @@ def select_stale_entries(
     if limit < 1:
         return []
     health_store = store or StreamHealthStore()
+    # get() carga el JSON completo en cada llamada. Con un catálogo grande y
+    # diagnósticos ya guardados, eso convertía esta selección en una cadena de
+    # lecturas repetidas del mismo archivo. Una sola lectura mantiene el coste
+    # lineal con el número de streams guardados.
+    health_by_identity = {
+        (entry["kind"], entry["url"]): entry
+        for entry in health_store.list()
+    }
     selected = []
     for entry in entries:
         kind = str(entry.get("kind", ""))
         url = str(entry.get("url", ""))
         if not kind or not url:
             continue
-        current = health_store.get(kind, url)
+        current = health_by_identity.get((kind, url))
         if current is None or is_health_stale(current.get("checked_at")):
             selected.append(dict(entry))
             if len(selected) >= limit:

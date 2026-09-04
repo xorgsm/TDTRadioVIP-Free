@@ -10,8 +10,8 @@ from PySide6.QtWidgets import (
 
 from core import channels as tv_store
 from core import radio as radio_store
-from core.stream_health import diagnose_catalog, safe_csv_cell, summarize_results
-from core.stream_health_store import derive_health_status, record_results, summarize_health
+from core.stream_health import diagnose_catalog, safe_csv_cell
+from core.stream_health_store import derive_health_status, record_results
 from ui import palette
 from ui.visual import set_surface
 
@@ -46,6 +46,8 @@ class StreamDiagnosticsDialog(QDialog):
         self.resize(900, 560)
         self._close_when_done = False
         self._results = []
+        self._report_counts = {"problems": 0, "tv_problems": 0, "radio_problems": 0}
+        self._health_counts = {"stable": 0, "slow": 0, "down": 0, "restricted": 0}
         self.catalog_changed = False
         self._custom_tv_keys = {(channel.name, channel.url) for channel in tv_store.load_custom_channels()}
         self._custom_radio_keys = {
@@ -92,6 +94,7 @@ class StreamDiagnosticsDialog(QDialog):
         self.table.setColumnWidth(0, 80)
         self.table.setColumnWidth(1, 65)
         self.table.setColumnWidth(2, 230)
+        self.table.setRowCount(len(entries))
         root.addWidget(self.table, 1)
 
         footer = QHBoxLayout()
@@ -124,9 +127,17 @@ class StreamDiagnosticsDialog(QDialog):
     def _add_result(self, result):
         self._results.append(result)
         self.export_btn.setEnabled(True)
-        row = self.table.rowCount()
-        self.table.insertRow(row)
         health_status = derive_health_status(result)
+        report_kind = "tv" if result.get("kind") == "tv" else "radio"
+        if result.get("status") != "ok":
+            self._report_counts["problems"] += 1
+            self._report_counts[f"{report_kind}_problems"] += 1
+        self._health_counts[health_status] += 1
+
+        # Las filas se reservaron al crear la tabla en vez de insertarlas una a
+        # una. QTableWidget::insertRow() mueve la estructura interna en cada
+        # llamada y se vuelve caro con diagnósticos grandes.
+        row = len(self._results) - 1
         labels = {
             "stable": "Estable",
             "slow": "Lento",
@@ -149,21 +160,24 @@ class StreamDiagnosticsDialog(QDialog):
             if column == 0:
                 item.setForeground(colors[health_status])
             self.table.setItem(row, column, item)
-        self._apply_filter(self.filter_btn.isChecked())
+        # El filtro de "solo problemas" solo necesita decidir sobre la fila
+        # recién llegada; recorrer de nuevo toda la tabla por cada resultado
+        # convertía la actualización visual en O(N²).
+        self.table.setRowHidden(
+            row, bool(self.filter_btn.isChecked() and health_status == "stable")
+        )
 
     def _on_progress(self, completed, total):
         self.progress_bar.setMaximum(max(1, total))
         self.progress_bar.setValue(completed)
-        report = summarize_results(self._results)
-        health = summarize_health(self._results)
         self.summary.setText(
-            f"{completed} de {total} comprobados · {report['problems']} problemas "
-            f"(TV {report['tv_problems']} · Radio {report['radio_problems']}) · "
-            f"{health['stable']} estables · {health['slow']} lentos"
+            f"{completed} de {total} comprobados · {self._report_counts['problems']} problemas "
+            f"(TV {self._report_counts['tv_problems']} · Radio {self._report_counts['radio_problems']}) · "
+            f"{self._health_counts['stable']} estables · {self._health_counts['slow']} lentos"
         )
 
     def _apply_filter(self, only_problems):
-        for row in range(self.table.rowCount()):
+        for row in range(len(self._results)):
             self.table.setRowHidden(
                 row, bool(only_problems and self.table.item(row, 0).data(Qt.UserRole) == "stable")
             )
@@ -179,6 +193,9 @@ class StreamDiagnosticsDialog(QDialog):
 
     def _on_completed(self, cancelled):
         self.buttons.setEnabled(True)
+        # Puede haber filas reservadas para tareas canceladas que nunca
+        # llegaron a emitirse.
+        self.table.setRowCount(len(self._results))
         if cancelled and self._close_when_done:
             self.accept()
         elif not cancelled:
@@ -190,10 +207,10 @@ class StreamDiagnosticsDialog(QDialog):
             self.summary.setText(self.summary.text() + " · Diagnóstico terminado")
             self.table.setSortingEnabled(True)
             self.table.sortItems(0, Qt.AscendingOrder)
-            self.remove_failed_btn.setEnabled(
+            self.remove_failed_btn.setEnabled(any(
                 derive_health_status(result) in {"down", "restricted"}
                 for result in self._results
-            )
+            ))
 
     def _remove_failed(self):
         removable = [

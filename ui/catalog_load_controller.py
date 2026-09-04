@@ -22,23 +22,30 @@ class CatalogLoadController:
 
     def __init__(self, window):
         self.win = window
+        self._tv_generation = 0
+        self._radio_generation = 0
 
     def load_tv_channels(self, force: bool = False):
         win = self.win
         if win._is_closing:
             return
+        previous = getattr(win, "_tv_worker", None)
+        if previous is not None and previous.isRunning():
+            previous.cancel()
+        self._tv_generation += 1
+        generation = self._tv_generation
         win.statusBar().showMessage("Cargando canales de TV…")
         url = win.settings.get("tv_playlist_url") or tv_channels.playlist_url_for(
             win.settings.get("tv_country_code", "ES")
         )
         worker = FetchWorker(tv_channels.fetch_tv_channels, url, force)
-        worker.done.connect(self._on_tv_channels_loaded)
+        worker.done.connect(lambda channels, token=generation: self._on_tv_channels_loaded(channels, token))
         win._tv_worker = worker
         worker.start()
 
-    def _on_tv_channels_loaded(self, channels):
+    def _on_tv_channels_loaded(self, channels, generation=None):
         win = self.win
-        if win._is_closing:
+        if win._is_closing or (generation is not None and generation != self._tv_generation):
             return
         channels = channels or []
         # filter_hidden(): canales de la lista pública que el usuario pidió
@@ -67,17 +74,22 @@ class CatalogLoadController:
         win = self.win
         if win._is_closing:
             return
+        previous = getattr(win, "_radio_worker", None)
+        if previous is not None and previous.isRunning():
+            previous.cancel()
+        self._radio_generation += 1
+        generation = self._radio_generation
         win.statusBar().showMessage("Cargando emisoras de radio…")
         worker = FetchWorker(
             radio_stations.fetch_radio_stations, win.settings.get("radio_country_code", "ES"), 250, force
         )
-        worker.done.connect(self._on_radio_stations_loaded)
+        worker.done.connect(lambda stations, token=generation: self._on_radio_stations_loaded(stations, token))
         win._radio_worker = worker
         worker.start()
 
-    def _on_radio_stations_loaded(self, stations):
+    def _on_radio_stations_loaded(self, stations, generation=None):
         win = self.win
-        if win._is_closing:
+        if win._is_closing or (generation is not None and generation != self._radio_generation):
             return
         stations = stations or []
         stations = radio_stations.filter_hidden(stations)  # ver _on_tv_channels_loaded
