@@ -37,6 +37,7 @@ from ui.channel_menu_controller import ChannelMenuController
 from ui.catalog_load_controller import CatalogLoadController
 from ui.home_controller import HomeController
 from ui.channel_lists_controller import ChannelListsController
+from ui.channel_model import ChannelListModel, ChannelListView
 from ui.carousel import Carousel
 from ui.command_palette import CommandPalette
 from ui.epg_controller import EpgController
@@ -683,8 +684,10 @@ class MainWindow(QMainWindow):
         self.grid_delegate = ChannelGridDelegate()
         self.grid_delegate.CARD_SIZE = int(self.settings.get("catalog_card_size", 168))
 
-        self.tv_list = self._make_list()
-        self.radio_list = self._make_list()
+        self.tv_model = ChannelListModel(self)
+        self.radio_model = ChannelListModel(self)
+        self.tv_list = self._make_list(model=self.tv_model)
+        self.radio_list = self._make_list(model=self.radio_model)
         self.fav_list = self._make_list(reorderable=True)
         self.hist_list = self._make_list()
         self.home_page = self._build_home_page()
@@ -927,14 +930,19 @@ class MainWindow(QMainWindow):
     def _open_equalizer_dialog(self):
         EqualizerDialog(self).exec()
 
-    def _make_list(self, reorderable: bool = False) -> QListWidget:
-        lst = QListWidget()
+    def _make_list(self, reorderable: bool = False, model=None) -> QListWidget:
+        lst = ChannelListView() if model is not None else QListWidget()
         lst.setObjectName("channelList")
         lst.setItemDelegate(self.delegate)
+        if model is not None:
+            lst.setModel(model)
         lst.setUniformItemSizes(True)
         lst.setMouseTracking(True)
         lst.setVerticalScrollMode(QListWidget.ScrollPerPixel)
-        lst.itemClicked.connect(lambda item, w=lst: self.playback.on_item_activated(item, w))
+        if isinstance(lst, ChannelListView):
+            lst.clicked.connect(lambda index, w=lst: self.playback.on_item_activated(w.item(index.row()), w))
+        else:
+            lst.itemClicked.connect(lambda item, w=lst: self.playback.on_item_activated(item, w))
         lst.setContextMenuPolicy(Qt.CustomContextMenu)
         lst.customContextMenuRequested.connect(lambda pos, w=lst: self.channel_menu.show_context_menu(pos, w))
         lst.verticalScrollBar().valueChanged.connect(
