@@ -1576,6 +1576,10 @@ class MainWindow(QMainWindow):
         import_action.triggered.connect(self.library.open_import_playlist_dialog)
         file_menu.addAction(import_action)
 
+        add_public_tv_list_action = QAction("Añadir lista pública de TV…", self)
+        add_public_tv_list_action.triggered.connect(self.library.open_add_public_tv_list_dialog)
+        file_menu.addAction(add_public_tv_list_action)
+
         editor_m3u_action = QAction("Editor M3U…", self)
         editor_m3u_action.triggered.connect(self.library.open_m3u_editor)
         file_menu.addAction(editor_m3u_action)
@@ -1683,6 +1687,7 @@ class MainWindow(QMainWindow):
             ("Ir a Historial", lambda: self.nav_group.button(NAV_HIST).click()),
             ("Añadir canal o emisora…", self.library.open_add_entry_dialog),
             ("Importar lista M3U…", self.library.open_import_playlist_dialog),
+            ("Añadir lista pública de TV…", self.library.open_add_public_tv_list_dialog),
             ("Gestionar canales personalizados…", lambda: self.library.open_manage_channels_dialog()),
         ]
 

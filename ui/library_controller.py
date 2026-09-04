@@ -22,7 +22,7 @@ from core import channels as tv_channels
 from core import favorites as fav_store
 from core.playlist_export import export_m3u
 from core import radio as radio_stations
-from ui.dialogs import AddEntryDialog, ExportPlaylistDialog, ImportPlaylistDialog, ManageChannelsDialog, M3UEditorDialog, RecordingsLibraryDialog
+from ui.dialogs import AddEntryDialog, AddPublicTvListDialog, ExportPlaylistDialog, ImportPlaylistDialog, ManageChannelsDialog, M3UEditorDialog, RecordingsLibraryDialog
 from ui.fetch_worker import FetchWorker
 from ui.toast import show_toast
 
@@ -325,6 +325,29 @@ class LibraryController:
         win.statusBar().showMessage("Importando lista…")
         worker = FetchWorker(self._fetch_and_parse_playlist, source)
         worker.done.connect(lambda parsed: self._on_playlist_fetched(parsed, entry_type))
+        win._import_worker = worker
+        worker.start()
+
+    def open_add_public_tv_list_dialog(self):
+        """
+        "Añadir lista pública de TV…": mismo destino final que importar una
+        lista M3U (_fetch_and_parse_playlist / _on_playlist_fetched, sin
+        duplicar código de descarga ni de parseo) pero sin que el usuario
+        tenga que encontrar ni pegar ninguna URL -- el origen se calcula
+        con tv_channels.playlist_url_for(código_país) a partir de lo que
+        elija en AddPublicTvListDialog.
+        """
+        win = self.win
+        dialog = AddPublicTvListDialog(win)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        country_code = dialog.selected_country_code()
+        country_name = dialog.selected_country_name()
+        source = tv_channels.playlist_url_for(country_code)
+
+        win.statusBar().showMessage(f"Añadiendo lista pública de {country_name}…")
+        worker = FetchWorker(self._fetch_and_parse_playlist, source)
+        worker.done.connect(lambda parsed: self._on_playlist_fetched(parsed, "tv"))
         win._import_worker = worker
         worker.start()
 

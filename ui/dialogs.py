@@ -50,6 +50,19 @@ def _panel(section_label: str) -> tuple[QFrame, QFormLayout]:
     return frame, form
 
 
+def _fill_country_combo(combo: QComboBox, selected_code: str):
+    """
+    Rellena `combo` con core.countries.COUNTRIES y deja seleccionado
+    `selected_code` (o España si el código no está en la lista). Punto
+    único de verdad: lo usan tanto SettingsDialog (país de TV/radio por
+    defecto) como AddPublicTvListDialog (añadir la lista de otro país).
+    """
+    for code, name in countries.COUNTRIES:
+        combo.addItem(name, code)
+    idx = combo.findData((selected_code or "ES").upper())
+    combo.setCurrentIndex(idx if idx >= 0 else combo.findData("ES"))
+
+
 def _header(title: str, subtitle: str) -> QVBoxLayout:
     box = QVBoxLayout()
     box.setSpacing(2)
@@ -213,7 +226,7 @@ class SettingsDialog(QDialog):
         # ---- Canales ----
         panel_canales, form_canales = _panel("Canales")
         self.tv_country_combo = QComboBox()
-        self._fill_country_combo(self.tv_country_combo, self.settings.get("tv_country_code", "ES"))
+        _fill_country_combo(self.tv_country_combo, self.settings.get("tv_country_code", "ES"))
         form_canales.addRow("País de TV:", self.tv_country_combo)
 
         self.tv_url_input = QLineEdit(self.settings.get("tv_playlist_url", ""))
@@ -221,7 +234,7 @@ class SettingsDialog(QDialog):
         form_canales.addRow("Lista TV personalizada:", self.tv_url_input)
 
         self.radio_country_combo = QComboBox()
-        self._fill_country_combo(self.radio_country_combo, self.settings.get("radio_country_code", "ES"))
+        _fill_country_combo(self.radio_country_combo, self.settings.get("radio_country_code", "ES"))
         form_canales.addRow("País de radio:", self.radio_country_combo)
         content_layout.addWidget(panel_canales)
 
@@ -382,12 +395,6 @@ class SettingsDialog(QDialog):
         buttons.rejected.connect(self.reject)
         root.addWidget(buttons)
 
-    @staticmethod
-    def _fill_country_combo(combo: QComboBox, selected_code: str):
-        for code, name in countries.COUNTRIES:
-            combo.addItem(name, code)
-        idx = combo.findData((selected_code or "ES").upper())
-        combo.setCurrentIndex(idx if idx >= 0 else combo.findData("ES"))
 
     def _browse_dir(self):
         directory = QFileDialog.getExistingDirectory(self, "Selecciona carpeta de grabaciones")
@@ -652,6 +659,55 @@ class ImportPlaylistDialog(QDialog):
 
     def get_values(self):
         return self.type_combo.currentData(), self.source_input.text().strip()
+
+
+class AddPublicTvListDialog(QDialog):
+    """
+    Añadir la lista pública de TV de un país sin tener que buscar ni pegar
+    ninguna URL a mano -- a diferencia de ImportPlaylistDialog (arriba),
+    aquí el origen no lo escribe el usuario: se construye con
+    core.channels.playlist_url_for(código_país), la misma función que ya
+    usa CatalogLoadController para la lista del país configurado en
+    Preferencias. Pensado para el caso de "se me vaciaron los canales de
+    un país con el tiempo" o "quiero añadir canales de otro país además
+    del mío" sin salir de la app.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        set_surface(self, "dialog")
+        self.setWindowTitle("Añadir lista pública de TV")
+        self.setMinimumWidth(440)
+
+        root = QVBoxLayout(self)
+        root.setSpacing(14)
+        root.setContentsMargins(20, 18, 20, 18)
+        root.addLayout(_header(
+            "Añadir lista pública de TV",
+            "Elige un país y se añadirán a tu lista personalizada todos los "
+            "canales de su lista pública (iptv-org), sin duplicar los que ya "
+            "tengas. No hace falta buscar ni pegar ninguna URL.",
+        ))
+
+        panel, form = _panel("País")
+        self.country_combo = QComboBox()
+        _fill_country_combo(self.country_combo, "ES")
+        form.addRow("Lista de:", self.country_combo)
+        root.addWidget(panel)
+        root.addStretch(1)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.button(QDialogButtonBox.Ok).setObjectName("primaryButton")
+        buttons.button(QDialogButtonBox.Ok).setText("Añadir")
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        root.addWidget(buttons)
+
+    def selected_country_code(self) -> str:
+        return self.country_combo.currentData()
+
+    def selected_country_name(self) -> str:
+        return self.country_combo.currentText()
 
 
 class M3UEditorDialog(QDialog):
