@@ -2,6 +2,13 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [7.6.4.0] — 2026-09-05
+
+### Changed
+- Bump de versión a 7.6.4.0 para alinear el repositorio de fuentes completo
+  (VIP + Free) con la versión ya publicada en el repositorio de la edición
+  Free.
+
 ## [7.6.3.1] — 2026-09-04
 
 ### Changed
