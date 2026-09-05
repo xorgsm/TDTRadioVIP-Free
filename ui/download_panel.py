@@ -14,13 +14,9 @@ from PySide6.QtWidgets import (
 )
 
 from core.downloader import DownloadWorker, SearchWorker, SEARCH_SOURCES, UpdateCheckWorker
-from ui.audio_converter_panel import AudioConverterPanel
-from ui.mp3_editor_panel import Mp3EditorPanel
-from ui.mp3_tag_editor_panel import Mp3TagEditorPanel
-from ui.podcast_panel import PodcastPanel
-from ui.soulseek_panel import SoulseekPanel
-from ui.torrent_panel import TorrentPanel
 from ui.visual import set_variant, set_visual_state
+from ui.icons import icon_close
+from ui import palette
 
 
 class DownloadPanel(QWidget):
@@ -92,7 +88,9 @@ class DownloadPanel(QWidget):
         self.download_btn.clicked.connect(self._start_download)
         url_row.addWidget(self.download_btn)
 
-        self.cancel_btn = QPushButton("✕")
+        self.cancel_btn = QPushButton()
+        self.cancel_btn.setIcon(icon_close(palette.TEXT_PRIMARY))
+        self.cancel_btn.setAccessibleName("Cancelar la descarga")
         self.cancel_btn.setObjectName("mediaDangerButton")
         set_variant(self.cancel_btn, "danger")
         self.cancel_btn.setCursor(Qt.PointingHandCursor)
@@ -133,7 +131,9 @@ class DownloadPanel(QWidget):
         self.search_btn.clicked.connect(self._start_search)
         search_row.addWidget(self.search_btn)
 
-        self.search_cancel_btn = QPushButton("✕")
+        self.search_cancel_btn = QPushButton()
+        self.search_cancel_btn.setIcon(icon_close(palette.TEXT_PRIMARY))
+        self.search_cancel_btn.setAccessibleName("Cancelar la búsqueda")
         set_variant(self.search_cancel_btn, "danger")
         self.search_cancel_btn.setCursor(Qt.PointingHandCursor)
         self.search_cancel_btn.setFixedSize(38, 38)
@@ -225,25 +225,57 @@ class DownloadPanel(QWidget):
 
         self.tabs.addTab(url_tab, "Vídeo (URL)")
 
-        self.torrent_panel = TorrentPanel(self.dest_dir, on_dest_changed=self._on_torrent_dest_changed)
-        self.tabs.addTab(self.torrent_panel, "Torrents")
-
-        self.podcast_panel = PodcastPanel(self.dest_dir, on_play=self.on_play_audio)
-        self.tabs.addTab(self.podcast_panel, "Podcasts")
-
-        self.soulseek_panel = SoulseekPanel(self.dest_dir, on_dest_changed=self._on_soulseek_dest_changed)
-        self.tabs.addTab(self.soulseek_panel, "Soulseek")
-
-        self.audio_converter_panel = AudioConverterPanel(
-            self.dest_dir, on_dest_changed=self._on_converter_dest_changed
+        self._tool_names = (
+            "torrent_panel", "podcast_panel", "soulseek_panel",
+            "audio_converter_panel", "mp3_editor_panel", "mp3_tag_editor_panel",
         )
-        self.tabs.addTab(self.audio_converter_panel, "Convertir")
+        for name, title in zip(self._tool_names, (
+            "Torrents", "Podcasts", "Soulseek", "Convertir", "Editor MP3", "Editar info",
+        )):
+            setattr(self, name, None)
+            host = QWidget()
+            host_layout = QVBoxLayout(host)
+            host_layout.setContentsMargins(0, 0, 0, 0)
+            self.tabs.addTab(host, title)
+        self.tabs.currentChanged.connect(self._ensure_tool)
 
-        self.mp3_editor_panel = Mp3EditorPanel()
-        self.tabs.addTab(self.mp3_editor_panel, "Editor MP3")
+    def _ensure_tool(self, index):
+        if index <= 0 or index > len(self._tool_names):
+            return
+        name = self._tool_names[index - 1]
+        if getattr(self, name) is not None:
+            return
+        # Imports explícitos y tardíos: PyInstaller puede descubrirlos.
+        if name == "torrent_panel":
+            from ui.torrent_panel import TorrentPanel
+            panel = TorrentPanel(self.dest_dir, on_dest_changed=self._on_torrent_dest_changed)
+        elif name == "podcast_panel":
+            from ui.podcast_panel import PodcastPanel
+            panel = PodcastPanel(self.dest_dir, on_play=self.on_play_audio)
+        elif name == "soulseek_panel":
+            from ui.soulseek_panel import SoulseekPanel
+            panel = SoulseekPanel(self.dest_dir, on_dest_changed=self._on_soulseek_dest_changed)
+        elif name == "audio_converter_panel":
+            from ui.audio_converter_panel import AudioConverterPanel
+            panel = AudioConverterPanel(self.dest_dir, on_dest_changed=self._on_converter_dest_changed)
+        elif name == "mp3_editor_panel":
+            from ui.mp3_editor_panel import Mp3EditorPanel
+            panel = Mp3EditorPanel()
+        else:
+            from ui.mp3_tag_editor_panel import Mp3TagEditorPanel
+            panel = Mp3TagEditorPanel()
+        setattr(self, name, panel)
+        self.tabs.widget(index).layout().addWidget(panel)
 
-        self.mp3_tag_editor_panel = Mp3TagEditorPanel()
-        self.tabs.addTab(self.mp3_tag_editor_panel, "Editar info")
+    def _sync_dest_dir(self, directory):
+        self.dest_dir = directory
+        self._set_dest_label_text(directory)
+        for name in self._tool_names[:4]:
+            panel = getattr(self, name)
+            if panel is not None:
+                panel.set_dest_dir(directory)
+        if self.on_dest_changed:
+            self.on_dest_changed(directory)
 
     # ---------- carpeta destino ----------
 
@@ -262,35 +294,18 @@ class DownloadPanel(QWidget):
             self, "Selecciona carpeta de descargas", self.dest_dir
         )
         if directory:
-            self.dest_dir = directory
-            self._set_dest_label_text(directory)
-            self.torrent_panel.set_dest_dir(directory)
-            self.podcast_panel.set_dest_dir(directory)
-            self.soulseek_panel.set_dest_dir(directory)
-            self.audio_converter_panel.set_dest_dir(directory)
-            if self.on_dest_changed:
-                self.on_dest_changed(directory)
+            self._sync_dest_dir(directory)
 
     def _on_torrent_dest_changed(self, directory: str):
         """Espejo de _change_dest, pero disparado desde la pestaña de
         Torrents — mantiene la carpeta sincronizada en los dos sentidos."""
-        self.dest_dir = directory
-        self._set_dest_label_text(directory)
-        self.podcast_panel.set_dest_dir(directory)
-        if self.on_dest_changed:
-            self.on_dest_changed(directory)
+        self._sync_dest_dir(directory)
 
     def _on_soulseek_dest_changed(self, directory: str):
-        self.dest_dir = directory
-        self._set_dest_label_text(directory)
-        if self.on_dest_changed:
-            self.on_dest_changed(directory)
+        self._sync_dest_dir(directory)
 
     def _on_converter_dest_changed(self, directory: str):
-        self.dest_dir = directory
-        self._set_dest_label_text(directory)
-        if self.on_dest_changed:
-            self.on_dest_changed(directory)
+        self._sync_dest_dir(directory)
 
     def _open_folder(self, path: str):
         """Abre 'path' en el explorador; si es un archivo, lo deja seleccionado."""
@@ -572,9 +587,10 @@ class DownloadPanel(QWidget):
                 if hasattr(worker, "cancel"):
                     worker.cancel()
                 worker.wait(3000)
-        self.podcast_panel.shutdown()
-        self.torrent_panel.shutdown(on_wait=on_wait)
-        self.soulseek_panel.shutdown(on_wait=on_wait)
-        self.audio_converter_panel.shutdown(on_wait=on_wait)
-        self.mp3_editor_panel.shutdown(on_wait=on_wait)
-        self.mp3_tag_editor_panel.shutdown(on_wait=on_wait)
+        for name in self._tool_names:
+            panel = getattr(self, name)
+            if panel is not None:
+                if name == "podcast_panel":
+                    panel.shutdown()
+                else:
+                    panel.shutdown(on_wait=on_wait)

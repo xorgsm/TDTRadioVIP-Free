@@ -545,11 +545,14 @@ class ChannelListsController:
             if isinstance(lst, ChannelListView):
                 def update_entry(item):
                     data = item.get(ROLE_DATA) or {}
-                    item[ROLE_PLAYING] = (
+                    is_playing = (
                         data.get("type") == win.current_type
                         and data.get("name") == win.current_name
                         and not win._playback_failed
                     )
+                    if bool(item.get(ROLE_PLAYING)) == is_playing:
+                        return False
+                    item[ROLE_PLAYING] = is_playing
                     return True
 
                 lst.model().update_entries(update_entry)
@@ -568,7 +571,10 @@ class ChannelListsController:
             if isinstance(lst, ChannelListView):
                 def update_entry(item):
                     data = item.get(ROLE_DATA) or {}
-                    item[ROLE_FAV] = (data.get("type"), data.get("name")) in favorite_keys
+                    is_favorite = (data.get("type"), data.get("name")) in favorite_keys
+                    if bool(item.get(ROLE_FAV)) == is_favorite:
+                        return False
+                    item[ROLE_FAV] = is_favorite
                     return True
 
                 lst.model().update_entries(update_entry)

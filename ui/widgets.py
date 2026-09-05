@@ -143,6 +143,23 @@ def _download_logo_bytes(url: str) -> bytes:
     return resp.content
 
 
+def _read_logo_image(url, cache_file):
+    """Lee/descarga y decodifica fuera de la UI; nunca crea un QPixmap.
+
+    El límite de tamaño reduce el coste de convertir y redondear en la UI
+    logos de origen muy grandes. El archivo original se conserva en disco.
+    """
+    image = QImage(str(cache_file)) if cache_file.is_file() else QImage()
+    if image.isNull():
+        image = QImage.fromData(_download_logo_bytes(url))
+        if image.isNull():
+            return None
+        image.save(str(cache_file), "PNG")
+    if max(image.width(), image.height()) > 256:
+        return image.scaled(256, 256, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+    return image
+
+
 class LogoLoader:
     """
     Descarga logos de canales/emisoras en segundo plano y los cachea en
@@ -219,14 +236,6 @@ class LogoLoader:
             return
 
         cache_file = self.cache_dir / (hashlib.md5(url.encode("utf-8")).hexdigest() + ".png")
-        if cache_file.exists():
-            pix = QPixmap(str(cache_file))
-            if not pix.isNull():
-                redondeado = rounded_pixmap(pix, size, size // 4)
-                self._cache_pixmap(cache_key, redondeado)
-                callback(redondeado)
-                return
-
         solicitud = self._solicitudes.get(url)
         if solicitud is not None:
             solicitud[1].append((callback, size))
@@ -241,17 +250,13 @@ class LogoLoader:
     def _lanzar(self, url: str):
         cache_file, callbacks = self._solicitudes[url]
         self._en_vuelo += 1
-        worker = FetchWorker(_download_logo_bytes, url)
+        worker = FetchWorker(_read_logo_image, url, cache_file)
         self._workers.append(worker)
 
         def _on_finished(data):
-            pix = QPixmap()
             try:
-                # data es None si _download_logo_bytes lanzó cualquier
-                # excepción (ver FetchWorker.run()) -- misma semántica que
-                # antes comprobar reply.error() != NoError.
-                if data and pix.loadFromData(data):
-                    pix.save(str(cache_file))
+                if data is not None and not data.isNull():
+                    pix = QPixmap.fromImage(data)
                     redondeados = {}
                     for callback, size in callbacks:
                         logo = redondeados.get(size)
@@ -259,7 +264,11 @@ class LogoLoader:
                             logo = rounded_pixmap(pix, size, size // 4)
                             redondeados[size] = logo
                             self._cache_pixmap((url, size), logo)
-                        callback(logo)
+                        try:
+                            callback(logo)
+                        except RuntimeError:
+                            # Un consumidor eliminado no cancela los demás.
+                            continue
             except RuntimeError:
                 pass
             finally:
@@ -278,20 +287,6 @@ class LogoLoader:
             solicitud = self._solicitudes.get(url)
             if solicitud is None:
                 continue
-            cache_file, callbacks = solicitud
-            if cache_file.exists():
-                pix = QPixmap(str(cache_file))
-                if not pix.isNull():
-                    redondeados = {}
-                    for callback, size in callbacks:
-                        logo = redondeados.get(size)
-                        if logo is None:
-                            logo = rounded_pixmap(pix, size, size // 4)
-                            redondeados[size] = logo
-                            self._cache_pixmap((url, size), logo)
-                        callback(logo)
-                    self._solicitudes.pop(url, None)
-                    continue
             self._lanzar(url)
 
 class EqualizerWidget(QWidget):

@@ -738,26 +738,34 @@ class MainWindow(QMainWindow):
         # Descargas (Torrents/Soulseek/audio/Podcasts) no está incluido en
         # la versión free -- ver el comentario junto a self._cast_session
         # sobre por qué el import va aquí dentro y no arriba del módulo.
-        if self.es_version_free:
-            self.download_panel = None
-        else:
-            from ui.download_panel import DownloadPanel
-            self.download_panel = DownloadPanel(
-                dest_dir=self.downloads_dir,
-                on_dest_changed=self._on_downloads_dir_changed,
-                on_cast=self.casting.cast_local_file,
-                on_finished=self._on_download_finished,
-                on_play_audio=self._play_podcast_episode,
-            )
+        self.download_panel = None
+        self._download_host = None
+        if not self.es_version_free:
+            self._download_host = QWidget()
+            download_layout = QVBoxLayout(self._download_host)
+            download_layout.setContentsMargins(0, 0, 0, 0)
         self.home_page = self._build_home_page()
 
         pages = [self.home_page, self.tv_list, self.radio_list, self.fav_list, self.hist_list]
-        if self.download_panel is not None:
-            pages.append(self.download_panel)
+        if self._download_host is not None:
+            pages.append(self._download_host)
         for page in pages:
             self.stack.addWidget(page)
 
         return self.stack
+
+    def _ensure_download_panel(self):
+        if self.es_version_free or self._is_closing or self.download_panel is not None:
+            return
+        from ui.download_panel import DownloadPanel
+        self.download_panel = DownloadPanel(
+            dest_dir=self.downloads_dir,
+            on_dest_changed=self._on_downloads_dir_changed,
+            on_cast=self.casting.cast_local_file,
+            on_finished=self._on_download_finished,
+            on_play_audio=self._play_podcast_episode,
+        )
+        self._download_host.layout().addWidget(self.download_panel)
 
     def _build_home_page(self) -> QWidget:
         """
@@ -781,10 +789,10 @@ class MainWindow(QMainWindow):
         hero = QFrame()
         hero.setObjectName("homeHero")
         hero_layout = QVBoxLayout(hero)
-        hero_layout.setContentsMargins(30, 26, 30, 26)
+        hero_layout.setContentsMargins(22, 18, 22, 18)
         hero_layout.setSpacing(10)
 
-        greeting = QLabel("Todo listo para reproducir")
+        greeting = QLabel("Tu televisión y radio")
         greeting.setObjectName("homeGreeting")
         greeting.setWordWrap(True)
         greeting.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
@@ -862,7 +870,7 @@ class MainWindow(QMainWindow):
         self._home_health_layout = health_layout
         health_text = QVBoxLayout()
         health_text.setSpacing(3)
-        health_heading = QLabel("SALUD DE TUS STREAMS")
+        health_heading = QLabel("ESTADO DE LAS EMISIONES")
         health_heading.setObjectName("dialogSectionLabel")
         health_text.addWidget(health_heading)
         self.home_health_summary = QLabel()
@@ -875,7 +883,6 @@ class MainWindow(QMainWindow):
         set_variant(health_btn, "secondary")
         health_btn.clicked.connect(self._open_stream_diagnostics)
         health_layout.addWidget(health_btn)
-        layout.addWidget(health_panel)
 
         # ---- Ahora en antena (qué está echando cada canal, vía EPG) ----
         panel_antena = QFrame()
@@ -893,7 +900,6 @@ class MainWindow(QMainWindow):
             empty_text="Configura una guía de programación (EPG) en Configuración para ver esto.",
         )
         pa_layout.addWidget(self.home_on_air_carousel)
-        layout.addWidget(panel_antena)
         self.panel_antena = panel_antena
 
         # ---- Recientes (carrusel horizontal, estilo Spotify) ----
@@ -960,6 +966,8 @@ class MainWindow(QMainWindow):
         secondary_row.addWidget(panel_favs, 1)
         layout.addLayout(secondary_row)
 
+        layout.addWidget(panel_antena)
+        layout.addWidget(health_panel)
         layout.addStretch(1)
         scroll.setWidget(content)
         self._home_viewport = scroll.viewport()
@@ -1922,6 +1930,10 @@ class MainWindow(QMainWindow):
         return super().nativeEvent(eventType, message)
 
     def _on_nav_changed(self, nav_id: int):
+        if nav_id == NAV_DOWNLOAD:
+            if self.es_version_free:
+                return
+            self._ensure_download_panel()
         previous_nav = self._current_nav_id
         if previous_nav in (NAV_TV, NAV_RADIO):
             kind = "tv" if previous_nav == NAV_TV else "radio"
@@ -2065,16 +2077,34 @@ class MainWindow(QMainWindow):
         StatsDialog(self).exec()
 
     def _run_automatic_backup(self):
+        if self._is_closing:
+            return
+        previous = getattr(self, "_backup_worker", None)
+        if previous is not None and previous.isRunning():
+            return
         try:
-            created = backup_module.create_automatic_backup(
+            worker = FetchWorker(
+                backup_module.run_automatic_backup,
                 cfg.get_app_data_dir() / "backups",
                 interval_days=int(self.settings.get("automatic_backup_interval_days", 1)),
                 retention=int(self.settings.get("automatic_backup_retention", 7)),
+                app_data_dir=cfg.get_app_data_dir(),
+                profile_data_dir=cfg.get_profile_data_dir(),
             )
-            if created:
-                self.statusBar().showMessage("Copia de seguridad automática creada.", 4000)
         except (OSError, ValueError):
             self.statusBar().showMessage("No se pudo crear la copia automática.", 5000)
+            return
+        worker.done.connect(self._on_automatic_backup_done)
+        self._backup_worker = worker
+        worker.start()
+
+    def _on_automatic_backup_done(self, result):
+        if self._is_closing:
+            return
+        if result is None:
+            self.statusBar().showMessage("No se pudo crear la copia automática.", 5000)
+        elif result:
+            self.statusBar().showMessage("Copia de seguridad automática creada.", 4000)
 
     def _resume_last_stream(self):
         if self._is_closing or self.current_url or not self.history:

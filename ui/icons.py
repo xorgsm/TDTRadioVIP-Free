@@ -42,6 +42,18 @@ def _stroke_painter(pm: QPixmap, color: str, width: float = 1.6) -> QPainter:
 
 
 @lru_cache(maxsize=128)
+def icon_close(color: str, size: int = 26) -> QIcon:
+    """Aspa vectorial para cancelar una operación."""
+    pm = _blank(size)
+    painter = _stroke_painter(pm, color)
+    lo, hi = size * 0.3, size * 0.7
+    painter.drawLine(QPointF(lo, lo), QPointF(hi, hi))
+    painter.drawLine(QPointF(hi, lo), QPointF(lo, hi))
+    painter.end()
+    return QIcon(pm)
+
+
+@lru_cache(maxsize=128)
 def icon_home(color: str, size: int = 26) -> QIcon:
     """Casa sencilla: triángulo de tejado + cuerpo rectangular, mismo trazo
     lineal que el resto de iconos de la barra lateral."""

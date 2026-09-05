@@ -43,6 +43,8 @@ class HomeController:
         if win.current_url:
             win.playback.toggle_play()
             self._refresh_home_now_playing()
+        elif win.history and win.history[0].get("url"):
+            self.activate_home_entry(win.history[0])
         else:
             win._open_command_palette()
 
@@ -52,9 +54,13 @@ class HomeController:
         if not hasattr(win, "home_now_title"):
             return
         if not win.current_url:
-            win.home_now_title.setText("Nada en reproducción")
-            win.home_now_subtitle.setText("Busca cualquier canal o emisora con Ctrl+K")
-            win.home_resume_btn.setText("Buscar")
+            recent = win.history[0] if win.history and win.history[0].get("url") else None
+            win.home_now_title.setText(recent.get("name", "Última emisión") if recent else "¿Qué te apetece escuchar?")
+            win.home_now_subtitle.setText(
+                "Vuelve a tu última emisión en directo." if recent
+                else "Encuentra tu canal o emisora con Ctrl+K"
+            )
+            win.home_resume_btn.setText("Volver a escuchar" if recent else "Buscar")
             win.home_float_btn.setVisible(False)
             return
         kind = "TV en directo" if win.current_type == "tv" else "Radio online"
