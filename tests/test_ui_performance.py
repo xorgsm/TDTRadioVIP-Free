@@ -233,4 +233,4 @@ def test_home_can_return_to_last_station(app):
 
 @pytest.mark.parametrize("theme", ["dark", "light"])
 def test_style_builds_with_carousel_focus(theme):
-    assert 'QFrame#carouselCard[uiVariant]:focus' in build_style(theme=theme)
+    assert 'QFrame#carouselCard:focus' in build_style(theme=theme)
