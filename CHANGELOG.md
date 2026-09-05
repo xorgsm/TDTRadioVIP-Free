@@ -2,6 +2,30 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [7.6.5.0] — 2026-09-05
+
+### Performance
+- Las copias automáticas se ejecutan en segundo plano y capturan el perfil
+  activo al empezar, manteniendo la ventana disponible durante la escritura.
+- Los cambios de reproducción y favoritos solo notifican las filas cuyo estado
+  ha cambiado, incluso con catálogos grandes.
+- Las herramientas de Descargas se construyen al abrir cada pestaña, no todas
+  durante el arranque.
+- Los logos se leen y decodifican fuera del hilo de interfaz y las tarjetas de
+  Inicio se reciclan al actualizar sus datos.
+
+### Changed
+- Inicio prioriza volver a escuchar la última emisión y ordena el estado de
+  emisiones antes del diagnóstico técnico.
+- Las tarjetas de Inicio tienen foco visible, nombre accesible y activación con
+  Enter o Espacio.
+- Los botones de cancelar usan iconografía vectorial consistente en lugar de
+  glifos dependientes de la fuente.
+
+### Tests
+- Se añaden pruebas de regresión para catálogos de 10.000 entradas, caché de
+  logos, carga diferida, cierre cooperativo y navegación por teclado.
+
 ## [7.6.4.1] — 2026-09-05
 
 ### Added
