@@ -2,6 +2,15 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [7.6.4.1] — 2026-09-05
+
+### Added
+- Mensaje de cariño a Hugo Moreno en el diálogo "Acerca de".
+
+### Changed
+- Bump de versión a 7.6.4.1 para que el comprobador de actualizaciones
+  detecte esta versión como más nueva que la 7.6.4.0 ya publicada.
+
 ## [7.6.4.0] — 2026-09-05
 
 ### Changed
