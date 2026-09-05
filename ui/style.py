@@ -310,12 +310,12 @@ QFrame#carouselCard:hover {{
     border-color: {palette.BORDER_STRONG};
 }}
 QFrame#carouselCard[uiVariant="tv"] {{
-    background-color: {accent_shades(palette.ACCENT_INFO)['soft']};
-    border-bottom: 3px solid {palette.ACCENT_INFO};
+    background-color: {palette.BG_CARD};
+    border-bottom: 2px solid {palette.ACCENT_INFO};
 }}
 QFrame#carouselCard[uiVariant="radio"] {{
-    background-color: {accent_shades(palette.ACCENT_CATEGORY_ORANGE)['soft']};
-    border-bottom: 3px solid {palette.ACCENT_CATEGORY_ORANGE};
+    background-color: {palette.BG_CARD};
+    border-bottom: 2px solid {palette.ACCENT_CATEGORY_ORANGE};
 }}
 QFrame#carouselCard[uiVariant="tv"]:hover {{
     background-color: {palette.BG_HOVER};
@@ -324,6 +324,10 @@ QFrame#carouselCard[uiVariant="tv"]:hover {{
 QFrame#carouselCard[uiVariant="radio"]:hover {{
     background-color: {palette.BG_HOVER};
     border-color: {palette.BORDER_STRONG};
+}}
+QFrame#carouselCard:focus {{
+    border: 2px solid {shades['light']};
+    background-color: {palette.BG_PANEL_ALT};
 }}
 QFrame#carouselCard QLabel {{ background: transparent; }}
 QLabel#carouselLogo {{ background-color: {palette.BG_PANEL}; border-radius: 10px; }}

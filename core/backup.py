@@ -53,7 +53,7 @@ _CLAVES_DICT = {"settings", "stream_health", "recurring_recordings_sync",
                 "tv_channels_failcount", "radio_stations_failcount"}
 
 
-def export_backup(destino: str) -> None:
+def export_backup(destino: str, *, app_data_dir=None, profile_data_dir=None) -> None:
     """
     Vuelca todos los archivos de datos del usuario que existan en un único
     JSON en `destino`. Los que no existan (p. ej. nunca se añadió ningún
@@ -67,9 +67,11 @@ def export_backup(destino: str) -> None:
         "exported_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
 
+    app_data_dir = Path(app_data_dir) if app_data_dir is not None else get_app_data_dir()
+    profile_data_dir = Path(profile_data_dir) if profile_data_dir is not None else get_profile_data_dir()
     for nombre_archivo, clave, carpeta in (
-        *((n, c, get_app_data_dir()) for n, c in _ARCHIVOS_GLOBALES.items()),
-        *((n, c, get_profile_data_dir()) for n, c in _ARCHIVOS_PERFIL.items()),
+        *((n, c, app_data_dir) for n, c in _ARCHIVOS_GLOBALES.items()),
+        *((n, c, profile_data_dir) for n, c in _ARCHIVOS_PERFIL.items()),
     ):
         ruta = carpeta / nombre_archivo
         if not ruta.exists():
@@ -147,6 +149,8 @@ def create_automatic_backup(
     interval_days: int = 1,
     retention: int = 7,
     now: datetime | None = None,
+    app_data_dir: Path | None = None,
+    profile_data_dir: Path | None = None,
 ) -> Path | None:
     """Crea como máximo una copia por intervalo y aplica retención."""
     if interval_days < 1 or retention < 1:
@@ -168,7 +172,12 @@ def create_automatic_backup(
         # no debe desactivar las copias automáticas indefinidamente.
         if latest <= current and current - latest < timedelta(days=interval_days):
             return None
-    export_backup(str(destination))
+    source_dirs = {}
+    if app_data_dir is not None:
+        source_dirs["app_data_dir"] = app_data_dir
+    if profile_data_dir is not None:
+        source_dirs["profile_data_dir"] = profile_data_dir
+    export_backup(str(destination), **source_dirs)
     existing = sorted(
         (path for path in target_dir.glob("TDTRadioVIP_auto_*.json") if path.is_file()),
         key=lambda path: path.stat().st_mtime,
@@ -177,3 +186,12 @@ def create_automatic_backup(
     for obsolete in existing[retention:]:
         obsolete.unlink(missing_ok=True)
     return destination
+
+
+def run_automatic_backup(*args, **kwargs) -> bool:
+    """Resultado para FetchWorker: True creada, False no toca, None si falla.
+
+    Las excepciones las convierte FetchWorker en None. Las rutas capturadas
+    antes de arrancar evitan mezclar perfiles si se cambia durante la copia.
+    """
+    return create_automatic_backup(*args, **kwargs) is not None

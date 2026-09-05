@@ -720,10 +720,10 @@ class MainWindow(QMainWindow):
         hero = QFrame()
         hero.setObjectName("homeHero")
         hero_layout = QVBoxLayout(hero)
-        hero_layout.setContentsMargins(30, 26, 30, 26)
+        hero_layout.setContentsMargins(22, 18, 22, 18)
         hero_layout.setSpacing(10)
 
-        greeting = QLabel("Todo listo para reproducir")
+        greeting = QLabel("Tu televisión y radio")
         greeting.setObjectName("homeGreeting")
         greeting.setWordWrap(True)
         greeting.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
@@ -801,7 +801,7 @@ class MainWindow(QMainWindow):
         self._home_health_layout = health_layout
         health_text = QVBoxLayout()
         health_text.setSpacing(3)
-        health_heading = QLabel("SALUD DE TUS STREAMS")
+        health_heading = QLabel("ESTADO DE LAS EMISIONES")
         health_heading.setObjectName("dialogSectionLabel")
         health_text.addWidget(health_heading)
         self.home_health_summary = QLabel()
@@ -814,7 +814,6 @@ class MainWindow(QMainWindow):
         set_variant(health_btn, "secondary")
         health_btn.clicked.connect(self._open_stream_diagnostics)
         health_layout.addWidget(health_btn)
-        layout.addWidget(health_panel)
 
         # ---- Ahora en antena (qué está echando cada canal, vía EPG) ----
         panel_antena = QFrame()
@@ -832,7 +831,6 @@ class MainWindow(QMainWindow):
             empty_text="Configura una guía de programación (EPG) en Configuración para ver esto.",
         )
         pa_layout.addWidget(self.home_on_air_carousel)
-        layout.addWidget(panel_antena)
         self.panel_antena = panel_antena
 
         # ---- Recientes (carrusel horizontal, estilo Spotify) ----
@@ -899,6 +897,8 @@ class MainWindow(QMainWindow):
         secondary_row.addWidget(panel_favs, 1)
         layout.addLayout(secondary_row)
 
+        layout.addWidget(panel_antena)
+        layout.addWidget(health_panel)
         layout.addStretch(1)
         scroll.setWidget(content)
         self._home_viewport = scroll.viewport()
@@ -1919,16 +1919,34 @@ class MainWindow(QMainWindow):
         StatsDialog(self).exec()
 
     def _run_automatic_backup(self):
+        if self._is_closing:
+            return
+        previous = getattr(self, "_backup_worker", None)
+        if previous is not None and previous.isRunning():
+            return
         try:
-            created = backup_module.create_automatic_backup(
+            worker = FetchWorker(
+                backup_module.run_automatic_backup,
                 cfg.get_app_data_dir() / "backups",
                 interval_days=int(self.settings.get("automatic_backup_interval_days", 1)),
                 retention=int(self.settings.get("automatic_backup_retention", 7)),
+                app_data_dir=cfg.get_app_data_dir(),
+                profile_data_dir=cfg.get_profile_data_dir(),
             )
-            if created:
-                self.statusBar().showMessage("Copia de seguridad automática creada.", 4000)
         except (OSError, ValueError):
             self.statusBar().showMessage("No se pudo crear la copia automática.", 5000)
+            return
+        worker.done.connect(self._on_automatic_backup_done)
+        self._backup_worker = worker
+        worker.start()
+
+    def _on_automatic_backup_done(self, result):
+        if self._is_closing:
+            return
+        if result is None:
+            self.statusBar().showMessage("No se pudo crear la copia automática.", 5000)
+        elif result:
+            self.statusBar().showMessage("Copia de seguridad automática creada.", 4000)
 
     def _resume_last_stream(self):
         if self._is_closing or self.current_url or not self.history:
