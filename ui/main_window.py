@@ -2072,6 +2072,7 @@ class MainWindow(QMainWindow):
             "https://www.tdtchannels.com/lists/tv.m3u8</a>"
             "</td></tr></table><br>"
             "<hr>"
+            f"<b style='color:{palette.ACCENT};'>&#10084; Un Abrazo grande a mi hijo Hugo Moreno &#161;ERES UN CAMPE&#211;N! &#10084;</b><br>"
             f"<b style='color:{palette.ACCENT};'>&#10084; Besitos a Evelyn Llamas &#10084;</b><br>"
             "Saludos a mi amigo Paco Blanco.<br>"
             "Viva La Guardia Civil — SANCHEZ CABRON:<br>"
