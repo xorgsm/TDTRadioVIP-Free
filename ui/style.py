@@ -325,7 +325,7 @@ QFrame#carouselCard[uiVariant="radio"]:hover {{
     background-color: {palette.BG_HOVER};
     border-color: {palette.BORDER_STRONG};
 }}
-QFrame#carouselCard[uiVariant]:focus {{
+QFrame#carouselCard:focus {{
     border: 2px solid {shades['light']};
     background-color: {palette.BG_PANEL_ALT};
 }}
