@@ -467,7 +467,7 @@ class VLCPlayer(QFrame):
     # protege con try/except porque este recorrido depende de detalles de
     # la struct que pueden variar entre versiones de libVLC/python-vlc; si
     # algo no encaja, es mejor devolver una lista vacía (el menú de
-    # pistas se oculta solo, ver ui/main_window._build_tracks_menu) que
+    # pistas se oculta solo, ver ui.player_menus.open_tracks_menu) que
     # reventar la reproducción por esto.
 
     def _walk_track_descriptions(self, descs):

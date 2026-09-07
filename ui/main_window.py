@@ -55,6 +55,79 @@ from ui.nav_sections import NAV_HOME
 
 DEFAULT_DOWNLOADS_DIRNAME = "TDT Radio VIP"
 
+# ---------------------------------------------------------------------------
+# Mapa de responsabilidades extraídas de MainWindow (refactor de
+# main_window.py, ver la rama refactor/split-main-window). Todo lo listado
+# aquí vivía antes como método de esta clase; se agrupa por módulo/
+# controlador de destino en vez de repetir un comentario "vive ahora en..."
+# junto a cada hueco que dejó.
+#
+# ui.tray_controller.TrayReminderController (self.tray):
+#     _setup_tray_and_reminders, _check_epg_reminders, _check_scheduled_recordings,
+#     _check_scheduled_recording_alive, _on_tray_message_clicked
+# ui.app_lifecycle.AppLifecycle (self.lifecycle):
+#     schedule_startup_tasks, show_onboarding, warn_vlc_unavailable,
+#     run_automatic_backup, resume_last_stream, shutdown
+# ui.nav_rail (funciones de módulo):
+#     _build_nav_rail, _toggle_library_sidebar, _open_favorites_folder,
+#     _on_groups_sidebar_changed
+# ui.catalog_toolbar (funciones de módulo):
+#     _build_top_bar, _on_catalog_sort_changed, _toggle_tv_grid_view
+# ui.home_page_builder.build_home_page(): _build_home_page
+# ui.home_controller.HomeController (self.home):
+#     _update_home_compact, _home_resume_or_search, _refresh_home_now_playing,
+#     _refresh_home_page, _refresh_home_health, _activate_home_entry,
+#     _compute_recommendations
+# ui.dialog_actions.DialogActionsController (self.dialogs):
+#     _open_equalizer_dialog, _open_activation_dialog, _open_stream_diagnostics,
+#     _open_command_palette, _open_recurring_dialog, _open_scheduled_recordings_dialog,
+#     _open_mosaic_view, _open_stats_dialog, _open_settings, _abrir_carpeta_logs,
+#     _show_about
+# ui.cast_controller.CastController (self.casting):
+#     _active_cast_session, _on_cast_live_clicked, _cast_local_file,
+#     _open_cast_picker_and_send
+# ui.player_panel_builder.build_player_panel(): _build_player_panel
+# ui.visual (funciones de módulo, sin estado): make_glow, make_separator
+# ui.now_playing_bar_builder (funciones de módulo):
+#     _build_now_playing_bar, _update_now_playing_compact
+# ui.player_menus (funciones de módulo):
+#     _open_more_controls_menu, _show_stream_technical_info, _open_tracks_menu
+# ui.title_bar.build_title_bar() / ui.app_menu.build_menu_bar():
+#     _build_title_bar, _build_menu
+# ui.window_chrome.WindowChrome (self.window_chrome):
+#     _toggle_maximize, _maximizar, _restaurar_tamano, _toggle_player_fullscreen,
+#     _salir_fullscreen_si_activo, _toggle_pip_mode, _enter_pip_mode,
+#     _exit_pip_mode, _enter_player_fullscreen, _exit_player_fullscreen
+# ui.playback_controller.PlaybackController (self.playback):
+#     _on_sleep_btn_clicked, _iniciar_sleep, _cancelar_sleep, _update_sleep_tooltip,
+#     _on_sleep_timeout, _play_prev, _play_next, _play, _update_now_logo,
+#     _toggle_play, _on_player_error, _on_player_end_reached, _retry_playback,
+#     _stop_playback, _on_volume_changed, _toggle_mute, _toggle_favorite_current,
+#     _toggle_recording, _update_epg_display, _on_item_activated, _activate_item,
+#     _auto_skip_next
+# ui.navigation_controller.NavigationController (self.navigation):
+#     _on_nav_changed, _animate_page
+# ui.catalog_load_controller.CatalogLoadController (self.catalog):
+#     _update_catalog_count, _load_tv_channels, _on_tv_channels_loaded,
+#     _load_radio_stations, _on_radio_stations_loaded,
+#     _maybe_start_background_diagnostics, _on_background_diagnostics_completed
+# ui.epg_controller.EpgController (self.epg):
+#     _open_epg_dialog, _tune_to_tvg_id, _load_epg, _on_epg_loaded
+# ui.update_check_controller.UpdateCheckController (self.updates):
+#     _check_for_update, _on_update_check_done, _on_update_download_done
+# ui.library_controller.LibraryController (self.library):
+#     _open_add_entry_dialog, _edit_custom_entry, _delete_custom_entry,
+#     _open_import_playlist_dialog, _fetch_playlist_text, _on_playlist_fetched,
+#     _exportar_backup, _importar_backup
+# ui.channel_lists_controller.ChannelListsController (self.lists):
+#     _request_logo, _populate_tv_list, _populate_radio_list,
+#     _refresh_favorites_tab, _refresh_history_tab, _mark_playing_everywhere,
+#     _mark_favorites_everywhere, _filter_current_list
+# ui.channel_menu_controller.ChannelMenuController (self.channel_menu):
+#     _show_context_menu, _hide_public_tv_channel, _delete_tv_groups,
+#     _mover_a_carpeta, _toggle_favorite_for
+# ---------------------------------------------------------------------------
+
 
 class MainWindow(QMainWindow):
     def __init__(self, activated: bool = False, es_version_free: bool = False):
@@ -221,14 +294,6 @@ class MainWindow(QMainWindow):
         self.tray.setup()
         self.lifecycle.schedule_startup_tasks()
 
-    # _setup_tray_and_reminders / _check_epg_reminders / _check_scheduled_recordings /
-    # _check_scheduled_recording_alive / _on_tray_message_clicked viven ahora en
-    # ui.tray_controller.TrayReminderController (self.tray).
-
-    # schedule_startup_tasks / show_onboarding / warn_vlc_unavailable /
-    # run_automatic_backup / resume_last_stream / shutdown viven ahora en
-    # ui.app_lifecycle.AppLifecycle (self.lifecycle).
-
     # ---------- Construcción de la interfaz ----------
 
     def _build_ui(self):
@@ -339,13 +404,6 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Listo.")
         self.player.set_volume(self.volume_slider.value())
 
-    # _build_nav_rail / _toggle_library_sidebar / _open_favorites_folder /
-    # _on_groups_sidebar_changed viven ahora en ui.nav_rail.
-
-    # _build_top_bar / _on_catalog_sort_changed / _toggle_tv_grid_view
-    # viven ahora en ui.catalog_toolbar.
-
-
     def _build_content_stack(self) -> QStackedWidget:
         self.stack = QStackedWidget()
         self.delegate = ChannelDelegate()
@@ -390,12 +448,6 @@ class MainWindow(QMainWindow):
         )
         self._download_host.layout().addWidget(self.download_panel)
 
-    # _build_home_page vive ahora en ui.home_page_builder.build_home_page().
-    # _update_home_compact / _home_resume_or_search / _refresh_home_now_playing /
-    # _refresh_home_page / _refresh_home_health / _activate_home_entry /
-    # _compute_recommendations viven ahora en
-    # ui.home_controller.HomeController (self.home).
-
     def _on_downloads_dir_changed(self, new_dir: str):
         self.downloads_dir = new_dir
         self.settings["downloads_dir"] = new_dir
@@ -431,12 +483,6 @@ class MainWindow(QMainWindow):
         if len(bandas) != self.player.equalizer_band_count():
             return
         self.player.set_equalizer(self.settings.get("equalizer_preamp", 0.0), bandas)
-
-    # _open_equalizer_dialog vive ahora en ui.dialog_actions (win.dialogs).
-
-    # _active_cast_session / _on_cast_live_clicked / _cast_local_file /
-    # _open_cast_picker_and_send viven ahora en
-    # ui.cast_controller.CastController (self.casting).
 
     def _play_podcast_episode(self, url: str, title: str):
         """
@@ -478,31 +524,11 @@ class MainWindow(QMainWindow):
             lst.model().rowsMoved.connect(lambda *_: self.lists.persist_favorites_order())
         return lst
 
-    # _build_player_panel vive ahora en ui.player_panel_builder.build_player_panel().
-
-
     def set_live_badge_visible(self, visible: bool) -> None:
         """Sincroniza el indicador visual con la emisión actual."""
         self.live_badge.setVisible(bool(visible))
         if visible:
             self.live_badge.raise_()
-
-    # make_glow/make_separator viven ahora en ui/visual.py (funciones sin
-    # estado, no dependían de self).
-
-    # _build_now_playing_bar / _update_now_playing_compact viven ahora en
-    # ui.now_playing_bar_builder.
-
-
-    # _open_more_controls_menu / _show_stream_technical_info /
-    # _open_tracks_menu viven ahora en ui.player_menus.
-
-
-    # _build_title_bar vive ahora en ui.title_bar.build_title_bar().
-    # _build_menu vive ahora en ui.app_menu.build_menu_bar().
-
-    # _open_activation_dialog / _open_stream_diagnostics / _open_command_palette
-    # viven ahora en ui.dialog_actions (win.dialogs).
 
     def eventFilter(self, obj, event):
         """
@@ -519,18 +545,6 @@ class MainWindow(QMainWindow):
         if result is None:
             return super().eventFilter(obj, event)
         return result
-
-    # Maximizar/restaurar, pantalla completa y modo PiP (antes _toggle_maximize
-    # / _maximizar / _restaurar_tamano / _toggle_player_fullscreen /
-    # _salir_fullscreen_si_activo / _toggle_pip_mode / _enter_pip_mode /
-    # _exit_pip_mode / _enter_player_fullscreen / _exit_player_fullscreen)
-    # viven ahora en ui.window_chrome.WindowChrome (self.window_chrome).
-
-    # ---------- Temporizador de apagado ----------
-
-    # El temporizador de apagado (antes _on_sleep_btn_clicked / _iniciar_sleep /
-    # _cancelar_sleep / _update_sleep_tooltip / _on_sleep_timeout) vive ahora en
-    # ui.playback_controller.PlaybackController -- ver self.playback mas arriba.
 
     def _registrar_atajos(self):
         """
@@ -567,8 +581,6 @@ class MainWindow(QMainWindow):
                 self._taskbar.bind(BTN_MUTE, self.playback.toggle_mute)
                 self._taskbar.bind(BTN_NEXT, self.playback.play_next)
 
-    # _play_prev / _play_next viven ahora en PlaybackController (self.playback).
-
     def nativeEvent(self, eventType, message):
         """
         Enruta los mensajes nativos de Windows hacia TaskbarControls, para
@@ -584,63 +596,6 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
         return super().nativeEvent(eventType, message)
-
-    # _on_nav_changed vive ahora en ui.navigation_controller.NavigationController.on_nav_changed().
-
-    # _update_catalog_count vive ahora en
-    # ui.catalog_load_controller.CatalogLoadController (self.catalog).
-
-    # _animate_page vive ahora en ui.navigation_controller.NavigationController.animate_page().
-
-    # _load_tv_channels / _on_tv_channels_loaded / _load_radio_stations /
-    # _on_radio_stations_loaded / _maybe_start_background_diagnostics /
-    # _on_background_diagnostics_completed viven ahora en
-    # ui.catalog_load_controller.CatalogLoadController (self.catalog).
-
-    # _open_epg_dialog / _tune_to_tvg_id / _load_epg / _on_epg_loaded viven
-    # ahora en ui.epg_controller.EpgController (self.epg).
-
-    # _open_recurring_dialog / _open_scheduled_recordings_dialog / _open_mosaic_view /
-    # _open_stats_dialog viven ahora en ui.dialog_actions (win.dialogs).
-
-    # _check_for_update / _on_update_check_done / _on_update_download_done
-    # viven ahora en ui.update_check_controller.UpdateCheckController
-    # (self.updates).
-
-    # ---------- Añadir canal/emisora manual e importar listas M3U ----------
-    #
-    # _open_add_entry_dialog / _edit_custom_entry / _delete_custom_entry /
-    # _open_import_playlist_dialog / _fetch_playlist_text / _on_playlist_fetched /
-    # _exportar_backup / _importar_backup viven ahora en
-    # ui.library_controller.LibraryController (self.library).
-
-    # ---------- Poblar listas ----------
-
-    # _request_logo / _populate_tv_list / _populate_radio_list /
-    # _refresh_favorites_tab / _refresh_history_tab / _mark_playing_everywhere /
-    # _mark_favorites_everywhere / _filter_current_list viven ahora en
-    # ChannelListsController (self.lists).
-
-    # ---------- Reproducción ----------
-
-    # _on_item_activated / _activate_item / _auto_skip_next viven ahora en
-    # PlaybackController (self.playback).
-
-    # _show_context_menu / _hide_public_tv_channel / _delete_tv_groups /
-    # _mover_a_carpeta / _toggle_favorite_for viven ahora en
-    # ui.channel_menu_controller.ChannelMenuController (self.channel_menu).
-
-    # _play / _update_now_logo / _toggle_play / _on_player_error /
-    # _on_player_end_reached / _retry_playback / _stop_playback /
-    # _on_volume_changed / _toggle_mute / _toggle_favorite_current /
-    # _toggle_recording / _update_epg_display viven ahora en
-    # PlaybackController (self.playback).
-
-    # ---------- Configuración ----------
-
-    # _open_settings vive ahora en ui.dialog_actions.DialogActionsController.open_settings (win.dialogs).
-
-    # _abrir_carpeta_logs / _show_about viven ahora en ui.dialog_actions.
 
     def closeEvent(self, event):
         if self._is_closing:

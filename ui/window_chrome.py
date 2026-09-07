@@ -248,8 +248,8 @@ class WindowChrome:
         """
         Sondeo periódico de la posición global del cursor mientras se está
         en pantalla completa -- ver el comentario en
-        MainWindow._build_player_panel sobre por qué no basta con un
-        eventFilter de Qt (el vídeo es una ventana nativa de libVLC
+        ui.player_panel_builder.build_player_panel sobre por qué no basta
+        con un eventFilter de Qt (el vídeo es una ventana nativa de libVLC
         embebida, ajena al bucle de eventos de Qt).
         """
         win = self.win
@@ -299,6 +299,12 @@ class WindowChrome:
         win.statusBar().setVisible(False)
         # El PiP funciona como mini reproductor: conserva transporte y mute,
         # pero esconde acciones secundarias para no saturar la ventana.
+        # BUG CONOCIDO (preexistente, no introducido por este refactor): en
+        # la edición Free win.cast_btn es None (ver
+        # ui.now_playing_bar_builder.build_now_playing_bar), así que
+        # widget.isVisible() revienta con AttributeError al entrar en PiP.
+        # Pendiente de arreglar en un cambio aparte -- no se toca aquí para
+        # no mezclar un fix de comportamiento con un refactor puro.
         win._pip_compact_visibility = {
             widget: widget.isVisible() for widget in (
                 win.fav_btn, win.cast_btn, win.record_btn, win.more_btn, win.volume_slider,

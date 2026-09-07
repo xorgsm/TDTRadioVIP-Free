@@ -21,7 +21,8 @@ CUSTOM_FILE = "tv_channels_custom.json"
 # más abajo. A diferencia de tv_channels_custom.json, esto no guarda datos
 # de ningún canal, solo su nombre: la lista pública se sigue descargando y
 # cacheando entera como siempre, esto es un filtro que se aplica encima al
-# combinarla con la personalizada (ver ui/main_window._on_tv_channels_loaded).
+# combinarla con la personalizada (ver
+# ui.catalog_load_controller.CatalogLoadController._on_tv_channels_loaded).
 HIDDEN_FILE = "tv_channels_hidden.json"
 
 IPTV_ORG_BASE = "https://iptv-org.github.io/iptv/countries"

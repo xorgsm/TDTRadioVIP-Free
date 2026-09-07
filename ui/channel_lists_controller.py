@@ -616,7 +616,7 @@ class ChannelListsController:
         # GroupsSidebar (panel lateral con contador por grupo, ver
         # ui/groups_sidebar.py) es ahora el filtro de categoría real para
         # TV -- group_filter de arriba se deja poblado pero oculto durante
-        # esa sección (ver MainWindow._on_nav_changed).
+        # esa sección (ver ui.navigation_controller.NavigationController.on_nav_changed).
         sidebar = getattr(win, "groups_sidebar", None)
         if sidebar is not None:
             counts = {}
@@ -693,7 +693,7 @@ class ChannelListsController:
                 if current_widget is win.tv_list:
                     # El filtro de categoría de TV lo lleva GroupsSidebar (panel
                     # lateral), no el desplegable group_filter -- ver
-                    # MainWindow._on_groups_sidebar_changed / refresh_group_filter().
+                    # ui.nav_rail.on_groups_sidebar_changed / refresh_group_filter().
                     sidebar_groups = getattr(win, "_tv_sidebar_groups", None)
                     matches_group = sidebar_groups is None or data.get("group") in sidebar_groups
                 elif current_widget is win.fav_list:

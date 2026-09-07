@@ -2,9 +2,10 @@
 """
 PyInstaller spec para TDT & Radio VIP - VERSION FREE.
 TV y Radio incluidos; sin Descargas (yt-dlp/Torrents/Soulseek/audio/
-Podcasts) ni Chromecast/DLNA -- ver MainWindow._show_about() en
-ui/main_window.py, que es la fuente de verdad de este límite. Sin splash
-ni código de activación tampoco (main_free.py entra directo).
+Podcasts) ni Chromecast/DLNA -- ver
+ui.dialog_actions.DialogActionsController.show_about(), que es la fuente
+de verdad de este límite. Sin splash ni código de activación tampoco
+(main_free.py entra directo).
 Compilar con:  pyinstaller TDTRadioVIP_Free.spec
 """
 import os, sys
@@ -21,10 +22,10 @@ excludes = [
     'pychromecast', 'zeroconf', 'libtorrent',
     'ui.download_panel', 'ui.cast_controller',
     'core.caster', 'core.dlna_caster',
-    # Activación/licencia: ui/application.py y ui/main_window.py importan
+    # Activación/licencia: ui/application.py y ui/dialog_actions.py importan
     # core.license/ui.splash de forma local (dentro de run_vip()/
-    # _open_activation_dialog(), no arriba del módulo) precisamente para
-    # que este build pueda excluirlos de verdad.
+    # DialogActionsController.open_activation_dialog(), no arriba del
+    # módulo) precisamente para que este build pueda excluirlos de verdad.
     'core.license', 'ui.splash',
 ]
 

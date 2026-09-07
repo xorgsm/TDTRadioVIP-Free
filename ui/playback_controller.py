@@ -651,8 +651,8 @@ class PlaybackController:
         menu.addSeparator()
         menu.addAction("Cancelar temporizador", self.cancelar_sleep)
         # Ancla a more_btn: sleep_btn ya no vive en ningún layout visible
-        # (ver ui/main_window.py _build_now_playing_bar) y su posición en
-        # pantalla no sería fiable para mapToGlobal.
+        # (ver ui.now_playing_bar_builder.build_now_playing_bar) y su posición
+        # en pantalla no sería fiable para mapToGlobal.
         menu.exec(win.more_btn.mapToGlobal(win.more_btn.rect().bottomLeft()))
         # Si el usuario cierra el menú sin elegir nada, desmarcar el botón.
         if not win._sleep_timer.isActive():
