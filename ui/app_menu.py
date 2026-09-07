@@ -15,7 +15,7 @@ def build_menu_bar(win) -> QMenuBar:
     file_menu = menu.addMenu("Archivo")
     global_search_action = QAction("Búsqueda global…", win)
     global_search_action.setShortcut(QKeySequence("Ctrl+K"))
-    global_search_action.triggered.connect(win._open_command_palette)
+    global_search_action.triggered.connect(win.dialogs.open_command_palette)
     file_menu.addAction(global_search_action)
     file_menu.addSeparator()
 
@@ -28,7 +28,7 @@ def build_menu_bar(win) -> QMenuBar:
     file_menu.addAction(refresh_radio_action)
 
     diagnostics_action = QAction("Diagnosticar canales y emisoras…", win)
-    diagnostics_action.triggered.connect(win._open_stream_diagnostics)
+    diagnostics_action.triggered.connect(win.dialogs.open_stream_diagnostics)
     file_menu.addAction(diagnostics_action)
 
     file_menu.addSeparator()
@@ -74,15 +74,15 @@ def build_menu_bar(win) -> QMenuBar:
     file_menu.addAction(recordings_action)
 
     recurring_action = QAction("Grabaciones recurrentes…", win)
-    recurring_action.triggered.connect(win._open_recurring_dialog)
+    recurring_action.triggered.connect(win.dialogs.open_recurring_dialog)
     file_menu.addAction(recurring_action)
 
     scheduled_action = QAction("Centro de grabaciones programadas…", win)
-    scheduled_action.triggered.connect(win._open_scheduled_recordings_dialog)
+    scheduled_action.triggered.connect(win.dialogs.open_scheduled_recordings_dialog)
     file_menu.addAction(scheduled_action)
 
     mosaic_action = QAction("Multivista (mosaico)…", win)
-    mosaic_action.triggered.connect(win._open_mosaic_view)
+    mosaic_action.triggered.connect(win.dialogs.open_mosaic_view)
     file_menu.addAction(mosaic_action)
 
     file_menu.addSeparator()
@@ -101,7 +101,7 @@ def build_menu_bar(win) -> QMenuBar:
 
     settings_menu = menu.addMenu("Configuración")
     settings_action = QAction("Preferencias…", win)
-    settings_action.triggered.connect(win._open_settings)
+    settings_action.triggered.connect(win.dialogs.open_settings)
     settings_menu.addAction(settings_action)
 
     # Solo en la edición VIP sin activar: como el splash ya no aparece en
@@ -109,16 +109,16 @@ def build_menu_bar(win) -> QMenuBar:
     # esta entrada es el camino de vuelta al diálogo de activación.
     if not win.activated and not win.es_version_free:
         win.activate_vip_action = QAction("Activar VIP…", win)
-        win.activate_vip_action.triggered.connect(win._open_activation_dialog)
+        win.activate_vip_action.triggered.connect(win.dialogs.open_activation_dialog)
         settings_menu.addAction(win.activate_vip_action)
 
     help_menu = menu.addMenu("Ayuda")
     about_action = QAction("Acerca de", win)
-    about_action.triggered.connect(win._show_about)
+    about_action.triggered.connect(win.dialogs.show_about)
     help_menu.addAction(about_action)
 
     stats_action = QAction("Estadísticas de uso…", win)
-    stats_action.triggered.connect(win._open_stats_dialog)
+    stats_action.triggered.connect(win.dialogs.open_stats_dialog)
     help_menu.addAction(stats_action)
 
     update_action = QAction("Buscar actualizaciones", win)
@@ -126,7 +126,7 @@ def build_menu_bar(win) -> QMenuBar:
     help_menu.addAction(update_action)
 
     logs_action = QAction("Abrir carpeta de logs", win)
-    logs_action.triggered.connect(win._abrir_carpeta_logs)
+    logs_action.triggered.connect(win.dialogs.open_logs_folder)
     help_menu.addAction(logs_action)
 
     return menu

@@ -46,7 +46,7 @@ class HomeController:
         elif win.history and win.history[0].get("url"):
             self.activate_home_entry(win.history[0])
         else:
-            win._open_command_palette()
+            win.dialogs.open_command_palette()
 
     def _refresh_home_now_playing(self):
         """Sincroniza la tarjeta de portada con el reproductor real."""

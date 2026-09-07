@@ -62,7 +62,7 @@ def open_more_controls_menu(win) -> None:
         else "Modo solo audio (TV)…"
     )
     menu.addAction(texto_audio_only, win.playback.toggle_audio_only_tv)
-    menu.addAction("Ecualizador…", win._open_equalizer_dialog)
+    menu.addAction("Ecualizador…", win.dialogs.open_equalizer_dialog)
 
     menu.addAction("Información técnica…", lambda: show_stream_technical_info(win))
     menu.exec(win.more_btn.mapToGlobal(win.more_btn.rect().bottomLeft()))

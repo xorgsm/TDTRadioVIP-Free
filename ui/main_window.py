@@ -2,36 +2,30 @@
 Ventana principal de TDT & Radio VIP — interfaz moderna.
 Coder By X@R
 """
-import os
 from functools import partial
 from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import (
-    QEasingCurve, QEvent, QPropertyAnimation, QSize, Qt, QTimer,
+    QEasingCurve, QEvent, QPropertyAnimation, Qt, QTimer,
 )
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QApplication, QDialog, QGraphicsOpacityEffect, QHBoxLayout, QListWidget, QMainWindow, QMessageBox,
+    QGraphicsOpacityEffect, QHBoxLayout, QListWidget, QMainWindow, QMessageBox,
     QSizeGrip, QSplitter, QStackedWidget,
     QVBoxLayout, QWidget,
 )
 
 from core import config as cfg
-from core.logger import log_file_path
-from core import channels as tv_channels
 from core import favorites as fav_store
 from core import history as hist_store
 from core import recorder as rec_module
 from core import recording_schedule
 from core import backup as backup_module
-from ui.dialogs import SettingsDialog
-from ui.equalizer_dialog import EqualizerDialog
-from ui.style import build_style
 from ui.visual import set_variant
-from ui import palette
 from ui.channel_menu_controller import ChannelMenuController
 from ui.catalog_load_controller import CatalogLoadController
+from ui.dialog_actions import DialogActionsController
 from ui.home_controller import HomeController
 from ui.catalog_toolbar import build_top_bar
 from ui.home_page_builder import build_home_page
@@ -41,7 +35,6 @@ from ui.player_panel_builder import build_player_panel
 from ui.title_bar import build_title_bar
 from ui.channel_lists_controller import ChannelListsController
 from ui.channel_model import ChannelListModel, ChannelListView
-from ui.command_palette import CommandPalette
 from ui.epg_controller import EpgController
 from ui.fetch_worker import (
     FetchWorker,
@@ -52,11 +45,6 @@ from ui.groups_sidebar import GroupsSidebar
 from ui.library_controller import LibraryController
 from ui.library_sidebar import LibrarySidebar
 from ui.onboarding import OnboardingDialog
-from ui.mosaic_view import MosaicView
-from ui.recurring_dialog import RecurringRecordingsDialog
-from ui.scheduled_recordings_dialog import ScheduledRecordingsDialog
-from ui.stats_dialog import StatsDialog
-from ui.stream_diagnostics_dialog import StreamDiagnosticsDialog
 from ui.tray_controller import TrayReminderController
 from ui.update_check_controller import UpdateCheckController
 from ui.media_keys import (
@@ -74,7 +62,7 @@ from ui.widgets import ChannelDelegate, ChannelGridDelegate, LogoLoader
 # ui.window_chrome para evitar un ciclo). Las constantes viven en
 # ui.nav_sections desde el refactor de main_window.py.
 from ui.nav_sections import (
-    NAV_DOWNLOAD, NAV_FAV, NAV_HIST, NAV_HOME, NAV_RADIO, NAV_TV,
+    NAV_DOWNLOAD, NAV_FAV, NAV_HOME, NAV_RADIO, NAV_TV,
     SECTION_TITLES, SECTION_VARIANTS,
 )
 
@@ -215,6 +203,7 @@ class MainWindow(QMainWindow):
             self.casting = CastController(self)
         self.home = HomeController(self)
         self.channel_menu = ChannelMenuController(self)
+        self.dialogs = DialogActionsController(self)
 
         self._build_ui()
         self._registrar_atajos()
@@ -483,8 +472,7 @@ class MainWindow(QMainWindow):
             return
         self.player.set_equalizer(self.settings.get("equalizer_preamp", 0.0), bandas)
 
-    def _open_equalizer_dialog(self):
-        EqualizerDialog(self).exec()
+    # _open_equalizer_dialog vive ahora en ui.dialog_actions (win.dialogs).
 
     # _active_cast_session / _on_cast_live_clicked / _cast_local_file /
     # _open_cast_picker_and_send viven ahora en
@@ -553,62 +541,8 @@ class MainWindow(QMainWindow):
     # _build_title_bar vive ahora en ui.title_bar.build_title_bar().
     # _build_menu vive ahora en ui.app_menu.build_menu_bar().
 
-    def _open_activation_dialog(self):
-        """
-        Configuración > Activar VIP…: reabre el diálogo de activación para
-        quien entró en modo gratuito. Si la activación es correcta, las
-        funciones VIP se desbloquean en la misma sesión: los accesos a
-        Descargas y la paleta de comandos ya consultan self.activated al
-        vuelo, así que solo hay que actualizar lo que se decidió al
-        construir la ventana (el botón de enviar a TV y esta entrada de menú).
-
-        Import local (no arriba del módulo): esta ruta solo se conecta a un
-        menú cuando not self.es_version_free (ver ui.app_menu.build_menu_bar), así que
-        ui.splash -- y core.license, que importa a su vez -- no hace falta
-        que se carguen nunca en la edición free. Mismo motivo que
-        core.caster/ui.download_panel más arriba (ver __init__).
-        """
-        from ui.splash import SplashDialog
-
-        dialog = SplashDialog(self, show_profile_selector=False)
-        dialog.exec()
-        if dialog.activated and not self.activated:
-            self.activated = True
-            self.cast_btn.setVisible(True)
-            self.activate_vip_action.setVisible(False)
-            self.statusBar().showMessage("Funciones VIP activadas. ¡Gracias!", 6000)
-
-    def _open_stream_diagnostics(self):
-        dialog = StreamDiagnosticsDialog(self.tv_channels_data, self.radio_stations_data, self)
-        dialog.exec()
-        self.home.refresh_home_health()
-        if dialog.catalog_changed and not self._is_closing:
-            self.catalog.load_tv_channels()
-            self.catalog.load_radio_stations()
-
-    def _open_command_palette(self):
-        """
-        Búsqueda global (Ctrl+K / menú Archivo). Las "acciones rápidas" se
-        arman aquí, no dentro de CommandPalette, para que ese módulo no
-        tenga que importar NAV_HOME/NAV_TV/etc. de este archivo (crearía un
-        import circular, ya que este archivo importa CommandPalette).
-        """
-        acciones = [
-            ("Preferencias…", self._open_settings),
-            ("Ir a Inicio", lambda: self.nav_group.button(NAV_HOME).click()),
-            ("Ir a Televisión", lambda: self.nav_group.button(NAV_TV).click()),
-            ("Ir a Radio", lambda: self.nav_group.button(NAV_RADIO).click()),
-            ("Ir a Favoritos", lambda: self.nav_group.button(NAV_FAV).click()),
-            ("Ir a Historial", lambda: self.nav_group.button(NAV_HIST).click()),
-            ("Añadir canal o emisora…", self.library.open_add_entry_dialog),
-            ("Importar lista M3U…", self.library.open_import_playlist_dialog),
-            ("Gestionar canales personalizados…", lambda: self.library.open_manage_channels_dialog()),
-        ]
-        if self.activated and not self.es_version_free:
-            acciones.append(("Ir a Descargas", lambda: self.nav_group.button(NAV_DOWNLOAD).click()))
-
-        dialog = CommandPalette(self, acciones)
-        dialog.show_centered()
+    # _open_activation_dialog / _open_stream_diagnostics / _open_command_palette
+    # viven ahora en ui.dialog_actions (win.dialogs).
 
     def eventFilter(self, obj, event):
         """
@@ -799,44 +733,8 @@ class MainWindow(QMainWindow):
     # _open_epg_dialog / _tune_to_tvg_id / _load_epg / _on_epg_loaded viven
     # ahora en ui.epg_controller.EpgController (self.epg).
 
-    def _open_recurring_dialog(self):
-        RecurringRecordingsDialog(self, self.tv_channels_data).exec()
-
-    def _open_scheduled_recordings_dialog(self):
-        ScheduledRecordingsDialog(self).exec()
-
-    def _open_mosaic_view(self):
-        if not self.tv_channels_data:
-            QMessageBox.information(
-                self, "Multivista", "Espera a que carguen los canales de TV."
-            )
-            return
-
-        # La multivista abre hasta 4 instancias de VLC en paralelo (ver
-        # ui/mosaic_view.py) -- sumadas a la del reproductor principal, son
-        # 5 streams compitiendo a la vez por el dispositivo de audio, que en
-        # Windows es lo que dejaba mudo al canal principal al cerrar la
-        # multivista (seguía "reproduciendo" pero sin sonido, y hacía falta
-        # reiniciar la app). Se para del todo mientras el diálogo está
-        # abierto -- no se ve de todas formas, tapa la ventana entera -- y
-        # se retoma desde cero (media_player limpio, ver VLCPlayer.play) al
-        # cerrarlo.
-        reanudar = None
-        if self.current_url:
-            reanudar = (
-                self.current_type, self.current_name, self.current_url,
-                self.current_tvg_id, self.current_logo,
-            )
-            self.player.stop()
-            self.equalizer.stop()
-
-        MosaicView(self, self.tv_channels_data).exec()
-
-        if reanudar is not None:
-            self.playback.play(*reanudar)
-
-    def _open_stats_dialog(self):
-        StatsDialog(self).exec()
+    # _open_recurring_dialog / _open_scheduled_recordings_dialog / _open_mosaic_view /
+    # _open_stats_dialog viven ahora en ui.dialog_actions (win.dialogs).
 
     def _run_automatic_backup(self):
         if self._is_closing:
@@ -913,113 +811,9 @@ class MainWindow(QMainWindow):
 
     # ---------- Configuración ----------
 
-    def _open_settings(self):
-        old_tv_url = self.settings.get("tv_playlist_url") or tv_channels.playlist_url_for(
-            self.settings.get("tv_country_code", "ES")
-        )
-        old_radio_country = self.settings.get("radio_country_code", "ES")
-        old_accent = self.settings.get("accent_color", palette.ACCENT)
-        old_theme = self.settings.get("theme_mode", "dark")
-        old_card_size = int(self.settings.get("catalog_card_size", 168))
-        old_profile = self.settings.get("active_profile", "Default")
-        dialog = SettingsDialog(self.settings, self)
-        if dialog.exec() == QDialog.Accepted:
-            new_settings = dialog.get_settings()
-            if not cfg.save_settings(new_settings):
-                QMessageBox.warning(
-                    self,
-                    "No se pudieron guardar los ajustes",
-                    "No se pudieron guardar los ajustes. Inténtalo de nuevo.",
-                )
-                return
-            self.settings = new_settings
+    # _open_settings vive ahora en ui.dialog_actions.DialogActionsController.open_settings (win.dialogs).
 
-            new_profile = self.settings.get("active_profile", "Default")
-            if new_profile != old_profile:
-                QMessageBox.information(
-                    self, "Perfil cambiado",
-                    f"Perfil activo: {new_profile}.\n\n"
-                    "Cierra y vuelve a abrir la aplicación para que se aplique del todo."
-                )
-            self.recordings_dir = self.settings.get("recordings_dir") or self.downloads_dir
-            if not self.recorder.is_recording:
-                self.recorder = rec_module.Recorder(self.recordings_dir)
-                self.recordings_dir = str(self.recorder.output_dir)
-            if self.settings.get("epg_url"):
-                self.epg.load()
-
-            new_accent = self.settings.get("accent_color", palette.ACCENT)
-            new_theme = self.settings.get("theme_mode", "dark")
-            if new_accent != old_accent or new_theme != old_theme:
-                app = QApplication.instance()
-                if app is not None:
-                    app.setStyleSheet(build_style(new_accent, new_theme))
-
-            new_card_size = int(self.settings.get("catalog_card_size", 168))
-            if new_card_size != old_card_size:
-                self.grid_delegate.CARD_SIZE = new_card_size
-                if self.tv_view_toggle.isChecked():
-                    grid_size = QSize(new_card_size, new_card_size)
-                    self.tv_list.setGridSize(grid_size)
-                    self.radio_list.setGridSize(grid_size)
-
-            new_tv_url = self.settings.get("tv_playlist_url") or tv_channels.playlist_url_for(
-                self.settings.get("tv_country_code", "ES")
-            )
-            if new_tv_url != old_tv_url:
-                self.catalog.load_tv_channels()
-            if self.settings.get("radio_country_code", "ES") != old_radio_country:
-                self.catalog.load_radio_stations()
-
-    def _abrir_carpeta_logs(self):
-        carpeta = log_file_path().parent
-        carpeta.mkdir(parents=True, exist_ok=True)
-        os.startfile(carpeta)
-
-    def _show_about(self):
-        if self.es_version_free:
-            registro_html = (
-                f"<p style='font-size:13pt; font-weight:700; color:{palette.ACCENT_INFO};'>"
-                "Versión FREE — TV y Radio incluidos, sin Descargas ni Chromecast</p>"
-            )
-        elif self.activated:
-            registro_html = (
-                f"<p style='font-size:13pt; font-weight:700; color:{palette.SUCCESS};'>"
-                "Aplicación registrada</p>"
-            )
-        else:
-            registro_html = (
-                f"<p style='font-size:13pt; font-weight:700; color:{palette.DANGER};'>"
-                "Versión no activada</p>"
-            )
-        QMessageBox.about(
-            self, "Acerca de",
-            f"<b>TDT & Radio VIP</b> — versión {cfg.APP_VERSION}<br>"
-            "Coder By X@R<br><br>"
-            f"{registro_html}"
-            "Reproductor de canales de TDT y radio online gratuitos.<br>"
-            "Fuentes: iptv-org (TV) y Radio-Browser (radio).<br><br>"
-            "La disponibilidad y calidad de los streams depende de terceros ajenos a esta aplicación.<br><br>"
-            "<table width='100%' cellpadding='12' cellspacing='0' bgcolor='#1b2a41' "
-            "style='border:1px solid #c9a227; border-radius:10px;'>"
-            "<tr><td>"
-            "<b style='color:#c9a227; font-size:12pt;'>TDTChannels</b><br>"
-            "Proporciona listas oficiales y legales de television terrestre en Espana "
-            "en formato M3U y M3U8.<br>"
-            f"<a href='https://www.tdtchannels.com/lists/tv.m3u8' style='color:{palette.ACCENT_INFO};'>"
-            "https://www.tdtchannels.com/lists/tv.m3u8</a>"
-            "</td></tr></table><br>"
-            "<hr>"
-            f"<b style='color:{palette.ACCENT};'>&#10084; Un Abrazo grande a mi hijo Hugo Moreno &#161;ERES UN CAMPE&#211;N! &#10084;</b><br>"
-            f"<b style='color:{palette.ACCENT};'>&#10084; Besitos a Evelyn Llamas &#10084;</b><br>"
-            "Saludos a mi amigo Paco Blanco.<br>"
-            "Viva La Guardia Civil — SANCHEZ CABRON:<br>"
-            "<b>¡España Campeona del Mundo! "
-            "<img src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB4AAAAUCAIAAAAVyRqTAAAALUlEQVR4nGNcJSrNQBvARCNzR43GBIwf99PK6KEZIKNGjxo9YEYzjhaqw8FoABs0A4rK4LUlAAAAAElFTkSuQmCC' width='24' height='16'> "
-            "&#127942; &#128170; ¡OLÉ, LA UCO!</b><br><br>"
-            "Ceuta y Melilla Españolas siempre! Ole Mi Juanito Gordito Y Aitor Super CARS! Edu The Punicher . "
-            "<img src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB4AAAAUCAIAAAAVyRqTAAAALUlEQVR4nGNcJSrNQBvARCNzR43GBIwf99PK6KEZIKNGjxo9YEYzjhaqw8FoABs0A4rK4LUlAAAAAElFTkSuQmCC' width='24' height='16'>"
-        )
+    # _abrir_carpeta_logs / _show_about viven ahora en ui.dialog_actions.
 
     def closeEvent(self, event):
         if self._is_closing:

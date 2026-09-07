@@ -130,7 +130,7 @@ def build_home_page(win) -> QScrollArea:
     health_layout.addLayout(health_text, 1)
     health_btn = QPushButton("Ver diagnóstico")
     set_variant(health_btn, "secondary")
-    health_btn.clicked.connect(win._open_stream_diagnostics)
+    health_btn.clicked.connect(win.dialogs.open_stream_diagnostics)
     health_layout.addWidget(health_btn)
 
     # ---- Ahora en antena (qué está echando cada canal, vía EPG) ----
