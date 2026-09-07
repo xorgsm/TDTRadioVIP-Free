@@ -12,11 +12,11 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QDialog, QFrame,
+    QApplication, QDialog, QFrame,
     QGraphicsOpacityEffect, QHBoxLayout, QLabel,
-    QLineEdit, QListWidget, QMainWindow, QMenu, QMessageBox,
+    QListWidget, QMainWindow, QMenu, QMessageBox,
     QPushButton, QSizeGrip, QSizePolicy, QSlider, QSplitter, QStackedWidget,
-    QToolButton, QVBoxLayout, QWidget,
+    QVBoxLayout, QWidget,
 )
 
 from ui import icons as app_icons
@@ -37,6 +37,7 @@ from ui import palette
 from ui.channel_menu_controller import ChannelMenuController
 from ui.catalog_load_controller import CatalogLoadController
 from ui.home_controller import HomeController
+from ui.catalog_toolbar import build_top_bar
 from ui.home_page_builder import build_home_page
 from ui.nav_rail import build_nav_rail, on_groups_sidebar_changed, open_favorites_folder
 from ui.title_bar import build_title_bar
@@ -331,7 +332,7 @@ class MainWindow(QMainWindow):
         content = QVBoxLayout()
         content.setContentsMargins(16, 18, 12, 16)
         content.setSpacing(16)
-        content.addLayout(self._build_top_bar())
+        content.addLayout(build_top_bar(self))
         content.addWidget(self._build_content_stack(), stretch=1)
 
         # Se aplica después de crear las listas: el botón vive en la barra
@@ -395,185 +396,9 @@ class MainWindow(QMainWindow):
     # _build_nav_rail / _toggle_library_sidebar / _open_favorites_folder /
     # _on_groups_sidebar_changed viven ahora en ui.nav_rail.
 
-    def _build_top_bar(self) -> QVBoxLayout:
-        # Dos filas: la primera da contexto a la sección y la segunda se
-        # dedica enteramente a explorar. Es la misma jerarquía que el
-        # lateral de Pencil y evita que el buscador pierda anchura ante los
-        # filtros en ventanas normales.
-        bar = QVBoxLayout()
-        bar.setSpacing(10)
-        title_row = QHBoxLayout()
-        title_row.setSpacing(10)
-        filters_row = QVBoxLayout()
-        filters_row.setSpacing(8)
-        filter_options_row = QHBoxLayout()
-        filter_options_row.setSpacing(8)
+    # _build_top_bar / _on_catalog_sort_changed / _toggle_tv_grid_view
+    # viven ahora en ui.catalog_toolbar.
 
-        self.section_title = QLabel(SECTION_TITLES[NAV_HOME])
-        self.section_title.setObjectName("sectionTitle")
-        # Sin mínimo protegido, un QHBoxLayout bajo presión de espacio lo
-        # encoge a él antes que a group_filter/search_box (que sí tienen
-        # min/max explícitos) -- por eso "Televisión" salía cortado en
-        # ventanas estrechas. 110px cubre el título más largo ("Televisión")
-        # con el tamaño de fuente actual; si aun así falta sitio, se elide
-        # con "…" en vez de recortarse sin avisar.
-        self.section_title.setMinimumWidth(90)
-        self.section_title.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-        title_row.addWidget(self.section_title)
-
-        self.catalog_count_label = QLabel()
-        self.catalog_count_label.setObjectName("catalogCount")
-        self.catalog_count_label.setMaximumWidth(110)
-        self.catalog_count_label.hide()
-        title_row.addWidget(self.catalog_count_label)
-        title_row.addStretch(1)
-
-        self.epg_btn = QPushButton("Guía")
-        self.epg_btn.setToolTip("Ver parrilla de programación")
-        self.epg_btn.clicked.connect(self.epg.open_dialog)
-        title_row.addWidget(self.epg_btn)
-
-        # Alternar lista/cuadrícula para los dos catálogos principales --
-        # visibilidad controlada junto al resto en _on_nav_changed().
-        self.tv_view_toggle = QToolButton()
-        self.tv_view_toggle.setObjectName("catalogViewToggle")
-        self.tv_view_toggle.setCheckable(True)
-        self.tv_view_toggle.setCursor(Qt.PointingHandCursor)
-        self.tv_view_toggle.setIconSize(QSize(18, 18))
-        # Iconos dibujados a mano (ver ui/icons.py), no texto: el carácter
-        # "⊞" que se usaba antes con setText() no está garantizado en Segoe
-        # UI y salía en blanco -- solo se veía el fondo dorado/de acento del
-        # estado :checked, sin ningún icono encima (reportado con captura).
-        self.tv_view_toggle.setIcon(app_icons.icon_grid_view(palette.TEXT_DIM))
-        self.tv_view_toggle.setToolTip("Ver catálogo en cuadrícula")
-        self.tv_view_toggle.setFixedSize(30, 30)
-        self.tv_view_toggle.toggled.connect(self._toggle_tv_grid_view)
-        title_row.addWidget(self.tv_view_toggle)
-
-        # Filtro por estado de salud del stream (TV y Radio). Filtra con los
-        # resultados ya guardados del diagnóstico (core/stream_health_store),
-        # sin tocar la red: elegir una opción es instantáneo. El userData de
-        # cada opción es la clave que entiende matches_health_filter().
-        self.health_filter = QComboBox()
-        self.health_filter.setObjectName("groupFilter")
-        for etiqueta, clave in (
-            ("Estado: todos", "all"),
-            ("Estables", "stable"),
-            ("Con incidencias", "issues"),
-            ("Diagnóstico antiguo", "stale"),
-            ("Sin diagnosticar", "unchecked"),
-        ):
-            self.health_filter.addItem(etiqueta, clave)
-        self.health_filter.setToolTip(
-            "Filtrar por el último diagnóstico guardado "
-            "(Archivo > Diagnosticar canales y emisoras…)"
-        )
-        self.health_filter.currentIndexChanged.connect(self.lists.filter_current_list)
-        self.health_filter.setMinimumWidth(88)
-        self.health_filter.setMaximumWidth(140)
-        filter_options_row.addWidget(self.health_filter)
-
-        self.group_filter = QComboBox()
-        self.group_filter.setObjectName("groupFilter")
-        self.group_filter.addItem("Todas las categorías")
-        self.group_filter.currentTextChanged.connect(self.lists.filter_current_list)
-        # Antes con setFixedWidth(200): a la anchura mínima de ventana que
-        # permite la app (900px), el título + 200 + 240 del buscador no
-        # cabían en la columna de contenido, y al ser anchos fijos Qt no
-        # podía encogerlos — se salían del panel sin más, cortando la
-        # esquina redondeada del buscador. Con mínimo/máximo, encogen antes
-        # de desbordar.
-        self.group_filter.setMinimumWidth(100)
-        self.group_filter.setMaximumWidth(175)
-        filter_options_row.addWidget(self.group_filter)
-
-        self.catalog_sort = QComboBox()
-        self.catalog_sort.setObjectName("groupFilter")
-        self.catalog_sort.addItem("Orden original", "source")
-        self.catalog_sort.addItem("Nombre A–Z", "name")
-        self.catalog_sort.addItem("Favoritos primero", "favorites")
-        self.catalog_sort.setToolTip("Ordenar el catálogo")
-        self.catalog_sort.setMinimumWidth(98)
-        self.catalog_sort.setMaximumWidth(140)
-        self.catalog_sort.currentIndexChanged.connect(self._on_catalog_sort_changed)
-        filter_options_row.addWidget(self.catalog_sort)
-
-        self.search_box = QLineEdit()
-        self.search_box.setObjectName("searchBox")
-        self.search_box.setPlaceholderText("Buscar canal o emisora…")
-        self.search_box.setMinimumWidth(100)
-        self.search_box.setMaximumWidth(16777215)
-        # Antirrebote: filtrar en cada tecla (aunque cada pasada ya vaya
-        # protegida con setUpdatesEnabled, ver ChannelListsController.
-        # filter_current_list) sigue siendo trabajo de más si el usuario
-        # escribe varias letras seguidas rápido -- con esto se espera a
-        # que pare de teclear 150ms antes de filtrar, sin cambiar nada
-        # para quien escribe despacio (nunca se nota el retraso).
-        self._search_debounce = QTimer(self)
-        self._search_debounce.setSingleShot(True)
-        self._search_debounce.setInterval(150)
-        self._search_debounce.timeout.connect(self.lists.filter_current_list)
-        self.search_box.textChanged.connect(lambda _texto: self._search_debounce.start())
-        # En la captura, los cuatro controles en una sola fila se cortaban
-        # al reducir el catálogo. La búsqueda va en su propia fila y los
-        # filtros debajo; las tres opciones inferiores ya caben incluso en
-        # el ancho mínimo del panel central.
-        filters_row.addWidget(self.search_box)
-        filters_row.addLayout(filter_options_row)
-
-        bar.addLayout(title_row)
-        bar.addLayout(filters_row)
-        return bar
-
-    def _on_catalog_sort_changed(self):
-        current = self.stack.currentWidget() if hasattr(self, "stack") else None
-        if current not in (getattr(self, "tv_list", None), getattr(self, "radio_list", None)):
-            return
-        kind = "tv" if current is self.tv_list else "radio"
-        self.settings[f"catalog_sort_{kind}"] = self.catalog_sort.currentData() or "source"
-        cfg.save_settings(self.settings)
-        self.lists.sort_catalog(current)
-
-    def _toggle_tv_grid_view(self, checked: bool):
-        """
-        Alterna TV y Radio entre filas y cuadrícula de tarjetas. Favoritos
-        e historial conservan el modo lista porque contienen tipos mezclados
-        y, en el caso de favoritos, admiten reordenación mediante arrastre.
-        """
-        for catalog in (self.tv_list, self.radio_list):
-            if checked:
-                catalog.setItemDelegate(self.grid_delegate)
-                catalog.setViewMode(QListWidget.IconMode)
-                catalog.setFlow(QListWidget.LeftToRight)
-                catalog.setResizeMode(QListWidget.Adjust)
-                catalog.setMovement(QListWidget.Static)
-                catalog.setSpacing(4)
-                catalog.setGridSize(QSize(
-                    ChannelGridDelegate.CARD_SIZE,
-                    ChannelGridDelegate.CARD_SIZE,
-                ))
-            else:
-                catalog.setItemDelegate(self.delegate)
-                catalog.setViewMode(QListWidget.ListMode)
-                catalog.setFlow(QListWidget.TopToBottom)
-                catalog.setMovement(QListWidget.Static)
-                catalog.setSpacing(0)
-                catalog.setGridSize(QSize())
-
-        if checked:
-            # BG_ROOT (oscuro) cuando está marcado, porque :checked pone de
-            # fondo el color de acento claro -- mismo criterio que ya usan
-            # los botones del riel de navegación (ver nav_icon_builders).
-            self.tv_view_toggle.setIcon(app_icons.icon_list_view(palette.BG_ROOT))
-            self.tv_view_toggle.setToolTip("Ver catálogo en lista")
-        else:
-            self.tv_view_toggle.setIcon(app_icons.icon_grid_view(palette.TEXT_DIM))
-            self.tv_view_toggle.setToolTip("Ver catálogo en cuadrícula")
-
-        self.settings["catalog_grid_view"] = bool(checked)
-        cfg.save_settings(self.settings)
-        self.tv_list.viewport().update()
-        self.radio_list.viewport().update()
 
     def _build_content_stack(self) -> QStackedWidget:
         self.stack = QStackedWidget()
