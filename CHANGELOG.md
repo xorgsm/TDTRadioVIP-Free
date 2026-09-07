@@ -2,6 +2,14 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [7.6.5.1] — 2026-09-07
+
+### Performance
+- La guía EPG descargada (miles de canales de la fuente pública, aunque el
+  usuario solo tenga unos pocos) se recorta en memoria a los canales que
+  existen en la lista del usuario, en vez de mantener la guía nacional
+  completa residente mientras la app está abierta.
+
 ## [7.6.5.0] — 2026-09-05
 
 ### Performance
