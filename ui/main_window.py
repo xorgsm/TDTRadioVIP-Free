@@ -3,6 +3,7 @@ Ventana principal de TDT & Radio VIP — interfaz moderna.
 Coder By X@R
 """
 import os
+from functools import partial
 from pathlib import Path
 from typing import Optional
 
@@ -11,7 +12,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QApplication, QButtonGroup, QComboBox, QDialog, QFrame,
+    QApplication, QComboBox, QDialog, QFrame,
     QGraphicsOpacityEffect, QHBoxLayout, QLabel,
     QLineEdit, QListWidget, QMainWindow, QMenu, QMessageBox,
     QPushButton, QSizeGrip, QSizePolicy, QSlider, QSplitter, QStackedWidget,
@@ -37,6 +38,7 @@ from ui.channel_menu_controller import ChannelMenuController
 from ui.catalog_load_controller import CatalogLoadController
 from ui.home_controller import HomeController
 from ui.home_page_builder import build_home_page
+from ui.nav_rail import build_nav_rail, on_groups_sidebar_changed, open_favorites_folder
 from ui.title_bar import build_title_bar
 from ui.channel_lists_controller import ChannelListsController
 from ui.channel_model import ChannelListModel, ChannelListView
@@ -75,7 +77,7 @@ from ui.widgets import ChannelDelegate, ChannelGridDelegate, LogoLoader
 # ui.nav_sections desde el refactor de main_window.py.
 from ui.nav_sections import (
     NAV_DOWNLOAD, NAV_FAV, NAV_HIST, NAV_HOME, NAV_RADIO, NAV_TV,
-    NAV_RAIL_WIDTH, SECTION_COLORS, SECTION_TITLES, SECTION_VARIANTS,
+    SECTION_TITLES, SECTION_VARIANTS,
 )
 
 DEFAULT_DOWNLOADS_DIRNAME = "TDT Radio VIP"
@@ -102,7 +104,7 @@ class MainWindow(QMainWindow):
         self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         # El LibrarySidebar (Recientes/Playlists) arranca OCULTO a propósito
-        # (ver _build_nav_rail/_toggle_library_sidebar): con él visible por
+        # (ver ui.nav_rail.build_nav_rail/toggle_library_sidebar): con él visible por
         # defecto la ventana necesitaba 210px de más, y en pantallas más
         # pequeñas la app se abría demasiado grande y con la barra de
         # controles y la barra superior apretadas. Quien lo quiera, lo
@@ -298,7 +300,7 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        self.nav_rail = self._build_nav_rail()
+        self.nav_rail = build_nav_rail(self)
         root.addWidget(self.nav_rail)
 
         # Sidebar de biblioteca (Recientes + Playlists = carpetas de
@@ -306,7 +308,7 @@ class MainWindow(QMainWindow):
         # iconos y el contenido principal, colapsable con el botón de
         # abajo del todo en el riel. No sustituye a las pestañas de
         # Favoritos/Historial -- es un atajo hacia ellas.
-        self.library_sidebar = LibrarySidebar(self, self._open_favorites_folder)
+        self.library_sidebar = LibrarySidebar(self, partial(open_favorites_folder, self))
         self.library_sidebar.setVisible(False)
         root.addWidget(self.library_sidebar)
         # Fondo vacío del sidebar (y el hueco bajo las entradas de
@@ -322,7 +324,7 @@ class MainWindow(QMainWindow):
         # mismo patrón que LibrarySidebar arriba, pero solo tiene sentido
         # durante la sección de Televisión: su visibilidad se controla en
         # _on_nav_changed(), no con un botón propio en el riel.
-        self.groups_sidebar = GroupsSidebar(self._on_groups_sidebar_changed, self.channel_menu.delete_tv_groups)
+        self.groups_sidebar = GroupsSidebar(partial(on_groups_sidebar_changed, self), self.channel_menu.delete_tv_groups)
         self.groups_sidebar.setVisible(False)
         root.addWidget(self.groups_sidebar)
 
@@ -336,8 +338,8 @@ class MainWindow(QMainWindow):
         # superior, que se construye antes que el QStackedWidget.
         self.tv_view_toggle.setChecked(bool(self.settings.get("catalog_grid_view", False)))
 
-        # setChecked(True) sobre el botón de Inicio (más arriba, en
-        # _build_nav_rail) no dispara idClicked por sí solo — solo lo hace
+        # setChecked(True) sobre el botón de Inicio (ui.nav_rail.build_nav_rail)
+        # no dispara idClicked por sí solo — solo lo hace
         # un clic real del usuario. Sin esto, la portada se abriría vacía
         # hasta que el usuario cambiara de sección y volviera a Inicio.
         self._on_nav_changed(NAV_HOME)
@@ -390,126 +392,8 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Listo.")
         self.player.set_volume(self.volume_slider.value())
 
-    def _build_nav_rail(self) -> QWidget:
-        rail = QWidget()
-        rail.setObjectName("navRail")
-        # Pensado como una columna de catálogo legible, no un riel de
-        # iconos crípticos. Los textos hacen que las áreas sean reconocibles
-        # de un vistazo y siguen conservando los iconos como anclas visuales.
-        rail.setFixedWidth(NAV_RAIL_WIDTH)
-        layout = QVBoxLayout(rail)
-        layout.setContentsMargins(12, 24, 12, 14)
-        layout.setSpacing(5)
-
-        # La marca y la versión ya no se repiten aquí -- viven una sola vez,
-        # más grandes, en la barra de título (ui.title_bar.build_title_bar,
-        # titleBrand/titleVersion). EXPLORAR pasa a ser lo primero que se ve del riel.
-        nav_caption = QLabel("EXPLORAR")
-        nav_caption.setObjectName("navCaption")
-        layout.addWidget(nav_caption)
-
-        self.nav_group = QButtonGroup(self)
-        self.nav_group.setExclusive(True)
-
-        # Cada icono conserva el color de su sección como señal secundaria;
-        # el estado activo usa una superficie común para no convertir toda
-        # la navegación en un bloque de color distinto en cada pantalla.
-        nav_icon_builders = {
-            NAV_HOME: (app_icons.icon_home, SECTION_COLORS[NAV_HOME]),
-            NAV_TV: (app_icons.icon_tv, SECTION_COLORS[NAV_TV]),
-            NAV_RADIO: (app_icons.icon_radio, SECTION_COLORS[NAV_RADIO]),
-            NAV_FAV: (app_icons.icon_favorite, SECTION_COLORS[NAV_FAV]),
-            NAV_HIST: (app_icons.icon_history, SECTION_COLORS[NAV_HIST]),
-            NAV_DOWNLOAD: (app_icons.icon_download, SECTION_COLORS[NAV_DOWNLOAD]),
-        }
-        nav_defs = [
-            (NAV_HOME, "Inicio"),
-            (NAV_TV, "Televisión"),
-            (NAV_RADIO, "Radio"),
-            (NAV_FAV, "Favoritos"),
-            (NAV_HIST, "Historial"),
-        ]
-        # Nunca se construye en la versión free -- no hay import de
-        # ui.download_panel que lo respalde (ver comentario junto a
-        # self.download_panel más arriba), así que ni siquiera puede
-        # activarse en tiempo de ejecución como en la edición con licencia.
-        if not self.es_version_free:
-            nav_defs.append((NAV_DOWNLOAD, "Descargas"))
-        for nav_id, tooltip in nav_defs:
-            btn = QToolButton()
-            btn.setObjectName("navButton")
-            set_variant(btn, SECTION_VARIANTS[nav_id])
-            btn.setToolTip(tooltip)
-            btn.setText(tooltip)
-            btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-            btn.setCheckable(True)
-            btn.setCursor(Qt.PointingHandCursor)
-            builder, inactive_color = nav_icon_builders[nav_id]
-            btn.setIconSize(QSize(22, 22))
-            btn.setIcon(builder(inactive_color, size=24))
-            btn.toggled.connect(
-                lambda _checked, b=btn, f=builder, c=inactive_color: b.setIcon(
-                    f(c, size=24)
-                )
-            )
-            self.nav_group.addButton(btn, nav_id)
-            layout.addWidget(btn)
-            # El botón de descargas solo aparece con licencia activada de
-            # verdad. En la versión free ni siquiera se construye (ver
-            # nav_defs más arriba), así que este condicional solo puede
-            # afectar a la edición con licencia sin activar todavía.
-            if nav_id == NAV_DOWNLOAD and not self.activated:
-                btn.setVisible(False)
-
-        self.nav_group.button(NAV_HOME).setChecked(True)
-        self.nav_group.idClicked.connect(self._on_nav_changed)
-
-        layout.addStretch(1)
-
-        self.library_toggle_btn = QToolButton()
-        self.library_toggle_btn.setObjectName("navButton")
-        self.library_toggle_btn.setToolTip("Mostrar/ocultar biblioteca")
-        self.library_toggle_btn.setText("Biblioteca")
-        self.library_toggle_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.library_toggle_btn.setCheckable(True)
-        self.library_toggle_btn.setChecked(False)
-        self.library_toggle_btn.setCursor(Qt.PointingHandCursor)
-        self.library_toggle_btn.setIconSize(QSize(26, 26))
-        self.library_toggle_btn.setIcon(app_icons.icon_library(palette.TEXT_MUTED))
-        self.library_toggle_btn.toggled.connect(self._toggle_library_sidebar)
-        layout.addWidget(self.library_toggle_btn)
-
-        return rail
-
-    def _toggle_library_sidebar(self, visible: bool):
-        self.library_sidebar.setVisible(visible)
-        self.library_toggle_btn.setIcon(
-            app_icons.icon_library(palette.ACCENT if visible else palette.TEXT_MUTED)
-        )
-
-    def _open_favorites_folder(self, folder):
-        """
-        Salta a la pestaña de Favoritos y, si se indica una carpeta, la deja
-        seleccionada en el filtro -- llamado desde el panel de biblioteca al
-        pinchar una "playlist". folder=None significa "todos los favoritos,
-        sin filtrar por carpeta".
-        """
-        self.nav_group.button(NAV_FAV).click()
-        if folder:
-            idx = self.group_filter.findText(folder)
-            if idx >= 0:
-                self.group_filter.setCurrentIndex(idx)
-        else:
-            self.group_filter.setCurrentIndex(0)
-
-    def _on_groups_sidebar_changed(self, groups):
-        """
-        Callback de GroupsSidebar cuando cambia la selección de grupos.
-        `groups` es un set de nombres de grupo, o None si no hay filtro
-        (se eligió "(Todos)" o se deseleccionó todo).
-        """
-        self._tv_sidebar_groups = groups
-        self.lists.filter_current_list()
+    # _build_nav_rail / _toggle_library_sidebar / _open_favorites_folder /
+    # _on_groups_sidebar_changed viven ahora en ui.nav_rail.
 
     def _build_top_bar(self) -> QVBoxLayout:
         # Dos filas: la primera da contexto a la sección y la segunda se
