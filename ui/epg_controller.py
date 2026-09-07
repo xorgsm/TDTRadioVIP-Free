@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QMessageBox
 from core import epg as epg_module
 from ui.epg_dialog import EpgDialog
 from ui.fetch_worker import FetchWorker
+from ui.nav_sections import NAV_TV
 
 
 class EpgController:
@@ -109,17 +110,10 @@ class EpgController:
         return entradas
 
     def tune_to_tvg_id(self, tvg_id: str):
-        # Import tardío (no a nivel de módulo): NAV_TV vive en
-        # ui.main_window, que es quien construye este controlador -- un
-        # import normal aquí arriba crearía un ciclo. En tiempo de
-        # ejecución (el usuario eligiendo algo en la guía) el módulo ya
-        # está totalmente cargado, así que no hay problema real.
-        from ui.main_window import NAV_TV
-
         win = self.win
         for ch in win.tv_channels_data:
             if ch.tvg_id == tvg_id:
                 win.playback.play("tv", ch.name, ch.url, ch.tvg_id, ch.logo)
                 win.nav_group.button(NAV_TV).setChecked(True)
-                win._on_nav_changed(NAV_TV)
+                win.navigation.on_nav_changed(NAV_TV)
                 return

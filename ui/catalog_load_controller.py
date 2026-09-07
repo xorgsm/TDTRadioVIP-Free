@@ -16,6 +16,7 @@ from ui.fetch_worker import FetchWorker
 from core import channels as tv_channels
 from core import radio as radio_stations
 from core.stream_health_store import record_results, select_stale_entries
+from ui.nav_sections import NAV_RADIO, NAV_TV
 from ui.stream_diagnostics_dialog import StreamDiagnosticsWorker
 
 # El diagnóstico automático es solo un "chequeo de salud" oportunista, no
@@ -193,13 +194,6 @@ class CatalogLoadController:
 
     def update_catalog_count(self) -> None:
         """Muestra el total del catálogo solo durante la exploración."""
-        # Import tardío (no a nivel de módulo): NAV_TV/NAV_RADIO viven en
-        # ui.main_window, que es quien construye este controlador -- un
-        # import normal aquí arriba crearía un ciclo. En tiempo de
-        # ejecución (llamado desde la propia ventana ya construida) no hay
-        # problema real, igual que en EpgController.tune_to_tvg_id().
-        from ui.main_window import NAV_RADIO, NAV_TV
-
         win = self.win
         if not hasattr(win, "catalog_count_label"):
             return

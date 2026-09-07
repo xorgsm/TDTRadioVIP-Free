@@ -24,6 +24,7 @@ from PySide6.QtGui import QCursor, QGuiApplication
 
 from ui import icons as app_icons
 from ui import palette
+from ui.nav_sections import NAV_TV
 from ui.style import accent_shades
 
 
@@ -189,12 +190,6 @@ class WindowChrome:
             self.show_fullscreen_overlay()
 
     def exit_player_fullscreen(self):
-        # Import tardío (no a nivel de módulo): NAV_TV vive en
-        # ui.main_window, que a su vez importa este módulo -- un import a
-        # nivel de módulo aquí crearía un ciclo. Mismo patrón que
-        # ui.epg_controller.
-        from ui.main_window import NAV_TV
-
         win = self.win
         win._player_fullscreen = False
 

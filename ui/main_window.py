@@ -7,11 +7,11 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import (
-    QEasingCurve, QEvent, QPropertyAnimation, Qt, QTimer,
+    QEvent, Qt, QTimer,
 )
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QGraphicsOpacityEffect, QHBoxLayout, QListWidget, QMainWindow, QMessageBox,
+    QHBoxLayout, QListWidget, QMainWindow, QMessageBox,
     QSizeGrip, QSplitter, QStackedWidget,
     QVBoxLayout, QWidget,
 )
@@ -22,7 +22,6 @@ from core import history as hist_store
 from core import recorder as rec_module
 from core import recording_schedule
 from core import backup as backup_module
-from ui.visual import set_variant
 from ui.channel_menu_controller import ChannelMenuController
 from ui.catalog_load_controller import CatalogLoadController
 from ui.dialog_actions import DialogActionsController
@@ -30,6 +29,7 @@ from ui.home_controller import HomeController
 from ui.catalog_toolbar import build_top_bar
 from ui.home_page_builder import build_home_page
 from ui.nav_rail import build_nav_rail, on_groups_sidebar_changed, open_favorites_folder
+from ui.navigation_controller import NavigationController
 from ui.now_playing_bar_builder import update_now_playing_bar_compact
 from ui.player_panel_builder import build_player_panel
 from ui.title_bar import build_title_bar
@@ -57,14 +57,7 @@ from ui.taskbar_controls import (
     BTN_NEXT, BTN_PLAY, BTN_PREV, BTN_STOP, BTN_MUTE, TaskbarControls, set_native_window_icon,
 )
 from ui.widgets import ChannelDelegate, ChannelGridDelegate, LogoLoader
-# Reexportadas para no romper `from ui.main_window import NAV_TV` (usado
-# como import tardío por ui.catalog_load_controller, ui.epg_controller y
-# ui.window_chrome para evitar un ciclo). Las constantes viven en
-# ui.nav_sections desde el refactor de main_window.py.
-from ui.nav_sections import (
-    NAV_DOWNLOAD, NAV_FAV, NAV_HOME, NAV_RADIO, NAV_TV,
-    SECTION_TITLES, SECTION_VARIANTS,
-)
+from ui.nav_sections import NAV_HOME
 
 DEFAULT_DOWNLOADS_DIRNAME = "TDT Radio VIP"
 
@@ -155,7 +148,8 @@ class MainWindow(QMainWindow):
         # la EPG.
         self._scheduled_recording_active: Optional[recording_schedule.ScheduledRecording] = None
         # Cast (Chromecast/DLNA) no está incluido en la versión free (ver
-        # _show_about). Los imports de core.caster/core.dlna_caster (y por
+        # ui.dialog_actions.DialogActionsController.show_about). Los imports
+        # de core.caster/core.dlna_caster (y por
         # tanto de pychromecast/zeroconf) se hacen aquí dentro, no arriba del
         # módulo, para que TDTRadioVIP_Free.spec pueda excluir esos paquetes
         # de verdad -- un import a nivel de módulo los habría colado en el
@@ -204,6 +198,7 @@ class MainWindow(QMainWindow):
         self.home = HomeController(self)
         self.channel_menu = ChannelMenuController(self)
         self.dialogs = DialogActionsController(self)
+        self.navigation = NavigationController(self)
 
         self._build_ui()
         self._registrar_atajos()
@@ -310,7 +305,8 @@ class MainWindow(QMainWindow):
         # Panel de grupos/categorías de TV (ver ui/groups_sidebar.py) --
         # mismo patrón que LibrarySidebar arriba, pero solo tiene sentido
         # durante la sección de Televisión: su visibilidad se controla en
-        # _on_nav_changed(), no con un botón propio en el riel.
+        # ui.navigation_controller.NavigationController.on_nav_changed(),
+        # no con un botón propio en el riel.
         self.groups_sidebar = GroupsSidebar(partial(on_groups_sidebar_changed, self), self.channel_menu.delete_tv_groups)
         self.groups_sidebar.setVisible(False)
         root.addWidget(self.groups_sidebar)
@@ -329,7 +325,7 @@ class MainWindow(QMainWindow):
         # no dispara idClicked por sí solo — solo lo hace
         # un clic real del usuario. Sin esto, la portada se abriría vacía
         # hasta que el usuario cambiara de sección y volviera a Inicio.
-        self._on_nav_changed(NAV_HOME)
+        self.navigation.on_nav_changed(NAV_HOME)
 
         self.content_widget = QWidget()
         self.content_widget.setLayout(content)
@@ -625,105 +621,12 @@ class MainWindow(QMainWindow):
                 pass
         return super().nativeEvent(eventType, message)
 
-    def _on_nav_changed(self, nav_id: int):
-        if nav_id == NAV_DOWNLOAD:
-            if self.es_version_free:
-                return
-            self._ensure_download_panel()
-        previous_nav = self._current_nav_id
-        if previous_nav in (NAV_TV, NAV_RADIO):
-            kind = "tv" if previous_nav == NAV_TV else "radio"
-            filters = dict(self.settings.get("catalog_filters") or {})
-            # El filtro de categoría de TV ahora lo lleva GroupsSidebar (panel
-            # lateral), no el desplegable group_filter -- se guarda como una
-            # lista de nombres de grupo (antes era un único string de
-            # group_filter.currentText(), de ahí el nombre de la clave).
-            if previous_nav == NAV_TV and self._tv_sidebar_groups:
-                group_state = sorted(self._tv_sidebar_groups)
-            else:
-                group_state = []
-            filters[kind] = {
-                "search": self.search_box.text(),
-                "group": group_state,
-                "health": self.health_filter.currentData() or "all",
-            }
-            self.settings["catalog_filters"] = filters
-            cfg.save_settings(self.settings)
-
-        self._current_nav_id = nav_id
-        self.stack.setCurrentIndex(nav_id)
-        self.section_title.setText(SECTION_TITLES[nav_id])
-        self.section_title.setStyleSheet("")
-        set_variant(self.section_title, SECTION_VARIANTS[nav_id])
-        self.catalog.update_catalog_count()
-        self.epg_btn.setVisible(nav_id == NAV_TV)
-        self.tv_view_toggle.setVisible(nav_id in (NAV_TV, NAV_RADIO))
-        # group_filter ya no se usa para TV -- lo sustituye groups_sidebar
-        # (panel lateral con contador por grupo). Sigue siendo el filtro de
-        # carpeta en Favoritos.
-        self.group_filter.setVisible(nav_id == NAV_FAV)
-        self.groups_sidebar.setVisible(nav_id == NAV_TV)
-        self.catalog_sort.setVisible(nav_id in (NAV_TV, NAV_RADIO))
-        self.health_filter.setVisible(nav_id in (NAV_TV, NAV_RADIO))
-        if nav_id == NAV_TV:
-            self.lists.refresh_group_filter()
-            sort_key = self.settings.get("catalog_sort_tv", "source")
-            self.catalog_sort.blockSignals(True)
-            self.catalog_sort.setCurrentIndex(max(0, self.catalog_sort.findData(sort_key)))
-            self.catalog_sort.blockSignals(False)
-        elif nav_id == NAV_FAV:
-            self.lists.refresh_folder_filter()
-        elif nav_id == NAV_RADIO:
-            sort_key = self.settings.get("catalog_sort_radio", "source")
-            self.catalog_sort.blockSignals(True)
-            self.catalog_sort.setCurrentIndex(max(0, self.catalog_sort.findData(sort_key)))
-            self.catalog_sort.blockSignals(False)
-        elif nav_id == NAV_HOME:
-            self.home.refresh_home_page()
-        self.search_box.setVisible(nav_id not in (NAV_DOWNLOAD, NAV_HOME))
-        if nav_id in (NAV_TV, NAV_RADIO):
-            kind = "tv" if nav_id == NAV_TV else "radio"
-            state = (self.settings.get("catalog_filters") or {}).get(kind, {})
-            self.search_box.blockSignals(True)
-            self.search_box.setText(state.get("search", ""))
-            self.search_box.blockSignals(False)
-            health_index = self.health_filter.findData(state.get("health", "all"))
-            self.health_filter.blockSignals(True)
-            self.health_filter.setCurrentIndex(max(0, health_index))
-            self.health_filter.blockSignals(False)
-            if nav_id == NAV_TV and state.get("group"):
-                # state["group"] es una lista de nombres de grupo (ver el
-                # guardado más arriba); refresh_group_filter() ya pobló
-                # groups_sidebar justo antes, así que aquí solo hace falta
-                # restaurar qué filas quedan seleccionadas.
-                self._tv_sidebar_groups = set(state["group"])
-                self.groups_sidebar.select_groups(self._tv_sidebar_groups)
-        else:
-            self.search_box.clear()
-        if nav_id not in (NAV_DOWNLOAD, NAV_HOME):
-            self.lists.filter_current_list()
-        if nav_id == NAV_TV:
-            self.lists.load_visible_logos(self.tv_list)
-        elif nav_id == NAV_RADIO:
-            self.lists.load_visible_logos(self.radio_list)
-        elif nav_id == NAV_FAV:
-            self.lists.load_visible_logos(self.fav_list)
-        self._animate_page(self.stack.currentWidget())
+    # _on_nav_changed vive ahora en ui.navigation_controller.NavigationController.on_nav_changed().
 
     # _update_catalog_count vive ahora en
     # ui.catalog_load_controller.CatalogLoadController (self.catalog).
 
-    def _animate_page(self, widget: QWidget):
-        effect = QGraphicsOpacityEffect(widget)
-        widget.setGraphicsEffect(effect)
-        anim = QPropertyAnimation(effect, b"opacity", self)
-        anim.setDuration(220)
-        anim.setStartValue(0.0)
-        anim.setEndValue(1.0)
-        anim.setEasingCurve(QEasingCurve.OutCubic)
-        anim.finished.connect(lambda: widget.setGraphicsEffect(None))
-        anim.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
-        self._fade_anim = anim
+    # _animate_page vive ahora en ui.navigation_controller.NavigationController.animate_page().
 
     # _load_tv_channels / _on_tv_channels_loaded / _load_radio_stations /
     # _on_radio_stations_loaded / _maybe_start_background_diagnostics /

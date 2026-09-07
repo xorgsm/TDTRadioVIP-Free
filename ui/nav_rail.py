@@ -87,7 +87,7 @@ def build_nav_rail(win) -> QWidget:
             btn.setVisible(False)
 
     win.nav_group.button(NAV_HOME).setChecked(True)
-    win.nav_group.idClicked.connect(win._on_nav_changed)
+    win.nav_group.idClicked.connect(win.navigation.on_nav_changed)
 
     layout.addStretch(1)
 
