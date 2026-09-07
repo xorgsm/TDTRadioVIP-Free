@@ -8,8 +8,8 @@ Extraído de ui/main_window.py por el mismo motivo que
 ui.playback_controller.PlaybackController y el resto de controladores —
 ver el docstring de PlaybackController para la explicación completa del
 porqué del patrón (estado en MainWindow, comportamiento aquí). La
-construcción de la página (_build_home_page) sigue en MainWindow: este
-controlador solo refresca/reacciona sobre los widgets ya construidos.
+construcción de la página vive en ui.home_page_builder.build_home_page():
+este controlador solo refresca/reacciona sobre los widgets ya construidos.
 
 Coder By X@R
 """

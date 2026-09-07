@@ -37,7 +37,8 @@ FROZEN_EXPECTED_ATTRS = {
     "_fs_overlay_hide_timer", "_geometria_antes_pip", "_geometria_normal",
     "_home_health_layout", "_home_layout", "_home_now_layout",
     "_home_quick_layout", "_home_secondary_layout", "_is_closing",
-    "_maximize_btn", "_on_nav_changed", "_open_command_palette",
+    "_make_list", "_maximize_btn", "_on_nav_changed", "_open_command_palette",
+    "_open_stream_diagnostics",
     "_pending_reminder_tune", "_pip_compact_visibility", "_pip_mode",
     "_playback_failed", "_playback_token", "_player_fullscreen",
     "_pseudo_maximizado", "_queue", "_reminder_timer",
@@ -49,8 +50,8 @@ FROZEN_EXPECTED_ATTRS = {
     "fav_btn", "fav_list", "favorites", "fullscreen_btn", "group_filter",
     "groups_sidebar", "health_filter", "hist_list", "history", "home",
     "home_fav_empty", "home_fav_list", "home_float_btn",
-    "home_health_summary", "home_now_subtitle", "home_now_title",
-    "home_on_air_carousel", "home_recent_carousel",
+    "home_health_summary", "home_now_card", "home_now_subtitle",
+    "home_now_title", "home_on_air_carousel", "home_recent_carousel",
     "home_recommended_carousel", "home_resume_btn", "library",
     "library_sidebar", "library_toggle_btn", "lists", "logo_loader",
     "menu_bar", "more_btn", "mute_btn", "nav_group", "nav_rail", "now_logo",
@@ -60,7 +61,7 @@ FROZEN_EXPECTED_ATTRS = {
     "record_btn", "recorder", "recordings_dir", "retry_btn", "search_box",
     "seek_back_btn", "seek_fwd_btn", "set_live_badge_visible", "settings",
     "sleep_btn", "stack", "title_bar", "tv_channels_data", "tv_list",
-    "volume_slider",
+    "volume_slider", "window_chrome",
 }
 
 
