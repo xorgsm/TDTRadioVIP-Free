@@ -10,11 +10,22 @@ porqué del patrón (estado en MainWindow, comportamiento aquí).
 
 Coder By X@R
 """
+from PySide6.QtCore import QTimer
+
 from ui.fetch_worker import FetchWorker
 from core import channels as tv_channels
 from core import radio as radio_stations
 from core.stream_health_store import record_results, select_stale_entries
 from ui.stream_diagnostics_dialog import StreamDiagnosticsWorker
+
+# El diagnóstico automático es solo un "chequeo de salud" oportunista, no
+# algo que el usuario esté esperando -- no tiene sentido que compita por CPU
+# con la carga inicial del catálogo y de la guía EPG (ver core/epg.py), que
+# sí se nota en la interfaz. Arranca con menos concurrencia que el diálogo
+# manual "Comprobar catálogo ahora" (12 workers) y con un pequeño retraso
+# tras tener ambas listas, para dejar que el arranque termine primero.
+_AUTO_DIAGNOSTICS_MAX_WORKERS = 3
+_AUTO_DIAGNOSTICS_START_DELAY_MS = 8000
 
 
 class CatalogLoadController:
@@ -112,6 +123,17 @@ class CatalogLoadController:
             or not win.radio_stations_data
         ):
             return
+        # Se marca "started" ya aquí (no dentro de _start_background_diagnostics)
+        # para que una segunda llamada a este método mientras el QTimer todavía
+        # está en cuenta atrás -- p. ej. TV termina de cargar después que
+        # Radio -- no programe un segundo arranque.
+        win._background_diagnostics_started = True
+        QTimer.singleShot(_AUTO_DIAGNOSTICS_START_DELAY_MS, self._start_background_diagnostics)
+
+    def _start_background_diagnostics(self):
+        win = self.win
+        if win._is_closing:
+            return
         entries = [
             {"kind": "tv", "name": channel.name, "url": channel.url}
             for channel in win.tv_channels_data if channel.url
@@ -124,11 +146,9 @@ class CatalogLoadController:
             limit=int(win.settings.get("automatic_stream_diagnostics_limit", 20)),
         )
         if not stale:
-            win._background_diagnostics_started = True
             return
-        win._background_diagnostics_started = True
         win._background_health_results = []
-        worker = StreamDiagnosticsWorker(stale, win)
+        worker = StreamDiagnosticsWorker(stale, win, max_workers=_AUTO_DIAGNOSTICS_MAX_WORKERS)
         worker.result_ready.connect(win._background_health_results.append)
         worker.completed.connect(self._on_background_diagnostics_completed)
         win._background_diagnostics_worker = worker

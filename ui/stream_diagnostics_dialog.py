@@ -21,9 +21,10 @@ class StreamDiagnosticsWorker(QThread):
     progress = Signal(int, int)
     completed = Signal(bool)
 
-    def __init__(self, entries, parent=None):
+    def __init__(self, entries, parent=None, max_workers: int = 12):
         super().__init__(parent)
         self.entries = entries
+        self.max_workers = max_workers
         self._cancel_event = threading.Event()
 
     def cancel(self):
@@ -34,7 +35,7 @@ class StreamDiagnosticsWorker(QThread):
             self.result_ready.emit(result)
             self.progress.emit(completed, total)
 
-        diagnose_catalog(self.entries, report, self._cancel_event)
+        diagnose_catalog(self.entries, report, self._cancel_event, max_workers=self.max_workers)
         self.completed.emit(self._cancel_event.is_set())
 
 
