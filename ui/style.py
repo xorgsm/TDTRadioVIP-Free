@@ -536,8 +536,8 @@ QDialog QPushButton#btn_continuar {{
     # distinción por categoría que sí tienen el icono y el título de
     # sección. "primary" (Favoritos) no está aquí a propósito: para esa
     # sección SÍ es correcto seguir usando el acento del usuario. Estos
-    # valores deben reflejar SECTION_COLORS de ui/main_window.py -- no se
-    # importan desde aquí para evitar un ciclo de imports (main_window ya
+    # valores deben reflejar SECTION_COLORS de ui/nav_sections.py -- no se
+    # importan desde aquí para evitar un ciclo de imports (nav_sections ya
     # importa de este módulo).
     nav_variant_colors = {
         "primary": shades["base"],

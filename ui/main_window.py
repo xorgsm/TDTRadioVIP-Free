@@ -30,7 +30,7 @@ from core import backup as backup_module
 from player.vlc_player import VLCPlayer
 from ui.dialogs import SettingsDialog
 from ui.equalizer_dialog import EqualizerDialog
-from ui.style import ACCENT_PRESETS, build_style
+from ui.style import build_style
 from ui.visual import set_variant
 from ui import palette
 from ui.channel_menu_controller import ChannelMenuController
@@ -68,48 +68,15 @@ from ui.taskbar_controls import (
 )
 from ui.radio_hero import RadioHeroWidget
 from ui.widgets import ChannelDelegate, ChannelGridDelegate, LogoLoader
+# Reexportadas para no romper `from ui.main_window import NAV_TV` (usado
+# como import tardío por ui.catalog_load_controller, ui.epg_controller y
+# ui.window_chrome para evitar un ciclo). Las constantes viven en
+# ui.nav_sections desde el refactor de main_window.py.
+from ui.nav_sections import (
+    NAV_DOWNLOAD, NAV_FAV, NAV_HIST, NAV_HOME, NAV_RADIO, NAV_TV,
+    NAV_RAIL_WIDTH, SECTION_COLORS, SECTION_TITLES, SECTION_VARIANTS,
+)
 
-NAV_HOME, NAV_TV, NAV_RADIO, NAV_FAV, NAV_HIST, NAV_DOWNLOAD = range(6)
-# Ancho del riel lateral (ver _build_nav_rail). Se comparte con
-# _build_title_bar para que el menu (Archivo/Configuracion/Ayuda) arranque
-# alineado con el panel de contenido -- antes quedaba pegado al nombre de
-# la app y no coincidia con el borde de "Inicio" ni con el resto de la
-# ventana.
-NAV_RAIL_WIDTH = 180
-# Títulos cortos a propósito: "Televisión (TDT)" y "Radio online" se
-# comían casi todo el ancho disponible en la barra superior (título +
-# botón Guía + filtro de categoría + buscador en una sola fila), dejando
-# el propio título cortado en ventanas no muy anchas. La aclaración "TDT"
-# y "online" ya la da el icono/tooltip del riel, no hace falta repetirla aquí.
-SECTION_TITLES = {
-    NAV_HOME: "Inicio",
-    NAV_TV: "Televisión",
-    NAV_RADIO: "Radio",
-    NAV_FAV: "Favoritos",
-    NAV_HIST: "Historial",
-    NAV_DOWNLOAD: "Descargas",
-}
-# Mismo color por sección que ya usan los iconos del riel lateral, para
-# poder pintar con él también el título de la barra superior (más
-# acentos de color coherentes con lo que ya existía, no colores nuevos
-# sueltos). Se define aquí, a nivel de módulo, para que tanto
-# _build_nav_rail() como _on_nav_changed() lean del mismo sitio.
-SECTION_COLORS = {
-    NAV_HOME: ACCENT_PRESETS["Verde"],
-    NAV_TV: palette.ACCENT_INFO,
-    NAV_RADIO: palette.ACCENT_CATEGORY_ORANGE,
-    NAV_FAV: palette.ACCENT,
-    NAV_HIST: ACCENT_PRESETS["Violeta"],
-    NAV_DOWNLOAD: ACCENT_PRESETS["Coral"],
-}
-SECTION_VARIANTS = {
-    NAV_HOME: "success",
-    NAV_TV: "tv",
-    NAV_RADIO: "radio",
-    NAV_FAV: "primary",
-    NAV_HIST: "sleep",
-    NAV_DOWNLOAD: "download",
-}
 DEFAULT_DOWNLOADS_DIRNAME = "TDT Radio VIP"
 
 
