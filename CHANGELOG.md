@@ -2,6 +2,19 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [7.6.6.0] — 2026-09-07
+
+### Changed
+- Refactor interno puro, sin cambios de comportamiento observable:
+  `ui/main_window.py` pasaba de 2309 líneas concentrando construcción de
+  UI, navegación, diálogos y ciclo de vida de la app en una única clase.
+  Se divide en 13 fases verificadas en 11 módulos nuevos (constantes de
+  navegación, portada, barra de título, menú, riel de navegación, barra
+  de catálogo, menús del reproductor, barra "Ahora suena", panel del
+  reproductor, diálogos secundarios, cambio de sección y arranque/cierre),
+  siguiendo el patrón de controladores que ya usaba el resto del código.
+  `ui/main_window.py` queda en 605 líneas.
+
 ## [7.6.5.2] — 2026-09-07
 
 ### Fixed
