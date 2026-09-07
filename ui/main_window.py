@@ -12,10 +12,8 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QApplication, QDialog, QFrame,
-    QGraphicsOpacityEffect, QHBoxLayout, QLabel,
-    QListWidget, QMainWindow, QMessageBox,
-    QSizeGrip, QSizePolicy, QSplitter, QStackedWidget,
+    QApplication, QDialog, QGraphicsOpacityEffect, QHBoxLayout, QListWidget, QMainWindow, QMessageBox,
+    QSizeGrip, QSplitter, QStackedWidget,
     QVBoxLayout, QWidget,
 )
 
@@ -27,7 +25,6 @@ from core import history as hist_store
 from core import recorder as rec_module
 from core import recording_schedule
 from core import backup as backup_module
-from player.vlc_player import VLCPlayer
 from ui.dialogs import SettingsDialog
 from ui.equalizer_dialog import EqualizerDialog
 from ui.style import build_style
@@ -39,7 +36,8 @@ from ui.home_controller import HomeController
 from ui.catalog_toolbar import build_top_bar
 from ui.home_page_builder import build_home_page
 from ui.nav_rail import build_nav_rail, on_groups_sidebar_changed, open_favorites_folder
-from ui.now_playing_bar_builder import build_now_playing_bar, update_now_playing_bar_compact
+from ui.now_playing_bar_builder import update_now_playing_bar_compact
+from ui.player_panel_builder import build_player_panel
 from ui.title_bar import build_title_bar
 from ui.channel_lists_controller import ChannelListsController
 from ui.channel_model import ChannelListModel, ChannelListView
@@ -70,7 +68,6 @@ from ui.window_chrome import WindowChrome
 from ui.taskbar_controls import (
     BTN_NEXT, BTN_PLAY, BTN_PREV, BTN_STOP, BTN_MUTE, TaskbarControls, set_native_window_icon,
 )
-from ui.radio_hero import RadioHeroWidget
 from ui.widgets import ChannelDelegate, ChannelGridDelegate, LogoLoader
 # Reexportadas para no romper `from ui.main_window import NAV_TV` (usado
 # como import tardío por ui.catalog_load_controller, ui.epg_controller y
@@ -352,7 +349,7 @@ class MainWindow(QMainWindow):
         # buscador cortado). El splitter no puede arrastrarse más allá.
         self.content_widget.setMinimumWidth(330)
 
-        player_panel = self._build_player_panel()
+        player_panel = build_player_panel(self)
         # La fila de controles ya no crece con el número de funciones: las
         # cinco acciones secundarias (pistas, pantalla completa, PiP,
         # temporizador, cola) que antes tenían un botón circular propio y
@@ -533,98 +530,8 @@ class MainWindow(QMainWindow):
             lst.model().rowsMoved.connect(lambda *_: self.lists.persist_favorites_order())
         return lst
 
-    def _build_player_panel(self) -> QWidget:
-        panel = QWidget()
-        panel.setObjectName("playerPanel")
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(0, 6, 16, 14)
-        layout.setSpacing(10)
+    # _build_player_panel vive ahora en ui.player_panel_builder.build_player_panel().
 
-        # Cabecera propia del área de emisión. En el diseño de Pencil, la
-        # reproducción se entiende como un espacio independiente de la lista
-        # de canales: este rótulo conserva esa jerarquía también al alternar
-        # entre TV, radio o el ecualizador.
-        #
-        # Va en un QWidget (no un QHBoxLayout suelto) para poder
-        # ocultarla/mostrarla de una vez en pantalla completa -- ver
-        # WindowChrome.show_fullscreen_overlay(). live_badge conserva su
-        # propia visibilidad (set_live_badge_visible()) anidada dentro: al
-        # ocultar el contenedor solo se tapa, no se pierde ese estado.
-        self.player_header_bar = QWidget()
-        player_header = QHBoxLayout(self.player_header_bar)
-        player_header.setContentsMargins(8, 2, 8, 4)
-        self.player_context_label = QLabel("AHORA SUENA")
-        self.player_context_label.setObjectName("playerContextLabel")
-        player_header.addWidget(self.player_context_label)
-        player_header.addStretch(1)
-
-        # El punto rojo se mantiene separado del dorado de marca: comunica
-        # que el contenido es una emisión viva, no una alerta de error.
-        self.live_badge = QLabel(
-            '<span style="color:#ef5350;">●</span>&nbsp;&nbsp;EN DIRECTO'
-        )
-        self.live_badge.setObjectName("liveBadge")
-        set_variant(self.live_badge, "danger")
-        self.live_badge.hide()
-        player_header.addWidget(self.live_badge)
-        layout.addWidget(self.player_header_bar)
-
-        self.player_frame = QFrame()
-        self.player_frame.setObjectName("playerFrame")
-        self.player_frame.installEventFilter(self)
-        frame_layout = QVBoxLayout(self.player_frame)
-        frame_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.player_stack = QStackedWidget()
-        # QStackedWidget siempre ajusta a su widget hijo actual al tamaño
-        # completo DEL PROPIO STACK — pero eso no significa que el stack en
-        # sí crezca dentro de frame_layout. Sin esta línea, player_stack se
-        # quedaba con la política Preferred por defecto de Qt y su sizeHint
-        # (dominado por EqualizerWidget.setMinimumHeight(200)); el vídeo
-        # salía correctamente escalado... al tamaño pequeño que Qt le daba
-        # al stack, con el fondo de playerFrame visible alrededor.
-        self.player_stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.player = VLCPlayer()
-        self.player.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.player.error_occurred.connect(self.playback.on_player_error)
-        self.player.end_reached.connect(self.playback.on_player_end_reached)
-        self._apply_saved_equalizer()
-        # "equalizer" es el nombre histórico de este atributo (antes un
-        # EqualizerWidget a pelo); ahora es la vista "Ahora Suena" completa
-        # -- logo de emisora + título en directo cuando el stream lo manda
-        # (ICY) -- que sigue llevando su propio EqualizerWidget dentro como
-        # tira animada. start()/stop()/set_intensity() tienen la misma firma
-        # que antes a propósito, así que playback_controller.py no cambia.
-        self.equalizer = RadioHeroWidget(self.logo_loader)
-        self.player.meta_changed.connect(self.equalizer.set_now_playing)
-        self.player_stack.addWidget(self.player)
-        self.player_stack.addWidget(self.equalizer)
-        frame_layout.addWidget(self.player_stack, stretch=1)
-
-        layout.addWidget(self.player_frame, stretch=1)
-        self.now_playing_bar = build_now_playing_bar(self)
-        layout.addWidget(self.now_playing_bar)
-
-        # Auto-ocultar cabecera/controles en pantalla completa (ajuste
-        # "fullscreen_autohide_ui") -- ver WindowChrome.enter_player_fullscreen
-        # / show_fullscreen_overlay / check_fullscreen_mouse_activity. El
-        # vídeo se pinta en una ventana nativa de libVLC embebida, así que
-        # sus eventos de ratón no llegan a Qt: en vez de un eventFilter se
-        # sondea la posición global del cursor con un QTimer periódico.
-        self._fs_last_cursor_pos = None
-        self._fs_mouse_poll_timer = QTimer(self)
-        self._fs_mouse_poll_timer.setInterval(180)
-        self._fs_mouse_poll_timer.timeout.connect(
-            self.window_chrome.check_fullscreen_mouse_activity
-        )
-        self._fs_overlay_hide_timer = QTimer(self)
-        self._fs_overlay_hide_timer.setSingleShot(True)
-        self._fs_overlay_hide_timer.setInterval(2500)
-        self._fs_overlay_hide_timer.timeout.connect(
-            self.window_chrome.hide_fullscreen_overlay
-        )
-
-        return panel
 
     def set_live_badge_visible(self, visible: bool) -> None:
         """Sincroniza el indicador visual con la emisión actual."""

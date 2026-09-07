@@ -31,7 +31,8 @@ QT_INHERITED_ALLOWLIST = {
 # decisión consciente en el mismo commit que añade/renombra/quita un
 # atributo de MainWindow -- no un efecto secundario silencioso de mover código.
 FROZEN_EXPECTED_ATTRS = {
-    "_abrir_carpeta_logs", "_active_list", "_active_row", "_audio_only_tv",
+    "_abrir_carpeta_logs", "_active_list", "_active_row",
+    "_apply_saved_equalizer", "_audio_only_tv",
     "_auto_skip_count", "_background_diagnostics_started",
     "_background_health_results",
     "_cast_session", "_current_alternate_urls", "_current_nav_id",
@@ -63,11 +64,11 @@ FROZEN_EXPECTED_ATTRS = {
     "home_health_summary", "home_now_card", "home_now_subtitle",
     "home_now_title", "home_on_air_carousel", "home_recent_carousel",
     "home_recommended_carousel", "home_resume_btn", "library",
-    "library_sidebar", "library_toggle_btn", "lists", "logo_loader",
+    "library_sidebar", "library_toggle_btn", "lists", "live_badge", "logo_loader",
     "menu_bar", "more_btn", "mute_btn", "nav_group", "nav_rail", "now_controls_separator",
     "now_logo",
     "now_playing_bar", "now_subtitle", "now_title", "pip_btn", "play_btn",
-    "playback", "player", "player_frame", "player_header_bar",
+    "playback", "player", "player_context_label", "player_frame", "player_header_bar",
     "player_stack", "queue", "queue_btn", "radio_list", "radio_stations_data",
     "record_btn", "recorder", "recordings_dir", "retry_btn", "search_box",
     "section_title", "seek_back_btn", "seek_fwd_btn",
