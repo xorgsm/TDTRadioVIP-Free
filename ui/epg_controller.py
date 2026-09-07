@@ -44,9 +44,9 @@ class EpgController:
         # esta vez en vez de perder datos.
         if win.tv_channels_data:
             claves_propias = {
-                epg_module.channel_key(ch.tvg_id)
+                epg_module.channel_key(getattr(ch, "tvg_id", ""))
                 for ch in win.tv_channels_data
-                if ch.tvg_id
+                if getattr(ch, "tvg_id", "")
             }
             guide = {clave: progs for clave, progs in guide.items() if clave in claves_propias}
         win.epg_guide = guide

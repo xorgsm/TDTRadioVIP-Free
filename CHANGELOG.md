@@ -2,6 +2,19 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [7.6.5.2] — 2026-09-07
+
+### Fixed
+- El recorte de la guía EPG a los canales del usuario (7.6.5.1) rompía si
+  algún canal no tenía `tvg_id`; ahora es tolerante a canales sin ese dato.
+
+### Performance
+- El diagnóstico automático de salud de streams al arrancar pasa de 12 a 3
+  comprobaciones simultáneas y espera 8 segundos tras cargar el catálogo,
+  para no competir por CPU con la carga inicial y la descarga de la guía
+  EPG. El diagnóstico manual ("Comprobar catálogo ahora") sigue igual de
+  rápido.
+
 ## [7.6.5.1] — 2026-09-07
 
 ### Performance

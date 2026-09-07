@@ -1,4 +1,4 @@
-# TDT & Radio VIP Free 7.6.5.1 — Coder By X@R
+# TDT & Radio VIP Free 7.6.5.2 — Coder By X@R
 
 Reproductor de escritorio para Windows que permite ver canales de **TDT
 gratuitos** y escuchar **radio online** desde fuentes públicas: favoritos,
