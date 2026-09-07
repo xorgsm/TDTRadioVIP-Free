@@ -1,4 +1,4 @@
-# TDT & Radio VIP 7.6.5.0
+# TDT & Radio VIP 7.6.5.1
 
 Aplicación de escritorio para Windows construida con Python, PySide6 y VLC.
 Reúne televisión, radio, EPG, podcasts, grabaciones y herramientas multimedia.

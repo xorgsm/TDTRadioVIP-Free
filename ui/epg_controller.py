@@ -33,7 +33,23 @@ class EpgController:
         win = self.win
         if getattr(win, "_is_closing", False):
             return
-        win.epg_guide = guide or {}
+        guide = guide or {}
+        # Guías públicas como EPG_dobleM traen TODOS los canales de España
+        # (miles de claves, cientos de miles de programas) aunque el usuario
+        # solo tenga unos pocos en su lista -- guardar eso entero en
+        # win.epg_guide inflaba la RAM residente muy por encima de lo que la
+        # app llega a usar nunca. Se recorta a los canales que de verdad
+        # están en tv_channels_data; si esa lista aún no se ha poblado (caso
+        # raro, ver el comentario de abajo) se deja la guía completa por
+        # esta vez en vez de perder datos.
+        if win.tv_channels_data:
+            claves_propias = {
+                epg_module.channel_key(ch.tvg_id)
+                for ch in win.tv_channels_data
+                if ch.tvg_id
+            }
+            guide = {clave: progs for clave, progs in guide.items() if clave in claves_propias}
+        win.epg_guide = guide
         win.playback.update_epg_display()
         # La lista de canales de TV normalmente ya se pobló antes de que
         # esta guía terminara de descargarse (_load_tv_channels() se lanza
