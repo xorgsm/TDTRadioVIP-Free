@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import (
-    QEvent, Qt, QTimer,
+    QEvent, Qt,
 )
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
@@ -21,8 +21,8 @@ from core import favorites as fav_store
 from core import history as hist_store
 from core import recorder as rec_module
 from core import recording_schedule
-from core import backup as backup_module
 from ui.channel_menu_controller import ChannelMenuController
+from ui.app_lifecycle import AppLifecycle
 from ui.catalog_load_controller import CatalogLoadController
 from ui.dialog_actions import DialogActionsController
 from ui.home_controller import HomeController
@@ -36,15 +36,9 @@ from ui.title_bar import build_title_bar
 from ui.channel_lists_controller import ChannelListsController
 from ui.channel_model import ChannelListModel, ChannelListView
 from ui.epg_controller import EpgController
-from ui.fetch_worker import (
-    FetchWorker,
-    process_events_during_shutdown,
-    shutdown_workers,
-)
 from ui.groups_sidebar import GroupsSidebar
 from ui.library_controller import LibraryController
 from ui.library_sidebar import LibrarySidebar
-from ui.onboarding import OnboardingDialog
 from ui.tray_controller import TrayReminderController
 from ui.update_check_controller import UpdateCheckController
 from ui.media_keys import (
@@ -199,6 +193,7 @@ class MainWindow(QMainWindow):
         self.channel_menu = ChannelMenuController(self)
         self.dialogs = DialogActionsController(self)
         self.navigation = NavigationController(self)
+        self.lifecycle = AppLifecycle(self)
 
         self._build_ui()
         self._registrar_atajos()
@@ -224,46 +219,15 @@ class MainWindow(QMainWindow):
             self.epg.load()
 
         self.tray.setup()
-        if self.settings.get("automatic_backups_enabled", True):
-            QTimer.singleShot(1500, self._run_automatic_backup)
-        if self.settings.get("resume_last_stream", False):
-            QTimer.singleShot(2200, self._resume_last_stream)
-
-        if not self.player.disponible:
-            # Antes esto reventaba en el arranque con un error críptico. Ahora
-            # la app abre igual (descargas, listas, favoritos siguen usables)
-            # y se explica qué falta.
-            QTimer.singleShot(300, self._avisar_vlc_no_disponible)
-
-        if not self.settings.get("onboarding_shown"):
-            # Con un pequeño retraso, para que se vea primero la ventana
-            # principal ya construida detrás en vez de un diálogo modal
-            # tapándolo todo desde el primer frame.
-            QTimer.singleShot(500, self._mostrar_bienvenida)
-
-    def _mostrar_bienvenida(self):
-        OnboardingDialog(self).exec()
-        self.settings["onboarding_shown"] = True
-        if not cfg.save_settings(self.settings):
-            QMessageBox.warning(
-                self,
-                "No se pudieron guardar los ajustes",
-                "No se pudieron guardar los ajustes. Inténtalo de nuevo.",
-            )
+        self.lifecycle.schedule_startup_tasks()
 
     # _setup_tray_and_reminders / _check_epg_reminders / _check_scheduled_recordings /
     # _check_scheduled_recording_alive / _on_tray_message_clicked viven ahora en
     # ui.tray_controller.TrayReminderController (self.tray).
 
-    def _avisar_vlc_no_disponible(self):
-        QMessageBox.warning(
-            self,
-            "Motor de vídeo no disponible",
-            f"{self.player.motivo_no_disponible()}\n\n"
-            "La reproducción de TV y radio no funcionará. El resto de la "
-            "aplicación (descargas, listas y favoritos) sigue disponible.",
-        )
-        self.statusBar().showMessage("VLC no disponible: la reproducción está desactivada.")
+    # schedule_startup_tasks / show_onboarding / warn_vlc_unavailable /
+    # run_automatic_backup / resume_last_stream / shutdown viven ahora en
+    # ui.app_lifecycle.AppLifecycle (self.lifecycle).
 
     # ---------- Construcción de la interfaz ----------
 
@@ -639,46 +603,6 @@ class MainWindow(QMainWindow):
     # _open_recurring_dialog / _open_scheduled_recordings_dialog / _open_mosaic_view /
     # _open_stats_dialog viven ahora en ui.dialog_actions (win.dialogs).
 
-    def _run_automatic_backup(self):
-        if self._is_closing:
-            return
-        previous = getattr(self, "_backup_worker", None)
-        if previous is not None and previous.isRunning():
-            return
-        try:
-            worker = FetchWorker(
-                backup_module.run_automatic_backup,
-                cfg.get_app_data_dir() / "backups",
-                interval_days=int(self.settings.get("automatic_backup_interval_days", 1)),
-                retention=int(self.settings.get("automatic_backup_retention", 7)),
-                app_data_dir=cfg.get_app_data_dir(),
-                profile_data_dir=cfg.get_profile_data_dir(),
-            )
-        except (OSError, ValueError):
-            self.statusBar().showMessage("No se pudo crear la copia automática.", 5000)
-            return
-        worker.done.connect(self._on_automatic_backup_done)
-        self._backup_worker = worker
-        worker.start()
-
-    def _on_automatic_backup_done(self, result):
-        if self._is_closing:
-            return
-        if result is None:
-            self.statusBar().showMessage("No se pudo crear la copia automática.", 5000)
-        elif result:
-            self.statusBar().showMessage("Copia de seguridad automática creada.", 4000)
-
-    def _resume_last_stream(self):
-        if self._is_closing or self.current_url or not self.history:
-            return
-        entry = self.history[0]
-        if entry.get("url") and entry.get("type") in ("tv", "radio"):
-            self.playback.play(
-                entry["type"], entry.get("name", "Última emisión"), entry["url"],
-                entry.get("tvg_id", ""), entry.get("logo", ""),
-            )
-
     # _check_for_update / _on_update_check_done / _on_update_download_done
     # viven ahora en ui.update_check_controller.UpdateCheckController
     # (self.updates).
@@ -722,47 +646,5 @@ class MainWindow(QMainWindow):
         if self._is_closing:
             event.ignore()
             return
-        self._is_closing = True
-        FetchWorker.begin_shutdown()
-        reminder_timer = getattr(self, "_reminder_timer", None)
-        if reminder_timer is not None:
-            reminder_timer.stop()
-        self._tray_icon.hide()
-        self._media_keys.stop()
-        if self.recorder.is_recording:
-            # on_wait bombea eventos sin entrada de usuario: sin esto, cerrar la app
-            # con una grabación en curso bloqueaba el hilo de la interfaz
-            # mientras ffmpeg terminaba de cerrar el archivo -- Windows
-            # llegaba a marcar la ventana como "no responde" antes de que
-            # terminara. Ver core.recorder.Recorder.stop().
-            self.recorder.stop(on_wait=process_events_during_shutdown)
-            if self._scheduled_recording_active is not None:
-                rec = self._scheduled_recording_active
-                recording_schedule.mark_done(rec.tvg_id, rec.title, rec.start)
-                self._scheduled_recording_active = None
-        self.player.stop()
-        self.equalizer.stop()
-        if self._cast_session is not None:
-            self._cast_session.disconnect()
-            self._dlna_session.disconnect()
-        if self.download_panel is not None:
-            # on_wait: se reenvía por compatibilidad con la firma anterior
-            # (ver el comentario del recorder.stop() más arriba) -- con
-            # libtorrent embebido en el proceso ya no hay un aria2c.exe
-            # aparte que esperar a que se apague, así que en la práctica ya
-            # no bloquea nada.
-            self.download_panel.shutdown(on_wait=process_events_during_shutdown)
-        self._taskbar.cleanup()
-        # El diagnóstico automático de streams corre en un QThread propio
-        # que no pasa por ActiveWorkerRegistry (StreamDiagnosticsWorker no
-        # es un FetchWorker) -- sin cancelarlo y esperarlo aquí, cerrar la
-        # app mientras seguía corriendo lo dejaba vivo destruyéndose la
-        # ventana debajo, la misma clase de carrera que ya se corrigió para
-        # Torrents/Soulseek (ver CHANGELOG).
-        diagnostics_worker = self.catalog.cancel_background_diagnostics()
-        workers = FetchWorker.active_workers()
-        if diagnostics_worker is not None:
-            workers = (*workers, diagnostics_worker)
-        shutdown_workers(workers)
-        self.player.release()
+        self.lifecycle.shutdown()
         event.accept()

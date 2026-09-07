@@ -14,13 +14,13 @@ from PySide6.QtWidgets import QApplication, QListWidget, QWidget
 
 from core import backup
 from ui import widgets
+from ui.app_lifecycle import AppLifecycle
 from ui.carousel import Carousel, CarouselCard
 from ui.channel_lists_controller import ChannelListsController
 from ui.channel_model import ChannelListModel, ChannelListView
 from ui.download_panel import DownloadPanel
 from ui.fetch_worker import ActiveWorkerRegistry, FetchWorker
 from ui.home_controller import HomeController
-from ui.main_window import MainWindow
 from ui.style import build_style
 from ui.widgets import ROLE_DATA, ROLE_FAV, ROLE_PLAYING
 
@@ -182,10 +182,7 @@ def test_automatic_backup_does_not_block_ui_or_report_after_close(app, monkeypat
         assert release.wait(5)
         return True
 
-    class Window(QWidget):
-        _run_automatic_backup = MainWindow._run_automatic_backup
-        _on_automatic_backup_done = MainWindow._on_automatic_backup_done
-
+    class Window:
         def statusBar(self):
             return self.status
 
@@ -196,12 +193,13 @@ def test_automatic_backup_does_not_block_ui_or_report_after_close(app, monkeypat
     window._is_closing = False
     window.settings = {}
     window.status = Mock()
+    lifecycle = AppLifecycle(window)
     try:
-        window._run_automatic_backup()
+        lifecycle.run_automatic_backup()
         wait_for(app, started.is_set)
         assert threads[0] != threading.get_ident()
         first_worker = window._backup_worker
-        window._run_automatic_backup()
+        lifecycle.run_automatic_backup()
         assert window._backup_worker is first_worker
         window._is_closing = True
     finally:
