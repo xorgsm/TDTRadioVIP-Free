@@ -9,11 +9,11 @@ from typing import Optional
 from PySide6.QtCore import (
     QEasingCurve, QEvent, QPropertyAnimation, QSize, Qt, QTimer,
 )
-from PySide6.QtGui import QAction, QKeySequence, QShortcut
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QComboBox, QDialog, QFrame,
     QGraphicsOpacityEffect, QHBoxLayout, QLabel,
-    QLineEdit, QListWidget, QMainWindow, QMenu, QMenuBar, QMessageBox,
+    QLineEdit, QListWidget, QMainWindow, QMenu, QMessageBox,
     QPushButton, QSizeGrip, QSizePolicy, QSlider, QSplitter, QStackedWidget,
     QToolButton, QVBoxLayout, QWidget,
 )
@@ -37,6 +37,7 @@ from ui.channel_menu_controller import ChannelMenuController
 from ui.catalog_load_controller import CatalogLoadController
 from ui.home_controller import HomeController
 from ui.home_page_builder import build_home_page
+from ui.title_bar import build_title_bar
 from ui.channel_lists_controller import ChannelListsController
 from ui.channel_model import ChannelListModel, ChannelListView
 from ui.command_palette import CommandPalette
@@ -289,7 +290,7 @@ class MainWindow(QMainWindow):
         raiz_v.setContentsMargins(0, 0, 0, 0)
         raiz_v.setSpacing(0)
 
-        self.title_bar = self._build_title_bar()
+        self.title_bar = build_title_bar(self)
         raiz_v.addWidget(self.title_bar)
 
         cuerpo = QWidget()
@@ -401,8 +402,8 @@ class MainWindow(QMainWindow):
         layout.setSpacing(5)
 
         # La marca y la versión ya no se repiten aquí -- viven una sola vez,
-        # más grandes, en la barra de título (_build_title_bar, titleBrand/
-        # titleVersion). EXPLORAR pasa a ser lo primero que se ve del riel.
+        # más grandes, en la barra de título (ui.title_bar.build_title_bar,
+        # titleBrand/titleVersion). EXPLORAR pasa a ser lo primero que se ve del riel.
         nav_caption = QLabel("EXPLORAR")
         nav_caption.setObjectName("navCaption")
         layout.addWidget(nav_caption)
@@ -1323,207 +1324,8 @@ class MainWindow(QMainWindow):
         # -- así que su propia posición en pantalla no sería fiable.
         menu.exec(self.more_btn.mapToGlobal(self.more_btn.rect().bottomLeft()))
 
-    def _build_title_bar(self) -> QWidget:
-        """
-        Barra de título propia. Antes esto se montaba con los 'corner widgets'
-        de QMenuBar, un mecanismo cuyo dibujado depende del estilo nativo y
-        que en algunos equipos no llegaba a mostrarse. Aquí la disposición es
-        explícita, así que se ve igual en cualquier máquina.
-        """
-        barra = QWidget()
-        barra.setObjectName("titleBar")
-        barra.setFixedHeight(58)
-
-        fila = QHBoxLayout(barra)
-        fila.setContentsMargins(18, 0, 8, 0)
-        fila.setSpacing(12)
-
-        # Marca + versión, apiladas: antes la versión no vivía aquí (esta
-        # barra se veía apretada contra "Archivo" en ventanas no muy
-        # anchas con la marca en una sola línea) y en su lugar se repetía
-        # en el riel de navegación (brandLabel/versionLabel). Con la barra
-        # ya más alta para dos líneas, la marca+versión viven una sola vez,
-        # más grandes, y el riel ya no las repite (ver _build_nav_rail).
-        marca = QLabel("TDT & Radio VIP")
-        marca.setObjectName("titleBrand")
-        marca.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-
-        version_label = QLabel(f"Versión {cfg.APP_VERSION}")
-        version_label.setObjectName("titleVersion")
-        version_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-
-        # La marca vive en una columna de ancho fijo, igual que el riel
-        # lateral de debajo (NAV_RAIL_WIDTH): asi el menu que viene a
-        # continuacion arranca siempre en el mismo punto que el panel de
-        # contenido (donde esta "Inicio"), sin depender de cuanto mida el
-        # texto de la marca.
-        marca_col = QWidget()
-        marca_col.setFixedWidth(NAV_RAIL_WIDTH - fila.contentsMargins().left())
-        marca_col_layout = QVBoxLayout(marca_col)
-        marca_col_layout.setContentsMargins(0, 0, 0, 0)
-        marca_col_layout.setSpacing(0)
-        marca_col_layout.addStretch(1)
-        marca_col_layout.addWidget(marca)
-        marca_col_layout.addWidget(version_label)
-        marca_col_layout.addStretch(1)
-        fila.addWidget(marca_col)
-
-        fila.addWidget(self._build_menu())
-
-        # Zona vacía: es la que permite arrastrar la ventana.
-        fila.addStretch(1)
-
-        min_btn = QToolButton()
-        min_btn.setObjectName("winCtrlButton")
-        min_btn.setText("\u2013")
-        min_btn.setCursor(Qt.PointingHandCursor)
-        min_btn.setToolTip("Minimizar")
-        min_btn.clicked.connect(self.showMinimized)
-        fila.addWidget(min_btn)
-
-        self._maximize_btn = QToolButton()
-        self._maximize_btn.setObjectName("winCtrlButton")
-        self._maximize_btn.setText("\u25A1")
-        self._maximize_btn.setCursor(Qt.PointingHandCursor)
-        self._maximize_btn.setToolTip("Maximizar")
-        self._maximize_btn.clicked.connect(self.window_chrome.toggle_maximize)
-        fila.addWidget(self._maximize_btn)
-
-        close_btn = QToolButton()
-        close_btn.setObjectName("winCloseButton")
-        close_btn.setText("\u00D7")
-        close_btn.setCursor(Qt.PointingHandCursor)
-        close_btn.setToolTip("Cerrar")
-        close_btn.clicked.connect(self.close)
-        fila.addWidget(close_btn)
-
-        barra.installEventFilter(self)
-        return barra
-
-    def _build_menu(self) -> QMenuBar:
-        menu = QMenuBar()
-        menu.setObjectName("appMenuBar")
-        menu.setNativeMenuBar(False)
-        self.menu_bar = menu
-
-        file_menu = menu.addMenu("Archivo")
-        global_search_action = QAction("Búsqueda global…", self)
-        global_search_action.setShortcut(QKeySequence("Ctrl+K"))
-        global_search_action.triggered.connect(self._open_command_palette)
-        file_menu.addAction(global_search_action)
-        file_menu.addSeparator()
-
-        refresh_tv_action = QAction("Actualizar canales TV", self)
-        refresh_tv_action.triggered.connect(lambda: self.catalog.load_tv_channels(force=True))
-        file_menu.addAction(refresh_tv_action)
-
-        refresh_radio_action = QAction("Actualizar emisoras de radio", self)
-        refresh_radio_action.triggered.connect(lambda: self.catalog.load_radio_stations(force=True))
-        file_menu.addAction(refresh_radio_action)
-
-        diagnostics_action = QAction("Diagnosticar canales y emisoras…", self)
-        diagnostics_action.triggered.connect(self._open_stream_diagnostics)
-        file_menu.addAction(diagnostics_action)
-
-        file_menu.addSeparator()
-        add_entry_action = QAction("Añadir canal o emisora…", self)
-        add_entry_action.triggered.connect(self.library.open_add_entry_dialog)
-        file_menu.addAction(add_entry_action)
-
-        import_action = QAction("Importar lista M3U…", self)
-        import_action.triggered.connect(self.library.open_import_playlist_dialog)
-        file_menu.addAction(import_action)
-
-        editor_m3u_action = QAction("Editor M3U…", self)
-        editor_m3u_action.triggered.connect(self.library.open_m3u_editor)
-        file_menu.addAction(editor_m3u_action)
-
-        import_tv_action = QAction("Importar lista de TV...", self)
-        import_tv_action.triggered.connect(lambda: self.library.open_import_playlist_dialog("tv"))
-        file_menu.addAction(import_tv_action)
-
-        import_radio_action = QAction("Importar lista de radio...", self)
-        import_radio_action.triggered.connect(lambda: self.library.open_import_playlist_dialog("radio"))
-        file_menu.addAction(import_radio_action)
-
-        export_playlist_action = QAction("Exportar lista M3U…", self)
-        export_playlist_action.triggered.connect(self.library.export_current_playlist)
-        file_menu.addAction(export_playlist_action)
-
-        export_tv_action = QAction("Exportar lista de TV...", self)
-        export_tv_action.triggered.connect(lambda: self.library.export_current_playlist("tv"))
-        file_menu.addAction(export_tv_action)
-
-        export_radio_action = QAction("Exportar lista de radio...", self)
-        export_radio_action.triggered.connect(lambda: self.library.export_current_playlist("radio"))
-        file_menu.addAction(export_radio_action)
-
-        manage_action = QAction("Gestionar canales personalizados…", self)
-        manage_action.triggered.connect(lambda: self.library.open_manage_channels_dialog())
-        file_menu.addAction(manage_action)
-
-        file_menu.addSeparator()
-        recordings_action = QAction("Biblioteca de grabaciones…", self)
-        recordings_action.triggered.connect(self.library.open_recordings_library)
-        file_menu.addAction(recordings_action)
-
-        recurring_action = QAction("Grabaciones recurrentes…", self)
-        recurring_action.triggered.connect(self._open_recurring_dialog)
-        file_menu.addAction(recurring_action)
-
-        scheduled_action = QAction("Centro de grabaciones programadas…", self)
-        scheduled_action.triggered.connect(self._open_scheduled_recordings_dialog)
-        file_menu.addAction(scheduled_action)
-
-        mosaic_action = QAction("Multivista (mosaico)…", self)
-        mosaic_action.triggered.connect(self._open_mosaic_view)
-        file_menu.addAction(mosaic_action)
-
-        file_menu.addSeparator()
-        export_backup_action = QAction("Exportar copia de seguridad…", self)
-        export_backup_action.triggered.connect(self.library.export_backup)
-        file_menu.addAction(export_backup_action)
-
-        import_backup_action = QAction("Importar copia de seguridad…", self)
-        import_backup_action.triggered.connect(self.library.import_backup)
-        file_menu.addAction(import_backup_action)
-
-        file_menu.addSeparator()
-        exit_action = QAction("Salir", self)
-        exit_action.triggered.connect(self.close)
-        file_menu.addAction(exit_action)
-
-        settings_menu = menu.addMenu("Configuración")
-        settings_action = QAction("Preferencias…", self)
-        settings_action.triggered.connect(self._open_settings)
-        settings_menu.addAction(settings_action)
-
-        # Solo en la edición VIP sin activar: como el splash ya no aparece en
-        # cada arranque tras elegir modo gratuito (ver ui/application.run_vip),
-        # esta entrada es el camino de vuelta al diálogo de activación.
-        if not self.activated and not self.es_version_free:
-            self.activate_vip_action = QAction("Activar VIP…", self)
-            self.activate_vip_action.triggered.connect(self._open_activation_dialog)
-            settings_menu.addAction(self.activate_vip_action)
-
-        help_menu = menu.addMenu("Ayuda")
-        about_action = QAction("Acerca de", self)
-        about_action.triggered.connect(self._show_about)
-        help_menu.addAction(about_action)
-
-        stats_action = QAction("Estadísticas de uso…", self)
-        stats_action.triggered.connect(self._open_stats_dialog)
-        help_menu.addAction(stats_action)
-
-        update_action = QAction("Buscar actualizaciones", self)
-        update_action.triggered.connect(self.updates.check_for_update)
-        help_menu.addAction(update_action)
-
-        logs_action = QAction("Abrir carpeta de logs", self)
-        logs_action.triggered.connect(self._abrir_carpeta_logs)
-        help_menu.addAction(logs_action)
-
-        return menu
+    # _build_title_bar vive ahora en ui.title_bar.build_title_bar().
+    # _build_menu vive ahora en ui.app_menu.build_menu_bar().
 
     def _open_activation_dialog(self):
         """
@@ -1535,7 +1337,7 @@ class MainWindow(QMainWindow):
         construir la ventana (el botón de enviar a TV y esta entrada de menú).
 
         Import local (no arriba del módulo): esta ruta solo se conecta a un
-        menú cuando not self.es_version_free (ver _build_menu), así que
+        menú cuando not self.es_version_free (ver ui.app_menu.build_menu_bar), así que
         ui.splash -- y core.license, que importa a su vez -- no hace falta
         que se carguen nunca en la edición free. Mismo motivo que
         core.caster/ui.download_panel más arriba (ver __init__).

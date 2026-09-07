@@ -1,0 +1,87 @@
+"""Construcción de la barra de título propia de MainWindow (marca, menú y
+controles de ventana). Extraído de ui/main_window.py.
+"""
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
+
+from core import config as cfg
+from ui.app_menu import build_menu_bar
+from ui.nav_sections import NAV_RAIL_WIDTH
+
+
+def build_title_bar(win) -> QWidget:
+    """
+    Barra de título propia. Antes esto se montaba con los 'corner widgets'
+    de QMenuBar, un mecanismo cuyo dibujado depende del estilo nativo y
+    que en algunos equipos no llegaba a mostrarse. Aquí la disposición es
+    explícita, así que se ve igual en cualquier máquina.
+    """
+    barra = QWidget()
+    barra.setObjectName("titleBar")
+    barra.setFixedHeight(58)
+
+    fila = QHBoxLayout(barra)
+    fila.setContentsMargins(18, 0, 8, 0)
+    fila.setSpacing(12)
+
+    # Marca + versión, apiladas: antes la versión no vivía aquí (esta
+    # barra se veía apretada contra "Archivo" en ventanas no muy
+    # anchas con la marca en una sola línea) y en su lugar se repetía
+    # en el riel de navegación (brandLabel/versionLabel). Con la barra
+    # ya más alta para dos líneas, la marca+versión viven una sola vez,
+    # más grandes, y el riel ya no las repite (ver _build_nav_rail).
+    marca = QLabel("TDT & Radio VIP")
+    marca.setObjectName("titleBrand")
+    marca.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
+    version_label = QLabel(f"Versión {cfg.APP_VERSION}")
+    version_label.setObjectName("titleVersion")
+    version_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
+    # La marca vive en una columna de ancho fijo, igual que el riel
+    # lateral de debajo (NAV_RAIL_WIDTH): asi el menu que viene a
+    # continuacion arranca siempre en el mismo punto que el panel de
+    # contenido (donde esta "Inicio"), sin depender de cuanto mida el
+    # texto de la marca.
+    marca_col = QWidget()
+    marca_col.setFixedWidth(NAV_RAIL_WIDTH - fila.contentsMargins().left())
+    marca_col_layout = QVBoxLayout(marca_col)
+    marca_col_layout.setContentsMargins(0, 0, 0, 0)
+    marca_col_layout.setSpacing(0)
+    marca_col_layout.addStretch(1)
+    marca_col_layout.addWidget(marca)
+    marca_col_layout.addWidget(version_label)
+    marca_col_layout.addStretch(1)
+    fila.addWidget(marca_col)
+
+    fila.addWidget(build_menu_bar(win))
+
+    # Zona vacía: es la que permite arrastrar la ventana.
+    fila.addStretch(1)
+
+    min_btn = QToolButton()
+    min_btn.setObjectName("winCtrlButton")
+    min_btn.setText("–")
+    min_btn.setCursor(Qt.PointingHandCursor)
+    min_btn.setToolTip("Minimizar")
+    min_btn.clicked.connect(win.showMinimized)
+    fila.addWidget(min_btn)
+
+    win._maximize_btn = QToolButton()
+    win._maximize_btn.setObjectName("winCtrlButton")
+    win._maximize_btn.setText("□")
+    win._maximize_btn.setCursor(Qt.PointingHandCursor)
+    win._maximize_btn.setToolTip("Maximizar")
+    win._maximize_btn.clicked.connect(win.window_chrome.toggle_maximize)
+    fila.addWidget(win._maximize_btn)
+
+    close_btn = QToolButton()
+    close_btn.setObjectName("winCloseButton")
+    close_btn.setText("×")
+    close_btn.setCursor(Qt.PointingHandCursor)
+    close_btn.setToolTip("Cerrar")
+    close_btn.clicked.connect(win.close)
+    fila.addWidget(close_btn)
+
+    barra.installEventFilter(win)
+    return barra

@@ -19,8 +19,9 @@ UI_DIR = Path(__file__).resolve().parent.parent / "ui"
 # Miembros heredados de QWidget/QMainWindow: nunca se asignan en Python (los
 # provee Qt), así que quedan fuera del contrato que este test vigila.
 QT_INHERITED_ALLOWLIST = {
-    "activateWindow", "frameGeometry", "geometry", "move", "raise_",
+    "activateWindow", "close", "frameGeometry", "geometry", "move", "raise_",
     "resize", "screen", "setGeometry", "setMinimumSize", "setWindowFlag",
+    "showMinimized",
     "setWindowIcon", "show", "showFullScreen", "showNormal", "statusBar",
     "width", "windowHandle", "windowIcon", "y",
 }
@@ -30,23 +31,29 @@ QT_INHERITED_ALLOWLIST = {
 # decisión consciente en el mismo commit que añade/renombra/quita un
 # atributo de MainWindow -- no un efecto secundario silencioso de mover código.
 FROZEN_EXPECTED_ATTRS = {
-    "_active_list", "_active_row", "_audio_only_tv", "_auto_skip_count",
-    "_background_diagnostics_started", "_background_health_results",
+    "_abrir_carpeta_logs", "_active_list", "_active_row", "_audio_only_tv",
+    "_auto_skip_count", "_background_diagnostics_started",
+    "_background_health_results",
     "_cast_session", "_current_alternate_urls", "_current_nav_id",
     "_dlna_session", "_fs_last_cursor_pos", "_fs_mouse_poll_timer",
     "_fs_overlay_hide_timer", "_geometria_antes_pip", "_geometria_normal",
     "_home_health_layout", "_home_layout", "_home_now_layout",
     "_home_quick_layout", "_home_secondary_layout", "_is_closing",
-    "_make_list", "_maximize_btn", "_on_nav_changed", "_open_command_palette",
-    "_open_stream_diagnostics",
+    "_make_list", "_maximize_btn", "_on_nav_changed", "_open_activation_dialog",
+    "_open_command_palette", "_open_mosaic_view", "_open_recurring_dialog",
+    "_open_scheduled_recordings_dialog", "_open_settings",
+    "_open_stats_dialog", "_open_stream_diagnostics",
     "_pending_reminder_tune", "_pip_compact_visibility", "_pip_mode",
     "_playback_failed", "_playback_token", "_player_fullscreen",
     "_pseudo_maximizado", "_queue", "_reminder_timer",
-    "_scheduled_recording_active", "_sleep_countdown", "_sleep_minutes_left",
+    "_scheduled_recording_active", "_show_about", "_sleep_countdown",
+    "_sleep_minutes_left",
     "_sleep_timer", "_taskbar", "_tray_icon", "_was_maximized_before_fs",
-    "_was_maximized_before_pip", "cast_btn", "catalog", "catalog_count_label",
+    "_was_maximized_before_pip", "activate_vip_action", "activated",
+    "cast_btn", "catalog", "catalog_count_label",
     "content_widget", "current_logo", "current_name", "current_tvg_id",
     "current_type", "current_url", "epg", "epg_guide", "equalizer",
+    "es_version_free",
     "fav_btn", "fav_list", "favorites", "fullscreen_btn", "group_filter",
     "groups_sidebar", "health_filter", "hist_list", "history", "home",
     "home_fav_empty", "home_fav_list", "home_float_btn",
@@ -61,7 +68,7 @@ FROZEN_EXPECTED_ATTRS = {
     "record_btn", "recorder", "recordings_dir", "retry_btn", "search_box",
     "seek_back_btn", "seek_fwd_btn", "set_live_badge_visible", "settings",
     "sleep_btn", "stack", "title_bar", "tv_channels_data", "tv_list",
-    "volume_slider", "window_chrome",
+    "updates", "volume_slider", "window_chrome",
 }
 
 
