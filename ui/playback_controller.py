@@ -43,6 +43,7 @@ from core import recording_schedule
 from ui import icons as app_icons
 from ui import palette
 from ui.toast import show_toast
+from ui.visual import make_glow
 from ui.widgets import ROLE_DATA, dominant_color
 
 
@@ -498,7 +499,7 @@ class PlaybackController:
                     win.current_url, win.current_name, kind=win.current_type or "tv"
                 )
                 win.record_btn.setChecked(True)
-                win.record_btn.setGraphicsEffect(win._make_glow(QColor(palette.DANGER), blur=24, alpha=170))
+                win.record_btn.setGraphicsEffect(make_glow(QColor(palette.DANGER), blur=24, alpha=170))
                 win.statusBar().showMessage(f"Grabando en: {output_file}")
                 # ffmpeg puede arrancar el proceso sin problema y aun así no
                 # llegar a grabar nada (URL que rechaza la conexión,

@@ -37,7 +37,7 @@ FROZEN_EXPECTED_ATTRS = {
     "_fs_overlay_hide_timer", "_geometria_antes_pip", "_geometria_normal",
     "_home_health_layout", "_home_layout", "_home_now_layout",
     "_home_quick_layout", "_home_secondary_layout", "_is_closing",
-    "_make_glow", "_maximize_btn", "_on_nav_changed", "_open_command_palette",
+    "_maximize_btn", "_on_nav_changed", "_open_command_palette",
     "_pending_reminder_tune", "_pip_compact_visibility", "_pip_mode",
     "_playback_failed", "_playback_token", "_player_fullscreen",
     "_pseudo_maximizado", "_queue", "_reminder_timer",

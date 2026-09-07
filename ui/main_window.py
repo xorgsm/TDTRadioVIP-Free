@@ -9,10 +9,10 @@ from typing import Optional
 from PySide6.QtCore import (
     QEasingCurve, QEvent, QPropertyAnimation, QSize, Qt, QTimer,
 )
-from PySide6.QtGui import QAction, QColor, QKeySequence, QShortcut
+from PySide6.QtGui import QAction, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QBoxLayout, QButtonGroup, QComboBox, QDialog, QFrame,
-    QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QHBoxLayout, QLabel,
+    QGraphicsOpacityEffect, QHBoxLayout, QLabel,
     QLineEdit, QListWidget, QMainWindow, QMenu, QMenuBar, QMessageBox,
     QPushButton, QScrollArea, QSizeGrip, QSizePolicy, QSlider, QSplitter, QStackedWidget,
     QToolButton, QVBoxLayout, QWidget,
@@ -31,7 +31,7 @@ from player.vlc_player import VLCPlayer
 from ui.dialogs import SettingsDialog
 from ui.equalizer_dialog import EqualizerDialog
 from ui.style import build_style
-from ui.visual import set_variant
+from ui.visual import make_separator, set_variant
 from ui import palette
 from ui.channel_menu_controller import ChannelMenuController
 from ui.catalog_load_controller import CatalogLoadController
@@ -1127,36 +1127,8 @@ class MainWindow(QMainWindow):
         if visible:
             self.live_badge.raise_()
 
-    @staticmethod
-    def _make_separator() -> QFrame:
-        """
-        Línea vertical fina entre grupos de botones de control. Antes todos
-        los botones iban en una sola fila sin ninguna separación visual más
-        que el spacing del layout — con el halo del play y poco espacio
-        entre botones, la fila entera se veía como un bloque pegado en vez
-        de controles agrupados por función (favorito/cast, reproducción,
-        grabar/volumen, vista).
-        """
-        sep = QFrame()
-        sep.setObjectName("ctrlSeparator")
-        sep.setFixedWidth(1)
-        sep.setFixedHeight(22)
-        return sep
-
-    @staticmethod
-    def _make_glow(color: QColor, blur: float = 22, alpha: int = 160, y_offset: float = 0) -> QGraphicsDropShadowEffect:
-        """
-        Halo de color alrededor de un botón, vía QGraphicsDropShadowEffect
-        (esto sí aplica a QWidgets normales, a diferencia de los delegados
-        de lista, que no soportan QGraphicsEffect y necesitan pintarlo a mano).
-        """
-        effect = QGraphicsDropShadowEffect()
-        glow_color = QColor(color)
-        glow_color.setAlpha(alpha)
-        effect.setColor(glow_color)
-        effect.setBlurRadius(blur)
-        effect.setOffset(0, y_offset)
-        return effect
+    # make_glow/make_separator viven ahora en ui/visual.py (funciones sin
+    # estado, no dependían de self).
 
     def _build_now_playing_bar(self) -> QFrame:
         bar = QFrame()
@@ -1331,7 +1303,7 @@ class MainWindow(QMainWindow):
         self.mute_btn.clicked.connect(self.playback.toggle_mute)
         right_group.addWidget(self.mute_btn)
 
-        self.now_controls_separator = self._make_separator()
+        self.now_controls_separator = make_separator()
         right_group.addWidget(self.now_controls_separator)
 
         # Pistas/pantalla completa/PiP/temporizador/cola: antes cada uno

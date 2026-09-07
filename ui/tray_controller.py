@@ -18,6 +18,7 @@ from core import recorder as rec_module
 from core import recording_schedule
 from core import recurring_recordings
 from ui import palette
+from ui.visual import make_glow
 
 
 class TrayReminderController:
@@ -151,7 +152,7 @@ class TrayReminderController:
                 continue
             win._scheduled_recording_active = r
             win.record_btn.setChecked(True)
-            win.record_btn.setGraphicsEffect(win._make_glow(QColor(palette.DANGER), blur=24, alpha=170))
+            win.record_btn.setGraphicsEffect(make_glow(QColor(palette.DANGER), blur=24, alpha=170))
             win.statusBar().showMessage(f"Grabación programada iniciada: {output_file}", 8000)
             win._tray_icon.showMessage(
                 "Grabación programada iniciada",
