@@ -102,42 +102,55 @@ panel de Descargas (`ui/download_panel.py`, lista de pestañas que incluye
 Esto es consistente con que Podcasts es contenido reproducible, no una
 herramienta de gestión de archivos.
 
+### 4.6 Favoritos e Historial
+
+Dejan de ser secciones propias en la barra superior. Pasan a mostrarse como
+**filas de carrusel dentro de la pantalla de Inicio** (p. ej. "Favoritos",
+"Continuar viendo/escuchando"), consistente con el modelo Netflix, que no
+tiene una pestaña de "Historial" separada.
+
+### 4.7 Descargas
+
+**Se mantiene visible en la barra superior** (con Torrents y Soulseek como
+pestañas internas, igual que hoy), aunque ya no incluya Podcasts. Se considera
+una herramienta de uso frecuente que merece acceso directo, no solo un ítem
+dentro de "Más ▾".
+
+Barra superior de contenido de primer nivel resultante: **Inicio, TV, Radio,
+Podcasts, Descargas**, más "Más ▾" para el resto de herramientas (pendiente de
+cerrar en §5.1).
+
 ## 5. Abierto / pendiente para la próxima sesión
 
 Estos puntos se identificaron durante la exploración pero **no se han resuelto
 todavía** — son el punto de partida al retomar el diseño:
 
-1. **Contenido completo de "Más ▾"**: qué agrupa exactamente (candidatos
-   identificados en el código: Historial, Favoritos, Descargas, Torrents,
-   Soulseek, Grabaciones recurrentes, herramientas de audio —Convertir,
-   Editor MP3, Editar info—, Guía EPG, Configuración, Ecualizador). Falta
-   decidir cuáles quedan como pestañas top-level (p. ej. ¿Favoritos e
-   Historial deberían ser secciones visibles, o filas dentro de Inicio?) y
-   cuáles bajo "Más ▾".
-2. **Descargas como sección top-level o no**: ahora que Podcasts sale de su
-   panel de pestañas, falta decidir si "Descargas" (con Torrents/Soulseek
-   como pestañas internas) sigue siendo un ítem visible en la barra superior
-   o pasa también a "Más ▾".
-3. **Barra de menú clásica de Windows** (Archivo/Configuración/Ayuda,
+1. **Contenido completo de "Más ▾"**: candidatos restantes por ubicar
+   (Torrents/Soulseek ya viven dentro de Descargas, no aquí): Grabaciones
+   recurrentes, herramientas de audio —Convertir, Editor MP3, Editar info—,
+   Guía EPG, Configuración, Ecualizador. Favoritos e Historial ya se
+   resolvieron como filas de Inicio (§4.6) y Descargas ya se resolvió como
+   top-level (§4.7) — faltan solo estos últimos por agrupar.
+2. **Barra de menú clásica de Windows** (Archivo/Configuración/Ayuda,
    `ui/app_menu.py` — incluye acciones como "Grabaciones recurrentes…"): no se
    ha decidido si se mantiene tal cual (convención de escritorio actual), se
    fusiona dentro de "Más ▾", o desaparece a favor de un patrón más "app
    moderna" sin barra de menú tradicional.
-4. **Estilo visual de diálogos** (Ajustes, Ecualizador, Editor M3U, Programar
+3. **Estilo visual de diálogos** (Ajustes, Ecualizador, Editor M3U, Programar
    grabación, etc.): no se ha decidido si se mantienen como diálogos modales
    (patrón actual) o se rediseñan como paneles a pantalla completa al estilo
    Netflix/Plex.
-5. **Comportamiento responsive**: `DESIGN.md` documenta umbrales concretos
+4. **Comportamiento responsive**: `DESIGN.md` documenta umbrales concretos
    (520px para Inicio, 390px para Ahora suena) sobre el layout actual de raíl
    lateral. Con barra superior + hero, estos umbrales y el comportamiento en
    la resolución mínima soportada (860×580) hay que redefinirlos desde cero.
-6. **Reflejo del split VIP/Free en la nueva navegación superior**: se sabe que
+5. **Reflejo del split VIP/Free en la nueva navegación superior**: se sabe que
    ambas ediciones comparten el mismo shell (decisión ya tomada en la revisión
    de arquitectura previa), pero no se ha revisado cómo se oculta/adapta la
    barra superior y "Más ▾" para la edición Free (hoy son 21 sitios
    condicionales dispersos en `main_window.py` basados en `activated` /
    `es_version_free`).
-7. **Enfoque técnico de migración**: `main_window.py` ya fue dividido
+6. **Enfoque técnico de migración**: `main_window.py` ya fue dividido
    recientemente en módulos (`nav_rail.py`, `catalog_toolbar.py`,
    `home_page_builder.py`, etc. — ver commits de refactor `cfa3a5e`..`22e57aa`
    en el historial de `origin/master`). El rediseño de v8 probablemente
