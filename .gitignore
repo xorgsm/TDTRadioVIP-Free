@@ -47,3 +47,5 @@ tools/*.p12
 # que ejecutó el análisis), no debe trackearse.
 installer_output/
 graphify-out/
+
+.superpowers/
