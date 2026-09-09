@@ -572,7 +572,7 @@ class SoulseekPanel(QWidget):
         if os.path.isfile(ruta):
             if os.name == "nt":
                 try:
-                    subprocess.Popen(f'explorer /select,"{os.path.normpath(ruta)}"')
+                    subprocess.Popen(["explorer", "/select,", os.path.normpath(ruta)])
                     return
                 except OSError:
                     pass

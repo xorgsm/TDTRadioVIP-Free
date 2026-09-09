@@ -312,7 +312,7 @@ class DownloadPanel(QWidget):
         if os.path.isfile(path):
             if os.name == "nt":
                 try:
-                    subprocess.Popen(f'explorer /select,"{os.path.normpath(path)}"')
+                    subprocess.Popen(["explorer", "/select,", os.path.normpath(path)])
                     return
                 except OSError:
                     pass
