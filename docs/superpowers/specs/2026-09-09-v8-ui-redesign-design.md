@@ -1,9 +1,13 @@
 # Rediseño radical de interfaz — TDT & Radio VIP v8
 
-**Estado:** Diseño aprobado. Listo para plan de implementación (`superpowers:writing-plans`).
-**Fecha de inicio:** 2026-09-09 · **Fecha de aprobación:** 2026-09-10
-**Ruta de trabajo dedicada:** `v8/` (ver `v8/README.md`) — solo como carpeta de
-documentación del rediseño; el código se implementa in-place en `ui/` (ver §5.6).
+**Estado:** Diseño aprobado por fases. Fase 1 (§4.1-4.2, nav_top) implementada y
+fusionada a `master` (2026-09-10). Fase 2 (§6, Inicio hero+filas+tarjetas)
+diseñada y aprobada, lista para plan de implementación
+(`superpowers:writing-plans`). Fases 3-5 (§5.1-5.2, §5.4, §5.5) pendientes de
+diseño detallado.
+**Fecha de inicio:** 2026-09-09 · **Fecha de aprobación (diseño inicial):** 2026-09-10
+**Ruta de trabajo dedicada:** `TDTRadioVIP_v8.0/TDTRadioVIP/` — git worktree real
+del repo (mismo historial/remotos), donde se ejecuta y prueba cada fase.
 **Clasificación:** Arquitectónico (proceso completo de brainstorming: preguntas → enfoques → diseño por secciones → spec → plan de implementación).
 
 ## 1. Motivación
@@ -204,28 +208,114 @@ condicional en el árbol de módulos nuevo.
 ### 5.6 Enfoque técnico de migración
 
 **Sustitución directa dentro de `ui/`**, sin coexistencia con flags ni árbol
-paralelo en `v8/`. Los módulos nuevos (`nav_top.py`, `home_hero.py`,
-`poster_card.py`, y equivalentes para "Más ▾", diálogos reubicados, etc.)
-reemplazan directamente a los actuales (`nav_rail.py`, `home_page_builder.py`,
-`app_menu.py`, etc.) en una serie de PRs enfocados sobre el mismo árbol de
-`ui/`, siguiendo el patrón ya establecido por el refactor reciente de
-`main_window.py` (commits `cfa3a5e`..`22e57aa`). La carpeta
-`TDTRadioVIP_v8.0/` (workspace dedicado, ver su `README.md`) sigue existiendo
-solo como destino de documentación específica de v8, no como árbol de código
-paralelo.
+paralelo en `v8/`. Los módulos nuevos (`nav_top.py`, y equivalentes para
+"Más ▾", diálogos reubicados, etc. en fases futuras) reemplazan
+directamente a los actuales (`nav_rail.py`, `app_menu.py`, etc.) en una
+serie de PRs enfocados sobre el mismo árbol de `ui/`, siguiendo el patrón
+ya establecido por el refactor reciente de `main_window.py` (commits
+`cfa3a5e`..`22e57aa`). **Actualizado 2026-09-10:** `TDTRadioVIP_v8.0/` pasó
+de ser un workspace de solo documentación a contener un git worktree real
+del repo (`TDTRadioVIP_v8.0/TDTRadioVIP/`, mismo `.git`/historial/remotos
+que este checkout) — es donde vive y se ejecuta el código de cada fase de
+v8 a medida que se completa, no un árbol paralelo/duplicado.
 
-## 6. Próximos pasos
+## 6. Fase 2 — Inicio: hero + filas + tarjetas póster (decisiones cerradas 2026-09-10)
 
-1. Invocar `superpowers:writing-plans` para generar el plan de implementación
-   detallado (fases, módulos nuevos por crear, módulos a retirar, orden de
-   PRs) basado en las decisiones de §4 y §5.
-2. Ejecutar el plan siguiendo el flujo de desarrollo habitual (TDD, revisión
-   de código) sobre el árbol `ui/` existente.
+Diseño de la Fase 2, continuación directa de §4.3/§4.4/§4.6 (que ya
+fijaban el enfoque de alto nivel). Estas son las decisiones de detalle que
+faltaban, resueltas retomando el diseño:
+
+### 6.1 Filas de Inicio: reorganizar lo existente, no inventar
+
+`ui/home_page_builder.py` ya construye tres carruseles reales
+(`ui.carousel.Carousel`/`CarouselCard`, con reutilización de tarjetas,
+carga de logo diferida y accesibilidad ya implementadas y testeadas) más
+una lista de favoritos. La Fase 2 reorganiza eso en vez de crear
+categorías nuevas:
+
+- **Ahora en antena** (`win.home_on_air_carousel`) — sin cambios de datos,
+  solo el nuevo estilo de tarjeta.
+- **Continuar viendo/escuchando** (antes "Recientes",
+  `win.home_recent_carousel`) — mismo dato (`win.history`), solo renombrado
+  para encajar con el lenguaje "hero + filas" de la spec.
+- **Recomendado para ti** (`win.home_recommended_carousel`) — sin cambios.
+- **Favoritos** — se convierte de lista (`win.home_fav_list`, un
+  `_make_list()`) a carrusel (`Carousel`), consistente con §4.6.
+
+Explícitamente **fuera de alcance**: filas de "todos tus canales de TV" o
+"toda la radio" — esas ya tienen pestaña dedicada en la barra superior
+(`ui.nav_top`); repetirlas en Inicio sería redundante, no lo que pedía la
+spec (los ejemplos de §4.3 eran ilustrativos, no una lista cerrada).
+
+### 6.2 Hero: restyling de la tarjeta "reproduciendo ahora" existente
+
+`win.home_now_card` (`ui/home_page_builder.py`) y su lógica en
+`ui.home_controller.HomeController._refresh_home_now_playing` ya
+implementan exactamente el comportamiento que pide §4.3 ("destacada o en
+curso de reproducción"):
+
+1. Si hay algo sonando (`win.current_url`): muestra nombre, tipo (TV en
+   directo / Radio online), botón Pausar/Continuar, botón de ventana
+   flotante.
+2. Si no hay nada sonando pero hay historial: muestra la última emisión
+   ("Vuelve a tu última emisión en directo", botón "Volver a escuchar").
+3. Si no hay historial: genérico ("¿Qué te apetece escuchar?", botón
+   "Buscar" que abre la paleta de comandos Ctrl+K).
+
+La Fase 2 **no toca esta lógica** — solo la composición visual, agrandando
+la tarjeta a banner de hero con degradado de superficie (sin foto de fondo
+real, igual que las tarjetas — ver §4.4 sobre por qué no hay backdrop
+disponible) y quitando los "quick buttons" de TV/Radio de la portada (ya
+redundantes con las pestañas de la barra superior).
+
+### 6.3 Tarjeta póster: opción A "Compacta"
+
+Confirmado sobre mockup comparativo en el companion visual
+(`.superpowers/brainstorm/1755-1789041565/content/poster-card.html`,
+comparando A "Compacta" 128×190px, B "Tile cuadrado" 170×170px y C
+"Póster vertical" 140×210px):
+
+- **Mismas dimensiones que `CarouselCard` hoy** (`CARD_WIDTH = 128`,
+  `CARD_LOGO_SIZE = 96` en `ui/carousel.py`) — la tarjeta póster es un
+  restyling del ancho/alto ya validado, no un tamaño nuevo.
+- **Fondo degradado determinista**: hash del nombre del canal/emisora →
+  selecciona un color base de `ui.style.ACCENT_PRESETS` (6 tonos ya
+  existentes: Dorado, Azul, Violeta, Verde, Coral, Naranja) → tonos
+  derivados (claro/oscuro) vía `ui.style.accent_shades()`, ya existente y
+  usado hoy para la tarjeta "reproduciendo ahora" y el icono de PiP
+  activo. No se introduce ningún sistema de color/hash nuevo.
+- Logo centrado sobre el degradado, igual que hoy (`CARD_LOGO_SIZE`, con
+  el mismo fallback a icono TV/Radio cuando no hay `logo`).
+
+### 6.4 Enfoque técnico: restyling de `ui/carousel.py`, no un módulo nuevo
+
+A diferencia de lo apuntado en §5.6 (que mencionaba `poster_card.py` como
+módulo nuevo hipotético), la Fase 2 **reutiliza `CarouselCard` tal cual**
+en vez de sustituirla: ya gestiona reutilización de tarjetas al actualizar
+`set_entries()`, carga de logo diferida y navegación por teclado
+(`tests/test_ui_performance.py` ya cubre esto). Solo cambia cómo se pinta
+el fondo (degradado en vez de superficie plana). `ui/home_page_builder.py`
+se reestructura para el layout hero+filas (banner grande arriba, filas de
+carrusel debajo), siguiendo el mismo patrón de sustitución directa in-place
+que la Fase 1 (§5.6) — sin flags, sin árbol paralelo.
+
+## 7. Próximos pasos
+
+1. Invocar `superpowers:writing-plans` para generar el plan de
+   implementación detallado de la Fase 2, basado en §6, siguiendo el mismo
+   patrón de `subagent-driven-development` (worktree/rama propia) ya usado
+   en la Fase 1.
+2. Ejecutar el plan siguiendo el flujo de desarrollo habitual (TDD,
+   revisión de código) sobre el árbol `ui/` existente.
+3. Fases siguientes (§5.1-§5.2 "Más ▾" y retirada del menú clásico,
+   responsive, pulido VIP/Free) quedan pendientes de su propio ciclo
+   diseño → plan → implementación, una vez cerrada la Fase 2.
 
 ## Referencias
 
 - `DESIGN.md` — sistema de diseño vigente (tokens, reglas, componentes).
 - `PRODUCT.md` — compromisos de marca y contexto de producto.
 - Mockups del companion visual: `.superpowers/brainstorm/127-1788960745/content/`
-  (`home-layout.html`, `card-style.html`) y
-  `.superpowers/brainstorm/1366-1789036607/content/` (`dialog-style.html`).
+  (`home-layout.html`, `card-style.html`),
+  `.superpowers/brainstorm/1366-1789036607/content/` (`dialog-style.html`) y
+  `.superpowers/brainstorm/1755-1789041565/content/` (`poster-card.html`).
