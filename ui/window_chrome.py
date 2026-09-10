@@ -169,7 +169,7 @@ class WindowChrome:
         win._player_fullscreen = True
         win._was_maximized_before_fs = win._pseudo_maximizado
 
-        win.nav_rail.setVisible(False)
+        win.nav_top.setVisible(False)
         win.content_widget.setVisible(False)
         win.library_sidebar.setVisible(False)
         win.groups_sidebar.setVisible(False)
@@ -200,7 +200,7 @@ class WindowChrome:
         win.player_header_bar.setVisible(True)
         win.now_playing_bar.setVisible(True)
 
-        win.nav_rail.setVisible(True)
+        win.nav_top.setVisible(True)
         win.content_widget.setVisible(True)
         # Respeta la preferencia del usuario (botón de biblioteca del riel)
         # en vez de forzarlo visible: si lo había ocultado antes de entrar
@@ -277,7 +277,7 @@ class WindowChrome:
         win._geometria_antes_pip = win.geometry()
         win._was_maximized_before_pip = win._pseudo_maximizado
 
-        win.nav_rail.setVisible(False)
+        win.nav_top.setVisible(False)
         win.content_widget.setVisible(False)
         win.content_widget.setMinimumWidth(0)
         win.library_sidebar.setVisible(False)
@@ -333,7 +333,7 @@ class WindowChrome:
         win = self.win
         win._pip_mode = False
 
-        win.nav_rail.setVisible(True)
+        win.nav_top.setVisible(True)
         win.content_widget.setVisible(True)
         win.content_widget.setMinimumWidth(420)
         win.library_sidebar.setVisible(win.library_toggle_btn.isChecked())

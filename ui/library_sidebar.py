@@ -8,7 +8,7 @@ ChannelListsController) y "Playlists" son las carpetas que ya gestiona
 core/favorites.py — este panel es solo un atajo visual hacia contenido que
 ya existía en Favoritos/Historial, no una fuente de datos nueva.
 
-Panel aditivo: se inserta entre el riel de navegación (nav_rail) y el
+Panel aditivo: se inserta entre la barra de navegación superior (nav_top) y el
 contenido principal en _build_ui, sin sustituir nada. No importa nada de
 ui.main_window (evitaría un import circular): la navegación hacia una
 carpeta de favoritos concreta la resuelve MainWindow y se pasa como

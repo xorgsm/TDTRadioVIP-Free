@@ -6,7 +6,6 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWi
 
 from core import config as cfg
 from ui.app_menu import build_menu_bar
-from ui.nav_sections import NAV_RAIL_WIDTH
 
 
 def build_title_bar(win) -> QWidget:
@@ -38,13 +37,11 @@ def build_title_bar(win) -> QWidget:
     version_label.setObjectName("titleVersion")
     version_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
-    # La marca vive en una columna de ancho fijo, igual que el riel
-    # lateral de debajo (NAV_RAIL_WIDTH): asi el menu que viene a
-    # continuacion arranca siempre en el mismo punto que el panel de
-    # contenido (donde esta "Inicio"), sin depender de cuanto mida el
-    # texto de la marca.
+    # Columna de ancho natural (antes se fijaba a NAV_RAIL_WIDTH para
+    # alinear el menú con el contenido bajo el raíl lateral; ese raíl ya
+    # no existe -- ver ui.nav_top -- así que la marca simplemente ocupa
+    # el espacio que necesita su texto).
     marca_col = QWidget()
-    marca_col.setFixedWidth(NAV_RAIL_WIDTH - fila.contentsMargins().left())
     marca_col_layout = QVBoxLayout(marca_col)
     marca_col_layout.setContentsMargins(0, 0, 0, 0)
     marca_col_layout.setSpacing(0)

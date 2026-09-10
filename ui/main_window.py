@@ -28,7 +28,7 @@ from ui.dialog_actions import DialogActionsController
 from ui.home_controller import HomeController
 from ui.catalog_toolbar import build_top_bar
 from ui.home_page_builder import build_home_page
-from ui.nav_rail import build_nav_rail, on_groups_sidebar_changed, open_favorites_folder
+from ui.nav_top import build_nav_top, on_groups_sidebar_changed, open_favorites_folder
 from ui.navigation_controller import NavigationController
 from ui.now_playing_bar_builder import update_now_playing_bar_compact
 from ui.player_panel_builder import build_player_panel
@@ -68,9 +68,9 @@ DEFAULT_DOWNLOADS_DIRNAME = "TDT Radio VIP"
 # ui.app_lifecycle.AppLifecycle (self.lifecycle):
 #     schedule_startup_tasks, show_onboarding, warn_vlc_unavailable,
 #     run_automatic_backup, resume_last_stream, shutdown
-# ui.nav_rail (funciones de módulo):
-#     _build_nav_rail, _toggle_library_sidebar, _open_favorites_folder,
-#     _on_groups_sidebar_changed
+# ui.nav_top (funciones de módulo):
+#     _build_nav_rail (ahora _build_nav_top), _toggle_library_sidebar,
+#     _open_favorites_folder, _on_groups_sidebar_changed
 # ui.catalog_toolbar (funciones de módulo):
 #     _build_top_bar, _on_catalog_sort_changed, _toggle_tv_grid_view
 # ui.home_page_builder.build_home_page(): _build_home_page
@@ -306,13 +306,17 @@ class MainWindow(QMainWindow):
         self.title_bar = build_title_bar(self)
         raiz_v.addWidget(self.title_bar)
 
+        # La barra de navegación vive como fila propia del layout vertical
+        # (no como columna del QHBoxLayout de más abajo): en el modelo v8
+        # las secciones son pestañas horizontales, no un raíl lateral que
+        # comparte fila con el contenido. Ver spec v8 §4.1.
+        self.nav_top = build_nav_top(self)
+        raiz_v.addWidget(self.nav_top)
+
         cuerpo = QWidget()
         root = QHBoxLayout(cuerpo)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
-
-        self.nav_rail = build_nav_rail(self)
-        root.addWidget(self.nav_rail)
 
         # Sidebar de biblioteca (Recientes + Playlists = carpetas de
         # favoritos), estilo Spotify: panel aditivo entre el riel de
