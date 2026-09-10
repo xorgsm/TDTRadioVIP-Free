@@ -202,7 +202,8 @@ class WindowChrome:
 
         win.nav_top.setVisible(True)
         win.content_widget.setVisible(True)
-        # Respeta la preferencia del usuario (botón de biblioteca del riel)
+        # Respeta la preferencia del usuario (botón de biblioteca de la
+        # barra de navegación)
         # en vez de forzarlo visible: si lo había ocultado antes de entrar
         # en pantalla completa, debe seguir oculto al salir.
         win.library_sidebar.setVisible(win.library_toggle_btn.isChecked())

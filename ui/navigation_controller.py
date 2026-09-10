@@ -1,6 +1,6 @@
 """
-Cambio de sección del riel de navegación (Inicio/TV/Radio/Favoritos/
-Historial/Descargas): persiste y restaura los filtros de catálogo por
+Cambio de sección de la barra de navegación superior (Inicio/TV/Radio/
+Favoritos/Historial/Descargas): persiste y restaura los filtros de catálogo por
 sección, actualiza la visibilidad de los controles de la barra superior,
 y anima la transición de página.
 

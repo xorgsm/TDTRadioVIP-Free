@@ -113,7 +113,7 @@ class PlaybackController:
         win.now_subtitle.setText("TV en directo" if item_type == "tv" else "Radio online")
         # Borde de color en el logo de "reproduciendo ahora" según el tipo
         # de contenido -- mismo azul/naranja que ya usan TV/Radio en el
-        # riel y las tarjetas, para que se note de un vistazo qué se está
+        # barra de navegación y las tarjetas, para que se note de un vistazo qué se está
         # escuchando sin tener que leer el subtítulo.
         tipo_accent = palette.ACCENT_INFO if item_type == "tv" else palette.ACCENT_CATEGORY_ORANGE
         win.now_logo.setStyleSheet(

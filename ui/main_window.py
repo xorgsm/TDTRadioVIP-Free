@@ -69,8 +69,8 @@ DEFAULT_DOWNLOADS_DIRNAME = "TDT Radio VIP"
 #     schedule_startup_tasks, show_onboarding, warn_vlc_unavailable,
 #     run_automatic_backup, resume_last_stream, shutdown
 # ui.nav_top (funciones de módulo):
-#     _build_nav_rail (ahora _build_nav_top), _toggle_library_sidebar,
-#     _open_favorites_folder, _on_groups_sidebar_changed
+#     _build_nav_top, _toggle_library_sidebar, _open_favorites_folder,
+#     _on_groups_sidebar_changed
 # ui.catalog_toolbar (funciones de módulo):
 #     _build_top_bar, _on_catalog_sort_changed, _toggle_tv_grid_view
 # ui.home_page_builder.build_home_page(): _build_home_page
@@ -160,13 +160,21 @@ class MainWindow(QMainWindow):
         # cerca de esa proporción deja respirar el catálogo, la emisión y
         # la navegación textual, sin obligar a maximizar la ventana.
         self.resize(1280, 760)
-        # 1000px de mínimo era más de lo que la propia interfaz necesita
+        # 1000px de mínimo era más de lo que la propia interfaz necesita:
+        # al ser mayor que la mitad del ancho de muchas pantallas (p. ej.
+        # 1920px ÷ 2 = 960), Windows no dejaba encajar la ventana en la
+        # mitad de la pantalla ni al arrastrarla al borde izquierdo -- se
+        # quedaba "a medias" (bug reportado).
+        # 900 tenía margen sobre el desglose real de la interfaz cuando la
+        # navegación era un riel lateral compartiendo fila con el contenido
         # (riel 76 + lista de canales 420 + panel de vídeo 300 + divisor
-        # ≈ 800-820px reales): al ser mayor que la mitad del ancho de
-        # muchas pantallas (p. ej. 1920px ÷ 2 = 960), Windows no dejaba
-        # encajar la ventana en la mitad de la pantalla ni al arrastrarla
-        # al borde izquierdo -- se quedaba "a medias" (bug reportado).
-        # 900 sigue teniendo margen sobre el mínimo real de la interfaz.
+        # ≈ 800-820px). Con la navegación en su propia fila horizontal
+        # (ui.nav_top, ver spec v8 §4.1) ese desglose ya no aplica: ahora
+        # la barra de navegación es una restricción de ancho independiente
+        # (7 pestañas de texto, sin colapso a iconos todavía -- ver spec v8
+        # §5.4) que puede o no caber en 860px según la fuente/DPI real.
+        # Pendiente de medir con la interfaz corriendo (ver plan Fase 1,
+        # Task 2, Step 10) antes de dar este mínimo por bueno de nuevo.
         # Los tres paneles pueden coexistir en una ventana estrecha. Antes
         # sus mínimos sumaban casi todo el ancho de la pantalla y Qt acababa
         # recortando el panel central en vez de dejar al splitter repartirlo.
@@ -319,10 +327,11 @@ class MainWindow(QMainWindow):
         root.setSpacing(0)
 
         # Sidebar de biblioteca (Recientes + Playlists = carpetas de
-        # favoritos), estilo Spotify: panel aditivo entre el riel de
-        # iconos y el contenido principal, colapsable con el botón de
-        # abajo del todo en el riel. No sustituye a las pestañas de
-        # Favoritos/Historial -- es un atajo hacia ellas.
+        # favoritos), estilo Spotify: panel aditivo entre la barra de
+        # navegación superior y el contenido principal, colapsable con el
+        # botón de biblioteca al final de la barra (ui.nav_top). No
+        # sustituye a las pestañas de Favoritos/Historial -- es un atajo
+        # hacia ellas.
         self.library_sidebar = LibrarySidebar(self, partial(open_favorites_folder, self))
         self.library_sidebar.setVisible(False)
         root.addWidget(self.library_sidebar)
@@ -339,7 +348,7 @@ class MainWindow(QMainWindow):
         # mismo patrón que LibrarySidebar arriba, pero solo tiene sentido
         # durante la sección de Televisión: su visibilidad se controla en
         # ui.navigation_controller.NavigationController.on_nav_changed(),
-        # no con un botón propio en el riel.
+        # no con un botón propio en la barra de navegación.
         self.groups_sidebar = GroupsSidebar(partial(on_groups_sidebar_changed, self), self.channel_menu.delete_tv_groups)
         self.groups_sidebar.setVisible(False)
         root.addWidget(self.groups_sidebar)

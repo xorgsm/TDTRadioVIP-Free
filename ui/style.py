@@ -237,9 +237,9 @@ QFrame#nowPlayingBar {{
     border: 1px solid {palette.BORDER_STRONG};
     border-radius: 18px;
 }}
-QWidget#navRail {{
+QWidget#navTopBar {{
     background-color: {palette.BG_PANEL};
-    border-right: 1px solid {palette.BORDER};
+    border-bottom: 1px solid {palette.BORDER};
 }}
 QToolButton#navButton {{
     border-radius: 10px;
@@ -591,11 +591,11 @@ QMainWindow#mainWindowRoot {
     background: transparent;
 }
 
-/* ---------- Raíl de navegación ---------- */
-QWidget#navRail {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+/* ---------- Barra de navegación superior (nav_top) ---------- */
+QWidget#navTopBar {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
         stop:0 #0e1b2a, stop:0.48 #091522, stop:1 #06101a);
-    border-right: 1px solid rgba(255, 255, 255, 12);
+    border-bottom: 1px solid rgba(255, 255, 255, 12);
 }
 QToolButton#navButton {
     background: transparent;
@@ -639,13 +639,6 @@ QLabel#catalogCount {
     font-size: 7.5pt;
     font-weight: 800;
     letter-spacing: 0.8px;
-}
-QLabel#navCaption {
-    color: #8b96a8;
-    font-size: 11pt;
-    font-weight: 800;
-    letter-spacing: 1.4px;
-    padding: 0 10px 6px 10px;
 }
 QLineEdit#searchBox {
     background-color: #0d1b2a;
