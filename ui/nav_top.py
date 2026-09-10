@@ -96,7 +96,6 @@ def build_nav_top(win) -> QWidget:
     win.library_toggle_btn.toggled.connect(partial(toggle_library_sidebar, win))
     layout.addWidget(win.library_toggle_btn)
 
-    win.nav_top_bar = bar
     return bar
 
 
