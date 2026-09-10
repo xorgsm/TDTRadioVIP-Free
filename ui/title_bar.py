@@ -26,9 +26,9 @@ def build_title_bar(win) -> QWidget:
     # Marca + versión, apiladas: antes la versión no vivía aquí (esta
     # barra se veía apretada contra "Archivo" en ventanas no muy
     # anchas con la marca en una sola línea) y en su lugar se repetía
-    # en el riel de navegación (brandLabel/versionLabel). Con la barra
-    # ya más alta para dos líneas, la marca+versión viven una sola vez,
-    # más grandes, y el riel ya no las repite (ver _build_nav_rail).
+    # en el riel de navegación (brandLabel/versionLabel, ya retirado -- ver
+    # ui.nav_top). Con la barra ya más alta para dos líneas, la marca+versión
+    # viven una sola vez, más grandes, y la barra de navegación no las repite.
     marca = QLabel("TDT & Radio VIP")
     marca.setObjectName("titleBrand")
     marca.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)

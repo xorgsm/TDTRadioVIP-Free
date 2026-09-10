@@ -693,7 +693,7 @@ class ChannelListsController:
                 if current_widget is win.tv_list:
                     # El filtro de categoría de TV lo lleva GroupsSidebar (panel
                     # lateral), no el desplegable group_filter -- ver
-                    # ui.nav_rail.on_groups_sidebar_changed / refresh_group_filter().
+                    # ui.nav_top.on_groups_sidebar_changed / refresh_group_filter().
                     sidebar_groups = getattr(win, "_tv_sidebar_groups", None)
                     matches_group = sidebar_groups is None or data.get("group") in sidebar_groups
                 elif current_widget is win.fav_list:

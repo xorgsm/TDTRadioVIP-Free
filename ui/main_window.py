@@ -150,12 +150,12 @@ class MainWindow(QMainWindow):
         self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         # El LibrarySidebar (Recientes/Playlists) arranca OCULTO a propósito
-        # (ver ui.nav_rail.build_nav_rail/toggle_library_sidebar): con él visible por
+        # (ver ui.nav_top.build_nav_top/toggle_library_sidebar): con él visible por
         # defecto la ventana necesitaba 210px de más, y en pantallas más
         # pequeñas la app se abría demasiado grande y con la barra de
         # controles y la barra superior apretadas. Quien lo quiera, lo
-        # activa con el botón de biblioteca del riel — sigue disponible,
-        # solo que no ocupa sitio si no se pide.
+        # activa con el botón de biblioteca de la barra superior — sigue
+        # disponible, solo que no ocupa sitio si no se pide.
         # El lienzo de Pencil se ha planteado a 1280 px: arrancar algo más
         # cerca de esa proporción deja respirar el catálogo, la emisión y
         # la navegación textual, sin obligar a maximizar la ventana.
@@ -354,7 +354,7 @@ class MainWindow(QMainWindow):
         # superior, que se construye antes que el QStackedWidget.
         self.tv_view_toggle.setChecked(bool(self.settings.get("catalog_grid_view", False)))
 
-        # setChecked(True) sobre el botón de Inicio (ui.nav_rail.build_nav_rail)
+        # setChecked(True) sobre el botón de Inicio (ui.nav_top.build_nav_top)
         # no dispara idClicked por sí solo — solo lo hace
         # un clic real del usuario. Sin esto, la portada se abriría vacía
         # hasta que el usuario cambiara de sección y volviera a Inicio.

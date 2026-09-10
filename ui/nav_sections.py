@@ -24,11 +24,11 @@ SECTION_TITLES = {
     NAV_HIST: "Historial",
     NAV_DOWNLOAD: "Descargas",
 }
-# Mismo color por sección que ya usan los iconos del riel lateral, para
-# poder pintar con él también el título de la barra superior (más
-# acentos de color coherentes con lo que ya existía, no colores nuevos
+# Mismo color por sección que ya usan los iconos de la barra de navegación
+# superior, para poder pintar con él también el título de la sección activa
+# (más acentos de color coherentes con lo que ya existía, no colores nuevos
 # sueltos). Se define aquí, a nivel de módulo, para que tanto
-# _build_nav_rail() como _on_nav_changed() lean del mismo sitio.
+# build_nav_top() como _on_nav_changed() lean del mismo sitio.
 SECTION_COLORS = {
     NAV_HOME: ACCENT_PRESETS["Verde"],
     NAV_TV: palette.ACCENT_INFO,
