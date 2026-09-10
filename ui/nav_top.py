@@ -69,8 +69,8 @@ def build_nav_top(win) -> QWidget:
                 f(c, size=24)
             )
         )
-        win.nav_group.addButton(btn, nav_id)
         layout.addWidget(btn)
+        win.nav_group.addButton(btn, nav_id)
         # El botón de descargas solo aparece con licencia activada de
         # verdad. En la versión free ni siquiera se construye (ver
         # nav_defs más arriba), así que este condicional solo puede
