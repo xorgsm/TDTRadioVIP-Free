@@ -1,8 +1,9 @@
 # Rediseño radical de interfaz — TDT & Radio VIP v8
 
-**Estado:** Diseño en progreso, PAUSADO a petición del usuario para retomar en otra sesión.
-**Fecha de inicio:** 2026-09-09
-**Ruta de trabajo dedicada:** `v8/` (ver `v8/README.md`)
+**Estado:** Diseño aprobado. Listo para plan de implementación (`superpowers:writing-plans`).
+**Fecha de inicio:** 2026-09-09 · **Fecha de aprobación:** 2026-09-10
+**Ruta de trabajo dedicada:** `v8/` (ver `v8/README.md`) — solo como carpeta de
+documentación del rediseño; el código se implementa in-place en `ui/` (ver §5.6).
 **Clasificación:** Arquitectónico (proceso completo de brainstorming: preguntas → enfoques → diseño por secciones → spec → plan de implementación).
 
 ## 1. Motivación
@@ -117,63 +118,114 @@ una herramienta de uso frecuente que merece acceso directo, no solo un ítem
 dentro de "Más ▾".
 
 Barra superior de contenido de primer nivel resultante: **Inicio, TV, Radio,
-Podcasts, Descargas**, más "Más ▾" para el resto de herramientas (pendiente de
-cerrar en §5.1).
+Podcasts, Descargas**, más "Más ▾" para el resto de herramientas (contenido
+cerrado en §5.1).
 
-## 5. Abierto / pendiente para la próxima sesión
+## 5. Decisiones adicionales (cerradas 2026-09-10)
 
-Estos puntos se identificaron durante la exploración pero **no se han resuelto
-todavía** — son el punto de partida al retomar el diseño:
+Estos puntos quedaron abiertos tras la sesión inicial (2026-09-09) y se
+resolvieron al retomar el diseño:
 
-1. **Contenido completo de "Más ▾"**: candidatos restantes por ubicar
-   (Torrents/Soulseek ya viven dentro de Descargas, no aquí): Grabaciones
-   recurrentes, herramientas de audio —Convertir, Editor MP3, Editar info—,
-   Guía EPG, Configuración, Ecualizador. Favoritos e Historial ya se
-   resolvieron como filas de Inicio (§4.6) y Descargas ya se resolvió como
-   top-level (§4.7) — faltan solo estos últimos por agrupar.
-2. **Barra de menú clásica de Windows** (Archivo/Configuración/Ayuda,
-   `ui/app_menu.py` — incluye acciones como "Grabaciones recurrentes…"): no se
-   ha decidido si se mantiene tal cual (convención de escritorio actual), se
-   fusiona dentro de "Más ▾", o desaparece a favor de un patrón más "app
-   moderna" sin barra de menú tradicional.
-3. **Estilo visual de diálogos** (Ajustes, Ecualizador, Editor M3U, Programar
-   grabación, etc.): no se ha decidido si se mantienen como diálogos modales
-   (patrón actual) o se rediseñan como paneles a pantalla completa al estilo
-   Netflix/Plex.
-4. **Comportamiento responsive**: `DESIGN.md` documenta umbrales concretos
-   (520px para Inicio, 390px para Ahora suena) sobre el layout actual de raíl
-   lateral. Con barra superior + hero, estos umbrales y el comportamiento en
-   la resolución mínima soportada (860×580) hay que redefinirlos desde cero.
-5. **Reflejo del split VIP/Free en la nueva navegación superior**: se sabe que
-   ambas ediciones comparten el mismo shell (decisión ya tomada en la revisión
-   de arquitectura previa), pero no se ha revisado cómo se oculta/adapta la
-   barra superior y "Más ▾" para la edición Free (hoy son 21 sitios
-   condicionales dispersos en `main_window.py` basados en `activated` /
-   `es_version_free`).
-6. **Enfoque técnico de migración**: `main_window.py` ya fue dividido
-   recientemente en módulos (`nav_rail.py`, `catalog_toolbar.py`,
-   `home_page_builder.py`, etc. — ver commits de refactor `cfa3a5e`..`22e57aa`
-   en el historial de `origin/master`). El rediseño de v8 probablemente
-   necesita módulos nuevos equivalentes (`nav_top.py`, `home_hero.py`,
-   `poster_card.py`...) en vez de reutilizar los actuales — falta decidir si
-   se reescriben desde cero en `v8/` o se adaptan/migran los módulos
-   existentes.
+### 5.1 Contenido de "Más ▾"
 
-## 6. Próximos pasos al retomar
+Dropdown con categorías (no lista plana, no página dedicada a pantalla
+completa). Agrupación final:
 
-1. Resolver los puntos pendientes de §5 (preguntas una a una, con companion
-   visual para las que sean de layout/composición).
-2. Completar el diseño por secciones (arquitectura de módulos, migración de
-   datos si aplica, testing) siguiendo el resto del proceso de
-   `superpowers:brainstorming` (path arquitectónico).
-3. Reescribir esta spec como versión final (sustituir "PAUSADO" por
-   "aprobado") y pedir revisión explícita del usuario.
-4. Invocar `superpowers:writing-plans` para generar el plan de implementación
-   dentro de `v8/`.
+- **Gestión de contenido** — Añadir canal/emisora, Importar lista M3U
+  (general/TV/radio), Exportar lista M3U (general/TV/radio), Editor M3U,
+  Gestionar canales personalizados, Diagnosticar canales y emisoras,
+  Actualizar canales TV, Actualizar emisoras de radio.
+- **Grabaciones** — Biblioteca de grabaciones, Grabaciones recurrentes,
+  Centro de grabaciones programadas, Multivista (mosaico).
+- **Herramientas de audio** — Convertir, Editor MP3, Editar info (tags).
+- **Guía EPG** — Guía EPG (entrada única, sin subgrupo).
+- **Ajustes** — Preferencias, Ecualizador, Activar VIP… (solo si
+  `not win.activated and not win.es_version_free`, igual que hoy).
+- **Ayuda y sistema** — Acerca de, Estadísticas de uso, Buscar
+  actualizaciones, Abrir carpeta de logs, Exportar copia de seguridad,
+  Importar copia de seguridad.
+
+"Búsqueda global…" (Ctrl+K) sale de "Más ▾" y pasa a ser un icono de búsqueda
+directo en la barra superior, dado su uso frecuente. "Salir" no necesita
+entrada de menú — el cierre de ventana ya lo cubre.
+
+### 5.2 Barra de menú clásica de Windows
+
+**Desaparece por completo.** Se elimina `QMenuBar` (`ui/app_menu.py` y su
+invocación en `main_window.py`); todo su contenido se redistribuye entre la
+barra superior, "Más ▾" (§5.1) y el icono de búsqueda global. Consistente con
+el patrón de app moderna sin menú tradicional (Netflix/Plex/Spotify).
+
+### 5.3 Estilo visual de diálogos
+
+**Se mantiene el patrón modal flotante actual** (ventana centrada sobre fondo
+oscurecido) para Ajustes, Ecualizador, Editor M3U, Programar grabación y el
+resto de diálogos existentes. No se migra a paneles a pantalla completa —
+evita reescribir cada diálogo y mantiene claro que son acciones puntuales,
+cerrables con Esc/click fuera. Decisión validada con mockup comparativo en el
+companion visual (`.superpowers/brainstorm/1366-1789036607/content/dialog-style.html`).
+
+### 5.4 Comportamiento responsive
+
+Sustituye los umbrales actuales de `DESIGN.md` (520px Inicio / raíl lateral)
+por:
+
+- **Barra superior**: a 860px (mínimo soportado) las 5 pestañas + "Más ▾" se
+  muestran con texto completo. Por debajo de un umbral a definir en fase de
+  implementación (según ancho real medido de las pestañas con texto), la
+  barra colapsa a **solo iconos** — nunca a menú hamburguesa.
+- **Hero de Inicio**: se encoge en altura (menos padding, tipografía más
+  pequeña) al acercarse al mínimo de 860×580, en vez de ocultarse u
+  obligar a un layout vertical. Las filas de carruseles ya se desplazan
+  horizontalmente a cualquier ancho, así que no necesitan modo vertical.
+- **"Ahora suena"**: **sin cambios** respecto a `DESIGN.md` — conserva el
+  umbral de 390px y el modo compacto documentado (oculta carátula y saltos
+  secundarios, reduce el deslizador de volumen de 108px a 56px, mantiene
+  reproducción/parada/reintento/grabación/silencio/menú de opciones). No
+  depende del modelo de navegación, así que el comportamiento actual sigue
+  siendo válido tal cual.
+
+### 5.5 Reflejo del split VIP/Free en la navegación superior
+
+**Mismo patrón que hoy**, solo reubicado:
+
+- La pestaña **Descargas** no se construye en la edición Free (igual que
+  `nav_rail.py` hoy: no hay import de `ui/download_panel.py` que la respalde)
+  y se oculta en VIP hasta que `win.activated` es `True`.
+- El botón de **Cast/DLNA** en "Ahora suena" se omite en Free
+  (`now_playing_bar_builder.py` ya condiciona esto; se traslada tal cual).
+- **"Activar VIP…"** vive dentro de "Más ▾" → Ajustes, solo cuando
+  `not win.activated and not win.es_version_free` (ver §5.1).
+
+Sin cambios de comportamiento respecto al shell compartido VIP/Free ya
+decidido en la revisión de arquitectura previa — solo cambia dónde vive cada
+condicional en el árbol de módulos nuevo.
+
+### 5.6 Enfoque técnico de migración
+
+**Sustitución directa dentro de `ui/`**, sin coexistencia con flags ni árbol
+paralelo en `v8/`. Los módulos nuevos (`nav_top.py`, `home_hero.py`,
+`poster_card.py`, y equivalentes para "Más ▾", diálogos reubicados, etc.)
+reemplazan directamente a los actuales (`nav_rail.py`, `home_page_builder.py`,
+`app_menu.py`, etc.) en una serie de PRs enfocados sobre el mismo árbol de
+`ui/`, siguiendo el patrón ya establecido por el refactor reciente de
+`main_window.py` (commits `cfa3a5e`..`22e57aa`). La carpeta
+`TDTRadioVIP_v8.0/` (workspace dedicado, ver su `README.md`) sigue existiendo
+solo como destino de documentación específica de v8, no como árbol de código
+paralelo.
+
+## 6. Próximos pasos
+
+1. Invocar `superpowers:writing-plans` para generar el plan de implementación
+   detallado (fases, módulos nuevos por crear, módulos a retirar, orden de
+   PRs) basado en las decisiones de §4 y §5.
+2. Ejecutar el plan siguiendo el flujo de desarrollo habitual (TDD, revisión
+   de código) sobre el árbol `ui/` existente.
 
 ## Referencias
 
 - `DESIGN.md` — sistema de diseño vigente (tokens, reglas, componentes).
 - `PRODUCT.md` — compromisos de marca y contexto de producto.
 - Mockups del companion visual: `.superpowers/brainstorm/127-1788960745/content/`
-  (`home-layout.html`, `card-style.html`).
+  (`home-layout.html`, `card-style.html`) y
+  `.superpowers/brainstorm/1366-1789036607/content/` (`dialog-style.html`).
