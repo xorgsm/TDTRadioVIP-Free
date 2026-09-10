@@ -1,18 +1,16 @@
 """Constantes de las secciones de navegación (Inicio/TV/Radio/Favoritos/
 Historial/Descargas). Extraídas de ui/main_window.py para que los módulos
-que las necesitan (ui/nav_rail.py, ui/catalog_toolbar.py, controladores)
+que las necesitan (ui/nav_top.py, ui/catalog_toolbar.py, controladores)
 puedan importarlas a nivel de módulo sin crear un ciclo con main_window.
 """
 from ui.style import ACCENT_PRESETS
 from ui import palette
 
 NAV_HOME, NAV_TV, NAV_RADIO, NAV_FAV, NAV_HIST, NAV_DOWNLOAD = range(6)
-# Ancho del riel lateral (ver _build_nav_rail). Se comparte con
-# _build_title_bar para que el menu (Archivo/Configuracion/Ayuda) arranque
-# alineado con el panel de contenido -- antes quedaba pegado al nombre de
-# la app y no coincidia con el borde de "Inicio" ni con el resto de la
-# ventana.
-NAV_RAIL_WIDTH = 180
+# Alto de la barra de navegación superior (ver ui.nav_top.build_nav_top).
+# Mismo orden de magnitud que el icono de sección (24px) más el padding
+# vertical del ritmo espacial documentado en DESIGN.md (8-18px).
+NAV_TOP_HEIGHT = 56
 # Títulos cortos a propósito: "Televisión (TDT)" y "Radio online" se
 # comían casi todo el ancho disponible en la barra superior (título +
 # botón Guía + filtro de categoría + buscador en una sola fila), dejando
