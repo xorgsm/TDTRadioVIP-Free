@@ -49,3 +49,4 @@ installer_output/
 graphify-out/
 
 .superpowers/
+.worktrees/
