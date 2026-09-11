@@ -1,11 +1,14 @@
 # Rediseño radical de interfaz — TDT & Radio VIP v8
 
-**Estado:** Diseño aprobado por fases. Fase 1 (§4.1-4.2, nav_top) implementada y
-fusionada a `master` (2026-09-10). Fase 2 (§6, Inicio hero+filas+tarjetas)
-implementada (2026-09-10, rama `feature/v8-home-hero`). Fases 3-5
-(§5.1-5.2, §5.4, §5.5) implementadas (2026-09-11, misma rama) -- ver §8
-para el cierre de cada una. Rediseño v8 completo a falta de fusionar
-`feature/v8-home-hero` a `master`.
+**Estado:** Rediseño v8 **completo y fusionado a `master`** (2026-09-11).
+Fase 1 (§4.1-4.2, nav_top) implementada y fusionada a `master` (2026-09-10).
+Fase 2 (§6, Inicio hero+filas+tarjetas) implementada (2026-09-10, rama
+`feature/v8-home-hero`). Fases 3-5 (§5.1-5.2, §5.4, §5.5) implementadas
+(2026-09-11, misma rama) -- ver §8 para el cierre de cada una. La fusión de
+`feature/v8-home-hero` a `master` se resolvió por fast-forward: `master`,
+`feature/v8-home-hero` y `origin/master` apuntan los tres a `36eb956`
+(`chore: bump APP_VERSION/MyAppVersion a 8.0.2`), por lo que no existe commit
+de merge separado. Versión publicada: **8.0.2**.
 **Fecha de inicio:** 2026-09-09 · **Fecha de aprobación (diseño inicial):** 2026-09-10
 **Ruta de trabajo dedicada:** `TDTRadioVIP_v8.0/TDTRadioVIP/` — git worktree real
 del repo (mismo historial/remotos), donde se ejecuta y prueba cada fase.
@@ -311,8 +314,8 @@ que la Fase 1 (§5.6) — sin flags, sin árbol paralelo.
    responsive, pulido VIP/Free)~~ -- implementadas directamente sobre la
    spec ya cerrada de §5, sin plan formal aparte (alcance acotado y de
    bajo riesgo arquitectónico); ver §8 para el cierre de cada una.
-4. Pendiente real: fusionar `feature/v8-home-hero` a `master` (ver
-   `superpowers:finishing-a-development-branch`).
+4. ~~Pendiente real: fusionar `feature/v8-home-hero` a `master`~~ -- hecho
+   (2026-09-11, fast-forward; ver cabecera **Estado**).
 
 ## 8. Fases 3-5 — cierre de implementación (2026-09-11)
 
