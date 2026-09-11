@@ -10,7 +10,7 @@ import pytest
 from PySide6.QtCore import QBuffer, QIODevice, Qt
 from PySide6.QtGui import QColor, QImage, QPixmap
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QListWidget, QWidget
+from PySide6.QtWidgets import QApplication, QBoxLayout, QListWidget, QWidget
 
 from core import backup
 from ui import widgets
@@ -54,7 +54,7 @@ def test_tuning_large_catalog_only_notifies_changed_rows(app):
     view.setModel(model)
     empty = QListWidget()
     window = SimpleNamespace(
-        tv_list=view, radio_list=empty, fav_list=empty, hist_list=empty, home_fav_list=empty,
+        tv_list=view, radio_list=empty, fav_list=empty, hist_list=empty,
         current_type="tv", current_name="1", _playback_failed=False, favorites=[],
     )
     changes = []
@@ -260,6 +260,36 @@ def test_home_can_return_to_last_station(app):
     window = SimpleNamespace(current_url=None, history=[entry], playback=Mock())
     HomeController(window).home_resume_or_search()
     window.playback.play.assert_called_once_with("radio", "Radio", entry["url"], "", "")
+
+
+def test_refresh_home_page_populates_all_four_carousels(app):
+    from ui.home_controller import HomeController
+    win = SimpleNamespace(
+        history=[{"type": "tv", "name": "Canal 1", "url": "u1", "logo": ""}],
+        favorites=[{"type": "radio", "name": "Radio 1", "url": "u2", "logo": ""}],
+        tv_channels_data=[],
+        epg=SimpleNamespace(now_on_air_entries=Mock(return_value=[{"type": "tv", "name": "En antena", "url": "u3"}])),
+        home_recent_carousel=Mock(),
+        home_on_air_carousel=Mock(),
+        home_recommended_carousel=Mock(),
+        home_fav_carousel=Mock(),
+    )
+    HomeController(win).refresh_home_page()
+    win.home_recent_carousel.set_entries.assert_called_once_with(win.history[:12])
+    win.home_on_air_carousel.set_entries.assert_called_once_with([{"type": "tv", "name": "En antena", "url": "u3"}])
+    win.home_recommended_carousel.set_entries.assert_called_once_with([])
+    win.home_fav_carousel.set_entries.assert_called_once_with(win.favorites[:5])
+
+
+def test_update_home_compact_switches_hero_and_health_direction_only(app):
+    from ui.home_controller import HomeController
+    win = SimpleNamespace(
+        _home_now_layout=Mock(), _home_health_layout=Mock(), _home_layout=Mock(),
+    )
+    HomeController(win).update_home_compact(400)
+    win._home_now_layout.setDirection.assert_called_once_with(QBoxLayout.TopToBottom)
+    win._home_health_layout.setDirection.assert_called_once_with(QBoxLayout.TopToBottom)
+    win._home_layout.setContentsMargins.assert_called_once_with(2, 4, 2, 18)
 
 
 @pytest.mark.parametrize("theme", ["dark", "light"])

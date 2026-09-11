@@ -537,11 +537,13 @@ class ChannelListsController:
 
     def mark_playing_everywhere(self):
         win = self.win
-        # home_recent_carousel / home_recommended_carousel no entran en este
-        # bucle: son CarouselCard (ui/carousel.py), no QListWidgetItem con
-        # ROLE_PLAYING -- no llevan indicador de "sonando ahora" propio, se
-        # limitan a repoblarse cada vez que se entra en Inicio.
-        for lst in (win.tv_list, win.radio_list, win.fav_list, win.hist_list, win.home_fav_list):
+        # Los 4 carruseles de Inicio (home_recent_carousel,
+        # home_on_air_carousel, home_recommended_carousel,
+        # home_fav_carousel) no entran en este bucle: son CarouselCard
+        # (ui/carousel.py), no QListWidgetItem con ROLE_PLAYING -- no
+        # llevan indicador de "sonando ahora" propio, se limitan a
+        # repoblarse cada vez que se entra en Inicio.
+        for lst in (win.tv_list, win.radio_list, win.fav_list, win.hist_list):
             if isinstance(lst, ChannelListView):
                 def update_entry(item):
                     data = item.get(ROLE_DATA) or {}

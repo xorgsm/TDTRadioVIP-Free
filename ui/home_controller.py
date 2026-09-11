@@ -13,13 +13,10 @@ este controlador solo refresca/reacciona sobre los widgets ya construidos.
 
 Coder By X@R
 """
-from PySide6.QtWidgets import QBoxLayout, QListWidgetItem
+from PySide6.QtWidgets import QBoxLayout
 
-from core import channels as tv_channels
-from core import radio as radio_stations
 from core.stream_health_store import list_health, summarize_health
 from ui.visual import set_variant
-from ui.widgets import ROLE_CUSTOM, ROLE_DATA, ROLE_FAV, ROLE_PLAYING
 
 
 class HomeController:
@@ -32,10 +29,8 @@ class HomeController:
         win = self.win
         compact = width < 520
         direction = QBoxLayout.TopToBottom if compact else QBoxLayout.LeftToRight
-        win._home_quick_layout.setDirection(direction)
         win._home_now_layout.setDirection(direction)
         win._home_health_layout.setDirection(direction)
-        win._home_secondary_layout.setDirection(direction)
         win._home_layout.setContentsMargins(2, 4, 2 if compact else 20, 18)
 
     def home_resume_or_search(self):
@@ -70,36 +65,20 @@ class HomeController:
         win.home_float_btn.setVisible(True)
 
     def refresh_home_page(self):
-        """Puebla los carruseles de 'Recientes' y 'Recomendado para ti', y la
-        lista de favoritos destacados, con los mismos datos que ya usan sus
-        propias pestañas — se llama cada vez que se entra en Inicio, para
-        que nunca se quede desactualizada respecto a lo que se ha
-        visto/marcado mientras tanto."""
+        """Puebla las 4 filas de carrusel de Inicio (Continuar viendo/
+        escuchando, Ahora en antena, Recomendado para ti, Favoritos) con
+        los mismos datos que ya usan sus propias pestañas/paneles -- se
+        llama cada vez que se entra en Inicio, para que nunca se quede
+        desactualizada respecto a lo que se ha visto/marcado mientras
+        tanto."""
         win = self.win
-        custom_tv = {c.name for c in tv_channels.load_custom_channels()}
         self._refresh_home_now_playing()
         self.refresh_home_health()
-        custom_radio = {s.name for s in radio_stations.load_custom_stations()}
 
-        win.home_on_air_carousel.set_entries(win.epg.now_on_air_entries())
         win.home_recent_carousel.set_entries(win.history[:12])
+        win.home_on_air_carousel.set_entries(win.epg.now_on_air_entries())
         win.home_recommended_carousel.set_entries(self._compute_recommendations())
-
-        win.home_fav_list.clear()
-        destacados = win.favorites[:5]
-        for fav in destacados:
-            item = QListWidgetItem()
-            data = dict(fav)
-            data["group"] = fav.get("folder", "")
-            item.setData(ROLE_DATA, data)
-            item.setData(ROLE_FAV, True)
-            item.setData(ROLE_PLAYING, win.current_type == fav["type"] and win.current_name == fav["name"])
-            is_custom = fav["name"] in (custom_tv if fav["type"] == "tv" else custom_radio)
-            item.setData(ROLE_CUSTOM, is_custom)
-            win.home_fav_list.addItem(item)
-            win.lists.request_logo(fav.get("logo", ""), item, win.home_fav_list)
-        win.home_fav_list.setVisible(bool(destacados))
-        win.home_fav_empty.setVisible(not destacados)
+        win.home_fav_carousel.set_entries(win.favorites[:5])
 
     def refresh_home_health(self):
         """Muestra un resumen claro de los últimos diagnósticos guardados."""
