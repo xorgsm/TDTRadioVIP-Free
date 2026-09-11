@@ -109,6 +109,39 @@ def test_carousel_ignores_obsolete_logo_callbacks(app):
     assert card.logo_label.pixmap().toImage().pixelColor(0, 0) == QColor("blue")
 
 
+def test_gradient_colors_for_name_are_deterministic_and_vary(app):
+    from ui.carousel import _gradient_colors_for_name
+    first = _gradient_colors_for_name("La 1")
+    again = _gradient_colors_for_name("La 1")
+    other = _gradient_colors_for_name("Antena 3")
+    assert first == again
+    assert first != other
+    for color in first:
+        assert color.startswith("#")
+
+
+def test_carousel_card_applies_deterministic_gradient_stylesheet(app):
+    card_a = CarouselCard({"type": "tv", "url": "u1", "name": "La 1"}, Mock())
+    card_b = CarouselCard({"type": "tv", "url": "u2", "name": "La 1"}, Mock())
+    card_c = CarouselCard({"type": "radio", "url": "u3", "name": "Antena 3"}, Mock())
+    assert "qlineargradient" in card_a.styleSheet()
+    assert card_a.styleSheet() == card_b.styleSheet()
+    assert card_a.styleSheet() != card_c.styleSheet()
+
+
+def test_carousel_card_updates_gradient_when_name_changes(app):
+    card = CarouselCard({"type": "tv", "url": "u1", "name": "La 1"}, Mock())
+    original = card.styleSheet()
+    card.update_entry({"type": "tv", "url": "u1", "name": "La 2"})
+    assert card.styleSheet() != original
+    assert "qlineargradient" in card.styleSheet()
+
+
+def test_carousel_card_stylesheet_includes_focus_ring(app):
+    card = CarouselCard({"type": "tv", "url": "u1", "name": "La 1"}, Mock())
+    assert ":focus" in card.styleSheet()
+
+
 def test_download_tools_are_lazy_and_share_latest_destination(app, monkeypatch, tmp_path):
     built = []
 
@@ -230,5 +263,5 @@ def test_home_can_return_to_last_station(app):
 
 
 @pytest.mark.parametrize("theme", ["dark", "light"])
-def test_style_builds_with_carousel_focus(theme):
-    assert 'QFrame#carouselCard:focus' in build_style(theme=theme)
+def test_style_builds_with_carousel_label_transparency(theme):
+    assert 'QFrame#carouselCard QLabel' in build_style(theme=theme)

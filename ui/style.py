@@ -300,35 +300,11 @@ QPushButton#muteButton[uiVariant="info"]:checked {{
     background-color: {palette.ACCENT_INFO};
     color: {palette.BG_ROOT};
 }}
-QFrame#carouselCard {{
-    background-color: {palette.BG_CARD};
-    border: 1px solid {palette.BORDER};
-    border-radius: 14px;
-}}
-QFrame#carouselCard:hover {{
-    background-color: {palette.BG_HOVER};
-    border-color: {palette.BORDER_STRONG};
-}}
-QFrame#carouselCard[uiVariant="tv"] {{
-    background-color: {palette.BG_CARD};
-    border-bottom: 2px solid {palette.ACCENT_INFO};
-}}
-QFrame#carouselCard[uiVariant="radio"] {{
-    background-color: {palette.BG_CARD};
-    border-bottom: 2px solid {palette.ACCENT_CATEGORY_ORANGE};
-}}
-QFrame#carouselCard[uiVariant="tv"]:hover {{
-    background-color: {palette.BG_HOVER};
-    border-color: {palette.BORDER_STRONG};
-}}
-QFrame#carouselCard[uiVariant="radio"]:hover {{
-    background-color: {palette.BG_HOVER};
-    border-color: {palette.BORDER_STRONG};
-}}
-QFrame#carouselCard:focus {{
-    border: 2px solid {shades['light']};
-    background-color: {palette.BG_PANEL_ALT};
-}}
+/* El fondo/borde/foco de cada tarjeta de carrusel los pone
+   ui.carousel._card_stylesheet() por instancia (degradado determinista
+   derivado del nombre del canal -- ver spec v8 §6.3), así que aquí solo
+   queda la regla que sigue siendo global: los QLabel hijos transparentes
+   para que se vea el degradado del QFrame padre. */
 QFrame#carouselCard QLabel {{ background: transparent; }}
 QLabel#carouselLogo {{ background-color: {palette.BG_PANEL}; border-radius: 10px; }}
 QLabel#carouselName {{ color: {palette.TEXT_PRIMARY}; font-size: 9pt; font-weight: 650; }}
