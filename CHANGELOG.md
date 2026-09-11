@@ -2,6 +2,50 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.0] — 2026-09-11
+
+Rediseño radical de interfaz (v8) — ver
+`docs/superpowers/specs/2026-09-09-v8-ui-redesign-design.md` para el
+diseño completo y las decisiones cerradas de cada fase. Sustitución
+directa dentro de `ui/`, sin flags ni árbol paralelo: no hay forma de
+volver a la interfaz de 7.6.x salvo instalando una versión anterior.
+
+### Changed
+- **Navegación**: el raíl lateral fijo (`ui/nav_rail.py`) se sustituye por
+  una barra superior horizontal (`ui/nav_top.py`) con las secciones de
+  contenido como pestañas (Inicio, TV, Radio, Favoritos, Historial,
+  Descargas). Por debajo del ancho real que necesitan esas pestañas con
+  su texto completo, la barra colapsa a solo iconos — nunca a menú
+  hamburguesa.
+- **Inicio**: pasa de una portada con botones rápidos TV/Radio y una lista
+  de favoritos a un layout "hero + filas" estilo Netflix/Plex — banner
+  grande con la reproducción actual (o la última emisión, o un genérico
+  si no hay historial) arriba, y 4 filas de carrusel a ancho completo
+  debajo (Continuar viendo/escuchando, Ahora en antena, Recomendado para
+  ti, Favoritos). El hero se encoge en altura (menos padding, título más
+  pequeño) al acercarse al mínimo de la ventana, en vez de ocultarse.
+- **Tarjetas de carrusel**: fondo degradado determinista (mismo nombre de
+  canal/emisora, mismo color siempre) en vez de superficie plana por
+  variante TV/Radio, con logo centrado encima — aspecto "cinematográfico"
+  de póster sin depender de fotografía real (el modelo de canal no expone
+  backdrop ni miniatura).
+- **Barra de menú clásica de Windows** (Archivo/Configuración/Ayuda,
+  `QMenuBar`) desaparece por completo. Su contenido se redistribuye entre
+  un botón **"Más ▾"** en la barra superior (categorizado: Gestión de
+  contenido, Grabaciones, Herramientas de audio, Guía EPG, Ajustes, Ayuda
+  y sistema) y un icono de búsqueda global directo (Ctrl+K).
+
+### Fixed
+- Nada — este rediseño es puro cambio de composición/estructura visual;
+  la identidad de marca, la paleta, la tipografía y toda la lógica de
+  reproducción, favoritos, historial, grabaciones y descargas quedan sin
+  tocar (ver `PRODUCT.md` § Brand Commitments).
+
+### Tests
+- 168 pruebas pasando (`python -m pytest -q`), con cobertura nueva para
+  el degradado de tarjetas, la reestructuración de Inicio, el menú
+  "Más ▾" y el colapso responsive de la barra superior/el hero.
+
 ## [7.6.6.0] — 2026-09-07
 
 ### Changed

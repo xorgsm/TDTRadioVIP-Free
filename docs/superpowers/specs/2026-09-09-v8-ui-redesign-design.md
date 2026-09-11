@@ -2,9 +2,10 @@
 
 **Estado:** Diseño aprobado por fases. Fase 1 (§4.1-4.2, nav_top) implementada y
 fusionada a `master` (2026-09-10). Fase 2 (§6, Inicio hero+filas+tarjetas)
-diseñada y aprobada, lista para plan de implementación
-(`superpowers:writing-plans`). Fases 3-5 (§5.1-5.2, §5.4, §5.5) pendientes de
-diseño detallado.
+implementada (2026-09-10, rama `feature/v8-home-hero`). Fases 3-5
+(§5.1-5.2, §5.4, §5.5) implementadas (2026-09-11, misma rama) -- ver §8
+para el cierre de cada una. Rediseño v8 completo a falta de fusionar
+`feature/v8-home-hero` a `master`.
 **Fecha de inicio:** 2026-09-09 · **Fecha de aprobación (diseño inicial):** 2026-09-10
 **Ruta de trabajo dedicada:** `TDTRadioVIP_v8.0/TDTRadioVIP/` — git worktree real
 del repo (mismo historial/remotos), donde se ejecuta y prueba cada fase.
@@ -299,17 +300,77 @@ se reestructura para el layout hero+filas (banner grande arriba, filas de
 carrusel debajo), siguiendo el mismo patrón de sustitución directa in-place
 que la Fase 1 (§5.6) — sin flags, sin árbol paralelo.
 
-## 7. Próximos pasos
+## 7. Próximos pasos (histórico -- todas las fases quedaron cerradas, ver §8)
 
-1. Invocar `superpowers:writing-plans` para generar el plan de
-   implementación detallado de la Fase 2, basado en §6, siguiendo el mismo
-   patrón de `subagent-driven-development` (worktree/rama propia) ya usado
-   en la Fase 1.
-2. Ejecutar el plan siguiendo el flujo de desarrollo habitual (TDD,
-   revisión de código) sobre el árbol `ui/` existente.
-3. Fases siguientes (§5.1-§5.2 "Más ▾" y retirada del menú clásico,
-   responsive, pulido VIP/Free) quedan pendientes de su propio ciclo
-   diseño → plan → implementación, una vez cerrada la Fase 2.
+1. ~~Invocar `superpowers:writing-plans` para generar el plan de
+   implementación detallado de la Fase 2, basado en §6~~ -- hecho, ver
+   `docs/superpowers/plans/2026-09-10-v8-home-hero.md`.
+2. ~~Ejecutar el plan siguiendo el flujo de desarrollo habitual (TDD,
+   revisión de código)~~ -- hecho.
+3. ~~Fases siguientes (§5.1-§5.2 "Más ▾" y retirada del menú clásico,
+   responsive, pulido VIP/Free)~~ -- implementadas directamente sobre la
+   spec ya cerrada de §5, sin plan formal aparte (alcance acotado y de
+   bajo riesgo arquitectónico); ver §8 para el cierre de cada una.
+4. Pendiente real: fusionar `feature/v8-home-hero` a `master` (ver
+   `superpowers:finishing-a-development-branch`).
+
+## 8. Fases 3-5 — cierre de implementación (2026-09-11)
+
+Las tres fases quedaban con diseño cerrado desde §5 (2026-09-10); esta
+sección documenta cómo aterrizó cada una en código, incluidas las
+decisiones de detalle que §5 dejaba abiertas a "la fase de
+implementación".
+
+### 8.1 Fase 3 — "Más ▾" y retirada de la barra de menú clásica
+
+`ui/app_menu.py` (QMenuBar) se retira por completo; `ui/more_menu.py`
+(nuevo) construye el botón "Más ▾" de la barra superior con las mismas
+seis categorías de §5.1, cada entrada delegando en el mismo
+controlador/método que ya usaba la barra de menú clásica -- solo cambia
+el punto de entrada. "Herramientas de audio" (Convertir/Editor MP3/
+Editar info) no son diálogos propios: son pestañas de
+`ui.download_panel.DownloadPanel`, así que esas tres entradas saltan a
+Descargas y seleccionan la pestaña pedida en vez de abrir algo nuevo; se
+omiten por completo en la edición Free (Descargas no existe ahí). El
+icono de búsqueda global vive como botón propio en `ui.nav_top`, y el
+atajo Ctrl+K se registra a nivel de ventana en
+`MainWindow._registrar_atajos` (antes vivía en la `QAction` de la barra
+de menú retirada).
+
+### 8.2 Fase 4 — Responsive
+
+**Barra superior**: el umbral de colapso a solo-iconos no es un píxel
+fijo elegido a ojo -- `ui.nav_top.build_nav_top` mide el ancho real
+(`sizeHint()`) que necesitan todos sus botones con el texto completo en
+el momento de construir la barra, y `update_nav_top_compact()` compara
+el ancho disponible contra ese valor medido en cada resize. Se adapta
+solo a la fuente/DPI real de cada máquina, igual que ya hace
+`download_panel.py` con `QFontMetrics` para sus propios botones de ancho
+variable. Nunca oculta ni quita botones -- coherente con "nunca a menú
+hamburguesa" (§5.4).
+
+**Hero de Inicio**: `HomeController.update_home_compact()` gana un
+segundo umbral, más estrecho que el ya existente de 520px (que apila la
+fila de "reproduciendo ahora"/salud en vertical): por debajo de 360px de
+`_home_viewport` (el área scrolleable de Inicio, no la ventana entera --
+vive dentro del splitter junto al panel del reproductor y puede ser
+bastante más estrecha que los 860px mínimos de la ventana), el hero
+reduce su padding (22px → 14px) y el tamaño del título (22pt → 15pt) en
+vez de ocultarse o cambiar de layout.
+
+**"Ahora suena"**: sin cambios, tal como fijaba §5.4 -- conserva su
+propio umbral de 390px.
+
+### 8.3 Fase 5 — Pulido VIP/Free
+
+Auditoría de los 3 puntos de §5.5 contra el código ya existente: **los
+tres se cumplían ya sin necesidad de ningún cambio.** Descargas sigue sin
+construirse en Free (`ui.nav_top`) y oculta en VIP hasta activar; el
+botón de Cast/DLNA sigue condicionado a `win.activated`/`es_version_free`
+en `ui.now_playing_bar_builder`; y "Activar VIP…" quedó ya reubicado
+dentro de "Más ▾" → Ajustes como parte de la Fase 3 (§8.1), con la misma
+condición (`not win.activated and not win.es_version_free`) que tenía en
+la barra de menú clásica retirada. Fase cerrada sin diff de código propio.
 
 ## Referencias
 
