@@ -1,16 +1,19 @@
 """
 Diálogo de preferencias: canales, guía y grabaciones, mantenimiento
-automático, apariencia (tema y color de acento) y perfil de usuario.
+automático, apariencia (tema y color de acento), VPN y perfil de usuario.
 """
+from pathlib import Path
+from typing import Optional
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QButtonGroup, QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFrame, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
 from core import config as cfg
 from core import countries
+from core import vpn_client, vpn_profiles
 from ui import palette
 from ui.style import ACCENT_PRESETS, DEFAULT_ACCENT
 from ui.visual import set_surface
@@ -186,6 +189,19 @@ class SettingsDialog(QDialog):
         form_apariencia.addRow("Color de acento:", accent_row)
         content_layout.addWidget(panel_apariencia)
 
+        # ---- VPN ----
+        # Solo edición VIP con licencia activada de verdad. win.activated
+        # también vale True en la build Free (ver ui.application.run_free,
+        # que la arranca ya "activada" para desbloquear todo), así que
+        # es_version_free hay que excluirlo aparte -- mismo criterio que
+        # ya usa dialog_actions.py para "Ir a Descargas" en la paleta de
+        # comandos.
+        self._vpn_licensed = bool(getattr(parent, "activated", False)) and not bool(
+            getattr(parent, "es_version_free", False)
+        )
+        if self._vpn_licensed:
+            self._build_vpn_panel(content_layout)
+
         # ---- Perfil ----
         panel_perfil, form_perfil = _panel("Perfil")
         perfil_row = QHBoxLayout()
@@ -232,6 +248,147 @@ class SettingsDialog(QDialog):
         directory = QFileDialog.getExistingDirectory(self, "Selecciona carpeta de grabaciones")
         if directory:
             self.rec_dir_input.setText(directory)
+
+    # ---------- VPN ----------
+
+    def _build_vpn_panel(self, content_layout: QVBoxLayout) -> None:
+        """Sección VPN: conecta con la suscripción WireGuard propia del
+        usuario para acceder a listas públicas con restricción geográfica.
+        La app no opera servidores VPN propios -- solo importa el .conf
+        que ya trae el proveedor y arranca/para ese túnel (ver
+        core/vpn_client.py y core/vpn_profiles.py)."""
+        panel_vpn, form_vpn = _panel("VPN")
+
+        if not vpn_client.is_wireguard_installed():
+            aviso = QLabel(
+                "Para conectar necesitas el cliente oficial de WireGuard "
+                "instalado en este PC."
+            )
+            aviso.setWordWrap(True)
+            aviso.setObjectName("dialogSubtitle")
+            form_vpn.addRow(aviso)
+            descargar_btn = QPushButton("Descargar WireGuard…")
+            descargar_btn.clicked.connect(
+                lambda: QDesktopServices.openUrl(QUrl("https://www.wireguard.com/install/"))
+            )
+            form_vpn.addRow(descargar_btn)
+            content_layout.addWidget(panel_vpn)
+            return
+
+        self.vpn_profile_combo = QComboBox()
+        form_vpn.addRow("Perfil:", self.vpn_profile_combo)
+
+        self.vpn_status_label = QLabel()
+        form_vpn.addRow("Estado:", self.vpn_status_label)
+
+        vpn_row = QHBoxLayout()
+        importar_btn = QPushButton("Importar perfil (.conf)…")
+        importar_btn.clicked.connect(self._on_vpn_import)
+        eliminar_btn = QPushButton("Eliminar")
+        eliminar_btn.clicked.connect(self._on_vpn_delete)
+        self.vpn_toggle_btn = QPushButton("Conectar")
+        self.vpn_toggle_btn.clicked.connect(self._on_vpn_toggle)
+        vpn_row.addWidget(importar_btn)
+        vpn_row.addWidget(eliminar_btn)
+        vpn_row.addWidget(self.vpn_toggle_btn)
+        form_vpn.addRow(vpn_row)
+
+        aviso = QLabel(
+            "Usa tu propia suscripción VPN: importa el .conf que te da tu "
+            "proveedor para cada país o servidor. Conectar y desconectar "
+            "piden permiso de administrador de Windows -- lo pide el "
+            "propio cliente de WireGuard, no es cosa de esta app."
+        )
+        aviso.setWordWrap(True)
+        aviso.setObjectName("dialogSubtitle")
+        form_vpn.addRow(aviso)
+
+        content_layout.addWidget(panel_vpn)
+        self._reload_vpn_combo()
+
+    def _reload_vpn_combo(self, select_name: Optional[str] = None) -> None:
+        self.vpn_profile_combo.blockSignals(True)
+        self.vpn_profile_combo.clear()
+        for entry in vpn_profiles.list_profiles():
+            self.vpn_profile_combo.addItem(entry["name"], entry["tunnel"])
+        if select_name is not None:
+            idx = self.vpn_profile_combo.findText(select_name)
+            if idx >= 0:
+                self.vpn_profile_combo.setCurrentIndex(idx)
+        self.vpn_profile_combo.blockSignals(False)
+        self._refresh_vpn_status()
+
+    def _current_vpn_tunnel(self) -> Optional[str]:
+        return self.vpn_profile_combo.currentData()
+
+    def _refresh_vpn_status(self) -> None:
+        tunnel = self._current_vpn_tunnel()
+        if not tunnel:
+            self.vpn_status_label.setText("Sin perfiles guardados")
+            self.vpn_toggle_btn.setEnabled(False)
+            return
+        self.vpn_toggle_btn.setEnabled(True)
+        connected = vpn_client.status(tunnel)
+        self.vpn_status_label.setText("Conectado" if connected else "Desconectado")
+        self.vpn_toggle_btn.setText("Desconectar" if connected else "Conectar")
+
+    def _on_vpn_import(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Importar perfil VPN", "", "WireGuard (*.conf)"
+        )
+        if not path:
+            return
+        nombre, ok = QInputDialog.getText(
+            self, "Importar perfil VPN", "Nombre para este perfil (p. ej. el país):"
+        )
+        nombre = (nombre or "").strip()
+        if not ok or not nombre:
+            return
+        try:
+            vpn_profiles.import_profile(nombre, Path(path))
+        except vpn_profiles.VpnProfileError as exc:
+            QMessageBox.warning(self, "Importar perfil VPN", str(exc))
+            return
+        self._reload_vpn_combo(select_name=nombre)
+
+    def _on_vpn_delete(self):
+        nombre = self.vpn_profile_combo.currentText()
+        if not nombre:
+            return
+        if QMessageBox.question(
+            self, "Eliminar perfil VPN", f"¿Eliminar el perfil «{nombre}»?"
+        ) != QMessageBox.Yes:
+            return
+        entry = vpn_profiles.get_profile(nombre)
+        if entry and vpn_client.status(entry["tunnel"]):
+            try:
+                vpn_client.disconnect(entry["tunnel"])
+            except vpn_client.VpnClientError as exc:
+                QMessageBox.warning(
+                    self, "Eliminar perfil VPN",
+                    f"No se pudo desconectar el túnel antes de borrarlo: {exc}",
+                )
+                return
+        vpn_profiles.delete_profile(nombre)
+        self._reload_vpn_combo()
+
+    def _on_vpn_toggle(self):
+        tunnel = self._current_vpn_tunnel()
+        if not tunnel:
+            return
+        entry = vpn_profiles.get_profile(self.vpn_profile_combo.currentText())
+        connected = vpn_client.status(tunnel)
+        self.vpn_toggle_btn.setEnabled(False)
+        try:
+            if connected:
+                vpn_client.disconnect(tunnel)
+            elif entry:
+                vpn_client.connect(Path(entry["conf_path"]), tunnel)
+        except vpn_client.VpnClientError as exc:
+            QMessageBox.warning(self, "VPN", str(exc))
+        finally:
+            self.vpn_toggle_btn.setEnabled(True)
+            self._refresh_vpn_status()
 
     # ---------- Color de acento ----------
 

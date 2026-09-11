@@ -2,13 +2,23 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
-## [No publicado]
-
-> Pendiente de decidir el número de versión: estos cambios no tocan
-> `APP_VERSION` (8.0.2) ni `MyAppVersion`. Por alcance encajarían en un 8.1
-> (funcionalidad nueva sin ruptura), pero el bump es decisión de release.
+## [8.1.0] — 2026-09-11
 
 ### Added
+- **Cliente VPN (WireGuard) en la edición VIP con licencia activada**
+  (`core/vpn_client.py`, `core/vpn_profiles.py`, sección «VPN» en
+  Ajustes): permite conectar con la suscripción VPN propia del usuario
+  para acceder a listas públicas de TV/radio con restricción geográfica
+  fuera de España. La app no opera servidores VPN propios -- el usuario
+  importa el `.conf` de WireGuard que le da su proveedor, puede guardar
+  varios perfiles (uno por país/servidor) y conectar/desconectar con un
+  botón. Requiere tener instalado el cliente oficial de WireGuard para
+  Windows; la app detecta si falta y enlaza a la descarga en vez de
+  fallar en silencio. Conectar y desconectar piden permiso de
+  administrador de Windows -- lo pide el propio wireguard.exe al
+  instalar/quitar el túnel como servicio, no es una elevación añadida
+  por esta app. Diseño completo en
+  `docs/superpowers/specs/2026-09-11-vpn-client-design.md`.
 - **Atajos de teclado de reproducción y navegación** (`ui/keyboard_shortcuts.py`):
   Espacio (reproducir/pausar), S (detener), ←/→ (±30 s), N/P
   (siguiente/anterior), ↑/↓ (volumen), M (silenciar), F (favorito) y
@@ -50,9 +60,11 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
   IA (`.agents/`), ajeno al código del producto.
 
 ### Tests
-- 179 → 281 pruebas: contrato de los dos paquetes nuevos (46),
+- 179 → 302 pruebas: contrato de los dos paquetes nuevos (46),
   `core/json_store.py`, que no tenía ninguna y es donde un fallo se traduce
-  en pérdida de datos del usuario (26), y los atajos de teclado (30).
+  en pérdida de datos del usuario (26), los atajos de teclado (30), y el
+  cliente VPN — `core/vpn_profiles.py` y `core/vpn_client.py` con
+  `subprocess`/UAC sustituidos por dobles de prueba (21).
 
 ## [8.0] — 2026-09-11
 
