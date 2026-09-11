@@ -25,6 +25,9 @@ from core.logger import get_logger
 log = get_logger(__name__)
 MAX_UPDATE_BYTES = 750 * 1024 * 1024
 SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+# "TDTRadioVIP_Setup_v8.0.exe" -> "8.0" (ver OutputBaseFilename en
+# TDTRadioVIP_Setup.iss, de donde sale este patrón de nombre).
+_UPDATE_FILENAME_VERSION_RE = re.compile(r"_v([0-9][0-9.]*)\.exe$", re.IGNORECASE)
 
 
 def _version_tuple(texto: str) -> tuple:
@@ -133,7 +136,62 @@ def download_verified_update(
         if digest.hexdigest() != clean["sha256"]:
             raise ValueError("La actualización descargada no supera la verificación SHA-256.")
         partial_path.replace(final_path)
+        _cleanup_old_updates(destination, final_path)
         return final_path
     except Exception:
         partial_path.unlink(missing_ok=True)
         raise
+
+
+def _cleanup_old_updates(destination: Path, keep: Path) -> None:
+    """Borra otros instaladores de actualización ya descargados en
+    destination, dejando solo `keep` (el que se acaba de verificar). Cada
+    "Buscar actualizaciones" > "Descargar y verificar" se quedaba
+    acumulando un .exe nuevo sin borrar los anteriores (reportado: varios
+    instaladores acumulados en la carpeta updates desde hacía semanas).
+    Los fallos de borrado (archivo en uso, permisos) se ignoran -- limpiar
+    espacio en disco no debe romper el flujo de "ya tienes la
+    actualización lista".
+    """
+    try:
+        for path in destination.glob("*.exe"):
+            if path != keep:
+                path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def cleanup_obsolete_updates(destination_dir: str | Path, current_version: str = APP_VERSION) -> int:
+    """
+    Borra, de destination_dir, los instaladores de actualización ya
+    descargados cuya versión (extraída del nombre de archivo, patrón
+    "..._vX.Y.Z.exe") sea igual o anterior a la que ya está instalada y
+    corriendo -- ya no sirven para nada, la actualización ya se aplicó (o
+    el usuario ya está en una versión más reciente). Se llama al arrancar
+    (ver ui.app_lifecycle.AppLifecycle), no solo tras descargar una nueva,
+    para que también limpie instalaciones ya existentes con varios .exe
+    acumulados de antes de que existiera esta limpieza.
+
+    Solo toca archivos cuyo nombre encaja con el patrón de versión
+    conocido -- nunca borra algo que no se pueda identificar con
+    confianza como un instalador propio. Los fallos de borrado (en uso,
+    permisos) se ignoran uno a uno, sin interrumpir el resto. Devuelve
+    cuántos archivos se borraron.
+    """
+    destination = Path(destination_dir)
+    if not destination.is_dir():
+        return 0
+    actual = _version_tuple(current_version)
+    borrados = 0
+    for path in destination.glob("*.exe"):
+        match = _UPDATE_FILENAME_VERSION_RE.search(path.name)
+        if not match:
+            continue
+        if _version_tuple(match.group(1)) > actual:
+            continue
+        try:
+            path.unlink()
+            borrados += 1
+        except OSError:
+            continue
+    return borrados

@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QMessageBox
 from core import backup as backup_module
 from core import config as cfg
 from core import recording_schedule
+from core import updater
 from ui.fetch_worker import (
     FetchWorker,
     process_events_during_shutdown,
@@ -45,6 +46,12 @@ class AppLifecycle:
             # principal ya construida detrás en vez de un diálogo modal
             # tapándolo todo desde el primer frame.
             QTimer.singleShot(500, self.show_onboarding)
+
+        # Limpieza de instaladores de actualización ya obsoletos (ver
+        # core.updater.cleanup_obsolete_updates) -- sin prisa, al final de
+        # la cola de arranque diferido; es solo higiene de disco, no algo
+        # que el usuario esté esperando ver.
+        QTimer.singleShot(4000, self.cleanup_old_updates)
 
     def show_onboarding(self):
         win = self.win
@@ -99,6 +106,21 @@ class AppLifecycle:
             win.statusBar().showMessage("No se pudo crear la copia automática.", 5000)
         elif result:
             win.statusBar().showMessage("Copia de seguridad automática creada.", 4000)
+
+    def cleanup_old_updates(self):
+        """Borra los instaladores de actualización ya obsoletos que hayan
+        podido quedar acumulados en %APPDATA%/.../updates -- tanto los que
+        deja atrás una descarga nueva (ver
+        core.updater.download_verified_update, ya se limpia solo en ese
+        momento) como los que se acumularon antes de que existiera esa
+        limpieza, en instalaciones ya existentes."""
+        win = self.win
+        if win._is_closing:
+            return
+        try:
+            updater.cleanup_obsolete_updates(cfg.get_app_data_dir() / "updates")
+        except OSError:
+            pass
 
     def resume_last_stream(self):
         win = self.win

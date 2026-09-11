@@ -242,6 +242,33 @@ def test_automatic_backup_does_not_block_ui_or_report_after_close(app, monkeypat
     window.status.showMessage.assert_not_called()
 
 
+def test_cleanup_old_updates_scans_the_updates_folder(monkeypatch, tmp_path):
+    from core import config, updater
+
+    monkeypatch.setattr(config, "get_app_data_dir", lambda: tmp_path)
+    window = SimpleNamespace(_is_closing=False)
+    lifecycle = AppLifecycle(window)
+    calls = []
+    monkeypatch.setattr(
+        updater, "cleanup_obsolete_updates", lambda destination_dir: calls.append(destination_dir)
+    )
+    lifecycle.cleanup_old_updates()
+    assert calls == [tmp_path / "updates"]
+
+
+def test_cleanup_old_updates_skips_after_window_starts_closing(monkeypatch):
+    from core import updater
+
+    window = SimpleNamespace(_is_closing=True)
+    lifecycle = AppLifecycle(window)
+    calls = []
+    monkeypatch.setattr(
+        updater, "cleanup_obsolete_updates", lambda destination_dir: calls.append(destination_dir)
+    )
+    lifecycle.cleanup_old_updates()
+    assert calls == []
+
+
 def test_backup_uses_captured_profile_directory(tmp_path, monkeypatch):
     first, second = tmp_path / "first", tmp_path / "second"
     first.mkdir()
