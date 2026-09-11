@@ -2,6 +2,58 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [No publicado]
+
+> Pendiente de decidir el número de versión: estos cambios no tocan
+> `APP_VERSION` (8.0.2) ni `MyAppVersion`. Por alcance encajarían en un 8.1
+> (funcionalidad nueva sin ruptura), pero el bump es decisión de release.
+
+### Added
+- **Atajos de teclado de reproducción y navegación** (`ui/keyboard_shortcuts.py`):
+  Espacio (reproducir/pausar), S (detener), ←/→ (±30 s), N/P
+  (siguiente/anterior), ↑/↓ (volumen), M (silenciar), F (favorito) y
+  Ctrl+1…6 (saltar a cada sección de la barra superior). `PRODUCT.md` ya
+  comprometía navegación por teclado, pero la ventana solo registraba F11,
+  Esc y Ctrl+K.
+  Las teclas sueltas se gestionan con un filtro de eventos, no con
+  `QShortcut`, porque un `QShortcut` consume la pulsación antes de que
+  llegue al widget con el foco: la primera implementación hacía que la
+  flecha Abajo sobre la lista de canales bajase el volumen en vez de
+  cambiar de canal, que Espacio sobre un botón pausara en vez de pulsarlo y
+  que las flechas no movieran el slider de volumen. El filtro cede la tecla
+  cuando el widget enfocado la usa de forma nativa (campos de texto,
+  listas, sliders, botones, desplegables editables) y solo actúa cuando
+  nadie más la reclama.
+- Entrada **«Atajos de teclado…»** en Más ▾ → Ayuda y sistema, generada
+  desde la misma tabla que registra los atajos para que no pueda quedarse
+  desfasada.
+- **Verificación continua en GitHub Actions** (`.github/workflows/ci.yml`):
+  ruff, pytest y compileall en cada push y pull request, sobre
+  windows-latest y Python 3.12. No instala `python-vlc`, `libtorrent` ni
+  `pychromecast`: se comprobó en un entorno limpio que la suite pasa sin
+  ellos, y son dependencias binarias que harían el CI lento y frágil sin
+  cubrir un solo test más.
+
+### Changed
+- `ui/dialogs.py` (1300 líneas) pasa a ser el paquete `ui/dialogs/`, un
+  módulo por diálogo (el mayor, `settings.py`, en 357 líneas), y
+  `ui/style.py` (1293 líneas) pasa a `ui/style/` repartido en `colors`,
+  `qss_base` y `builder`. Ambos superaban con mucho el límite de 800 líneas
+  por archivo. La API pública no cambia: los `from ui.dialogs import X` y
+  `from ui.style import X` existentes siguen funcionando. Equivalencia del
+  tema verificada por hash: `build_style()` produce un QSS idéntico byte a
+  byte antes y después, en los 6 acentos × 2 temas.
+
+### Fixed
+- El README anunciaba la versión 7.6.5.2 con `APP_VERSION` ya en 8.0.2.
+- `ruff check .` fallaba con 6 errores procedentes de utillaje de agentes de
+  IA (`.agents/`), ajeno al código del producto.
+
+### Tests
+- 179 → 281 pruebas: contrato de los dos paquetes nuevos (46),
+  `core/json_store.py`, que no tenía ninguna y es donde un fallo se traduce
+  en pérdida de datos del usuario (26), y los atajos de teclado (30).
+
 ## [8.0] — 2026-09-11
 
 Rediseño radical de interfaz (v8) — ver

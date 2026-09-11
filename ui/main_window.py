@@ -26,6 +26,7 @@ from ui.app_lifecycle import AppLifecycle
 from ui.catalog_load_controller import CatalogLoadController
 from ui.dialog_actions import DialogActionsController
 from ui.home_controller import HomeController
+from ui.keyboard_shortcuts import register_shortcuts
 from ui.catalog_toolbar import build_top_bar
 from ui.home_page_builder import build_home_page
 from ui.nav_top import (
@@ -593,6 +594,18 @@ class MainWindow(QMainWindow):
         atajo_busqueda = QShortcut(QKeySequence("Ctrl+K"), self)
         atajo_busqueda.setContext(Qt.WindowShortcut)
         atajo_busqueda.activated.connect(self.dialogs.open_command_palette)
+
+        # Controles de reproducción y salto entre secciones. Se guardan en
+        # self porque ni el filtro ni los QShortcut mantienen viva su propia
+        # referencia: sin esto el recolector se los lleva y los atajos dejan
+        # de responder sin ningún error visible. Ver ui/keyboard_shortcuts.py
+        # para el porqué de usar un filtro de eventos en las teclas simples
+        # (un QShortcut le robaría las flechas a la lista de canales).
+        self._filtro_atajos, self._atajos = register_shortcuts(
+            self,
+            self.playback,
+            lambda indice: self.nav_group.button(indice).click(),
+        )
 
 
     # ---------- Navegación ----------
