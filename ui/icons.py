@@ -459,6 +459,26 @@ def icon_list_view(color: str, size: int = 26) -> QIcon:
     return QIcon(pm)
 
 
+@lru_cache(maxsize=128)
+def icon_search(color: str, size: int = 26) -> QIcon:
+    """Lupa: círculo + mango diagonal, para el icono de búsqueda global de
+    la barra superior (paleta de comandos, Ctrl+K) -- mismo trazo lineal
+    que el resto de iconos."""
+    pm = _blank(size)
+    p = _stroke_painter(pm, color, width=1.8)
+    centro = QPointF(size * 0.42, size * 0.42)
+    radio = size * 0.24
+    p.drawEllipse(centro, radio, radio)
+    angulo = math.radians(45)
+    inicio = QPointF(
+        centro.x() + radio * math.cos(angulo), centro.y() + radio * math.sin(angulo)
+    )
+    fin = QPointF(size * 0.86, size * 0.86)
+    p.drawLine(inicio, fin)
+    p.end()
+    return QIcon(pm)
+
+
 def _qcolor(color: str):
     from PySide6.QtGui import QColor
     return QColor(color)

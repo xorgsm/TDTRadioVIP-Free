@@ -21,6 +21,11 @@ def _make_win(*, es_version_free=False, activated=True):
         activated=activated,
         navigation=SimpleNamespace(on_nav_changed=Mock()),
         settings={"accent_color": "#c9a227"},
+        # build_more_menu_button()/build_global_search_button() (ver
+        # ui.more_menu) conectan sus acciones a estos controladores -- solo
+        # hace falta que existan como Mock, ninguna de estas pruebas
+        # ejerce el menú "Más ▾" en sí (eso lo cubre tests/test_more_menu.py).
+        dialogs=Mock(), library=Mock(), catalog=Mock(), epg=Mock(), updates=Mock(),
     )
     return win
 

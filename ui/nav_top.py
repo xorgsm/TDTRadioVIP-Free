@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QButtonGroup, QHBoxLayout, QToolButton, QWidget
 
 from ui import icons as app_icons
 from ui import palette
+from ui.more_menu import build_global_search_button, build_more_menu_button
 from ui.nav_sections import (
     NAV_DOWNLOAD, NAV_FAV, NAV_HIST, NAV_HOME, NAV_RADIO, NAV_TOP_HEIGHT,
     NAV_TV, SECTION_COLORS, SECTION_VARIANTS,
@@ -82,6 +83,15 @@ def build_nav_top(win) -> QWidget:
     win.nav_group.idClicked.connect(win.navigation.on_nav_changed)
 
     layout.addStretch(1)
+
+    # Búsqueda global y "Más ▾" (spec v8 §5.1/§5.2): sustituyen a la
+    # entrada "Búsqueda global…" y a la barra de menú clásica
+    # (Archivo/Configuración/Ayuda), retiradas -- ver ui.more_menu.
+    win.global_search_btn = build_global_search_button(win)
+    layout.addWidget(win.global_search_btn)
+
+    win.more_menu_btn = build_more_menu_button(win)
+    layout.addWidget(win.more_menu_btn)
 
     win.library_toggle_btn = QToolButton()
     win.library_toggle_btn.setObjectName("navButton")

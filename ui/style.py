@@ -950,16 +950,6 @@ QStatusBar {
     border-bottom-left-radius: 12px;
     border-bottom-right-radius: 12px;
 }
-QMenuBar {
-    background-color: #060606;
-    color: #b9c2ce;
-    border-top-left-radius: 12px;
-    border-top-right-radius: 12px;
-    padding: 4px 4px 4px 6px;
-}
-QMenuBar::item:selected {
-    background-color: #242424;
-}
 QMenu {
     background-color: #181818;
     color: #e6edf3;
@@ -1000,22 +990,6 @@ QLabel#titleVersion {
     letter-spacing: 0.7px;
     background: transparent;
 }
-QMenuBar#appMenuBar {
-    background: transparent;
-    border: none;
-    padding: 0;
-}
-QMenuBar#appMenuBar::item {
-    background: transparent;
-    color: #b9c2ce;
-    padding: 6px 12px;
-    border-radius: 7px;
-}
-QMenuBar#appMenuBar::item:selected {
-    background-color: rgba(255, 255, 255, 9);
-    color: #e6edf3;
-}
-
 /* ---------- Controles de ventana (minimizar / maximizar / cerrar) ---------- */
 QToolButton#winCtrlButton {
     background: transparent;

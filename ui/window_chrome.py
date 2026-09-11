@@ -292,11 +292,11 @@ class WindowChrome:
         # devolverla tal cual al salir.
         win._groups_sidebar_visible_before_pip = win.groups_sidebar.isVisible()
         win.groups_sidebar.setVisible(False)
-        # La barra de menú (Archivo/Configuración/Ayuda) tampoco cabe en una
-        # ventana flotante de 460px: Qt la resolvía con una flecha ">>" de
-        # desbordamiento en vez de encogerla, lo que no pinta bien en un
-        # mini reproductor.
-        win.menu_bar.setVisible(False)
+        # win.nav_top ya se oculta más arriba en este mismo método, y con
+        # ella se lleva consigo la búsqueda global y "Más ▾" (ver
+        # ui.more_menu) -- no hace falta ocultarlos aparte, a diferencia de
+        # cuando esto vivía en una QMenuBar independiente de la barra de
+        # navegación.
         win.statusBar().setVisible(False)
         # El PiP funciona como mini reproductor: conserva transporte y mute,
         # pero esconde acciones secundarias para no saturar la ventana.
@@ -339,7 +339,6 @@ class WindowChrome:
         win.content_widget.setMinimumWidth(420)
         win.library_sidebar.setVisible(win.library_toggle_btn.isChecked())
         win.groups_sidebar.setVisible(getattr(win, "_groups_sidebar_visible_before_pip", False))
-        win.menu_bar.setVisible(True)
         win.statusBar().setVisible(True)
         for widget, was_visible in getattr(win, "_pip_compact_visibility", {}).items():
             widget.setVisible(was_visible)

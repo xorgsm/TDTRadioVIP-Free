@@ -52,10 +52,11 @@ class DialogActionsController:
         construir la ventana (el botón de enviar a TV y esta entrada de menú).
 
         Import local (no arriba del módulo): esta ruta solo se conecta a un
-        menú cuando not win.es_version_free (ver ui.app_menu.build_menu_bar),
-        así que ui.splash -- y core.license, que importa a su vez -- no hace
-        falta que se carguen nunca en la edición free. Mismo motivo que
-        core.caster/ui.download_panel en MainWindow.__init__.
+        menú cuando not win.es_version_free (ver
+        ui.more_menu.build_more_menu_button), así que ui.splash -- y
+        core.license, que importa a su vez -- no hace falta que se carguen
+        nunca en la edición free. Mismo motivo que core.caster/
+        ui.download_panel en MainWindow.__init__.
         """
         from ui.splash import SplashDialog
 

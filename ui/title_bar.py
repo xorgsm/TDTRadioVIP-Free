@@ -5,7 +5,6 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
 
 from core import config as cfg
-from ui.app_menu import build_menu_bar
 
 
 def build_title_bar(win) -> QWidget:
@@ -14,6 +13,11 @@ def build_title_bar(win) -> QWidget:
     de QMenuBar, un mecanismo cuyo dibujado depende del estilo nativo y
     que en algunos equipos no llegaba a mostrarse. Aquí la disposición es
     explícita, así que se ve igual en cualquier máquina.
+
+    Ya no aloja la barra de menú clásica (Archivo/Configuración/Ayuda,
+    ui/app_menu.py) -- retirada por completo en el rediseño v8 (spec §5.2),
+    redistribuida entre ui.nav_top (búsqueda global + "Más ▾", ver
+    ui.more_menu) y el resto de la interfaz.
     """
     barra = QWidget()
     barra.setObjectName("titleBar")
@@ -50,8 +54,6 @@ def build_title_bar(win) -> QWidget:
     marca_col_layout.addWidget(version_label)
     marca_col_layout.addStretch(1)
     fila.addWidget(marca_col)
-
-    fila.addWidget(build_menu_bar(win))
 
     # Zona vacía: es la que permite arrastrar la ventana.
     fila.addStretch(1)

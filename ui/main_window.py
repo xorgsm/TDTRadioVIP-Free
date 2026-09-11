@@ -92,8 +92,10 @@ DEFAULT_DOWNLOADS_DIRNAME = "TDT Radio VIP"
 #     _build_now_playing_bar, _update_now_playing_compact
 # ui.player_menus (funciones de módulo):
 #     _open_more_controls_menu, _show_stream_technical_info, _open_tracks_menu
-# ui.title_bar.build_title_bar() / ui.app_menu.build_menu_bar():
-#     _build_title_bar, _build_menu
+# ui.title_bar.build_title_bar(): _build_title_bar
+# ui.more_menu (funciones de módulo, sustituyen a la QMenuBar clásica
+# retirada -- ui.app_menu.build_menu_bar, spec v8 §5.2):
+#     build_more_menu_button, build_global_search_button
 # ui.window_chrome.WindowChrome (self.window_chrome):
 #     _toggle_maximize, _maximizar, _restaurar_tamano, _toggle_player_fullscreen,
 #     _salir_fullscreen_si_activo, _toggle_pip_mode, _enter_pip_mode,
@@ -572,6 +574,16 @@ class MainWindow(QMainWindow):
         atajo_salir = QShortcut(QKeySequence(Qt.Key_Escape), self)
         atajo_salir.setContext(Qt.WindowShortcut)
         atajo_salir.activated.connect(self.window_chrome.salir_fullscreen_si_activo)
+
+        # Búsqueda global (paleta de comandos): antes era el atajo de la
+        # QAction "Búsqueda global…" de la barra de menú clásica, retirada
+        # en el rediseño v8 (spec §5.2) -- el icono equivalente vive ahora
+        # en ui.nav_top (ver ui.more_menu.build_global_search_button), pero
+        # el atajo de teclado necesita registrarse aparte, a nivel de
+        # ventana, igual que F11/Esc arriba.
+        atajo_busqueda = QShortcut(QKeySequence("Ctrl+K"), self)
+        atajo_busqueda.setContext(Qt.WindowShortcut)
+        atajo_busqueda.activated.connect(self.dialogs.open_command_palette)
 
 
     # ---------- Navegación ----------
