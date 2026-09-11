@@ -28,7 +28,9 @@ from ui.dialog_actions import DialogActionsController
 from ui.home_controller import HomeController
 from ui.catalog_toolbar import build_top_bar
 from ui.home_page_builder import build_home_page
-from ui.nav_top import build_nav_top, on_groups_sidebar_changed, open_favorites_folder
+from ui.nav_top import (
+    build_nav_top, on_groups_sidebar_changed, open_favorites_folder, update_nav_top_compact,
+)
 from ui.navigation_controller import NavigationController
 from ui.now_playing_bar_builder import update_now_playing_bar_compact
 from ui.player_panel_builder import build_player_panel
@@ -70,7 +72,8 @@ DEFAULT_DOWNLOADS_DIRNAME = "TDT Radio VIP"
 #     run_automatic_backup, resume_last_stream, shutdown
 # ui.nav_top (funciones de módulo):
 #     _build_nav_top, _toggle_library_sidebar, _open_favorites_folder,
-#     _on_groups_sidebar_changed
+#     _on_groups_sidebar_changed, update_nav_top_compact (colapso a
+#     solo-iconos, spec v8 §5.4)
 # ui.catalog_toolbar (funciones de módulo):
 #     _build_top_bar, _on_catalog_sort_changed, _toggle_tv_grid_view
 # ui.home_page_builder.build_home_page(): _build_home_page
@@ -322,6 +325,10 @@ class MainWindow(QMainWindow):
         # comparte fila con el contenido. Ver spec v8 §4.1.
         self.nav_top = build_nav_top(self)
         raiz_v.addWidget(self.nav_top)
+        # Colapso a solo-iconos por debajo del ancho real que necesitan las
+        # pestañas con texto completo (spec v8 §5.4) -- ver
+        # ui.nav_top.update_nav_top_compact, invocado desde eventFilter().
+        self.nav_top.installEventFilter(self)
 
         cuerpo = QWidget()
         root = QHBoxLayout(cuerpo)
@@ -556,6 +563,8 @@ class MainWindow(QMainWindow):
             update_now_playing_bar_compact(self, event.size().width())
         if obj is getattr(self, "_home_viewport", None) and event.type() == QEvent.Resize:
             self.home.update_home_compact(event.size().width())
+        if obj is getattr(self, "nav_top", None) and event.type() == QEvent.Resize:
+            update_nav_top_compact(self, event.size().width())
         result = self.window_chrome.event_filter(obj, event)
         if result is None:
             return super().eventFilter(obj, event)

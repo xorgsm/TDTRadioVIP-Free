@@ -281,15 +281,37 @@ def test_refresh_home_page_populates_all_four_carousels(app):
     win.home_fav_carousel.set_entries.assert_called_once_with(win.favorites[:5])
 
 
-def test_update_home_compact_switches_hero_and_health_direction_only(app):
-    from ui.home_controller import HomeController
-    win = SimpleNamespace(
+def _make_home_compact_win():
+    return SimpleNamespace(
         _home_now_layout=Mock(), _home_health_layout=Mock(), _home_layout=Mock(),
+        _home_hero_layout=Mock(), home_greeting=Mock(),
     )
+
+
+def test_update_home_compact_switches_hero_and_health_direction(app):
+    from ui.home_controller import HomeController
+    win = _make_home_compact_win()
     HomeController(win).update_home_compact(400)
     win._home_now_layout.setDirection.assert_called_once_with(QBoxLayout.TopToBottom)
     win._home_health_layout.setDirection.assert_called_once_with(QBoxLayout.TopToBottom)
     win._home_layout.setContentsMargins.assert_called_once_with(2, 4, 2, 18)
+    # 400px es "compacto" (< 520) pero no "muy compacto" (< 360, ver
+    # test_update_home_compact_shrinks_hero_below_360 más abajo) -- el
+    # hero todavía usa su padding/tipografía normales a este ancho.
+    win._home_hero_layout.setContentsMargins.assert_called_once_with(22, 18, 22, 18)
+    win.home_greeting.setStyleSheet.assert_called_once_with("")
+
+
+def test_update_home_compact_shrinks_hero_below_360(app):
+    """Spec v8 §5.4: el hero se encoge en altura (menos padding,
+    tipografía más pequeña) al acercarse al mínimo de la ventana, en vez
+    de ocultarse u obligar a un layout vertical."""
+    from ui.home_controller import HomeController
+    win = _make_home_compact_win()
+    HomeController(win).update_home_compact(300)
+    win._home_hero_layout.setContentsMargins.assert_called_once_with(14, 10, 14, 10)
+    win._home_hero_layout.setSpacing.assert_called_once_with(6)
+    win.home_greeting.setStyleSheet.assert_called_once_with("font-size: 15pt;")
 
 
 @pytest.mark.parametrize("theme", ["dark", "light"])

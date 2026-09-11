@@ -38,11 +38,17 @@ def build_home_page(win) -> QScrollArea:
     hero_layout = QVBoxLayout(hero)
     hero_layout.setContentsMargins(22, 18, 22, 18)
     hero_layout.setSpacing(10)
+    # Guardados para que HomeController.update_home_compact() pueda
+    # encoger el hero (menos padding, tipografía más pequeña) al acercarse
+    # al mínimo de la ventana, en vez de ocultarlo u obligar a un layout
+    # vertical (spec v8 §5.4).
+    win._home_hero_layout = hero_layout
 
     greeting = QLabel("Tu televisión y radio")
     greeting.setObjectName("homeGreeting")
     greeting.setWordWrap(True)
     greeting.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+    win.home_greeting = greeting
     hero_layout.addWidget(greeting)
 
     subtitle = QLabel("Retoma lo que estabas escuchando o busca algo nuevo.")

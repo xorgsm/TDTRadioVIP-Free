@@ -4,10 +4,11 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QHBoxLayout
 
 from ui.nav_sections import NAV_DOWNLOAD, NAV_FAV, NAV_HOME, NAV_TOP_HEIGHT
-from ui.nav_top import build_nav_top, toggle_library_sidebar
+from ui.nav_top import build_nav_top, toggle_library_sidebar, update_nav_top_compact
 
 
 @pytest.fixture
@@ -80,3 +81,38 @@ def test_toggle_library_sidebar_updates_visibility(app):
     bar = build_nav_top(win)  # noqa: F841
     toggle_library_sidebar(win, True)
     win.library_sidebar.setVisible.assert_called_once_with(True)
+
+
+def test_update_nav_top_compact_collapses_to_icons_below_threshold(app):
+    win = _make_win()
+    bar = build_nav_top(win)  # noqa: F841
+    update_nav_top_compact(win, win._nav_top_full_width - 1)
+    for btn in win._nav_top_text_buttons:
+        assert btn.toolButtonStyle() == Qt.ToolButtonIconOnly
+
+
+def test_update_nav_top_compact_keeps_text_above_threshold(app):
+    win = _make_win()
+    bar = build_nav_top(win)  # noqa: F841
+    update_nav_top_compact(win, win._nav_top_full_width + 200)
+    for btn in win._nav_top_text_buttons:
+        assert btn.toolButtonStyle() == Qt.ToolButtonTextBesideIcon
+
+
+def test_update_nav_top_compact_expands_back_when_widened_again(app):
+    win = _make_win()
+    bar = build_nav_top(win)  # noqa: F841
+    update_nav_top_compact(win, win._nav_top_full_width - 1)
+    update_nav_top_compact(win, win._nav_top_full_width + 200)
+    for btn in win._nav_top_text_buttons:
+        assert btn.toolButtonStyle() == Qt.ToolButtonTextBesideIcon
+
+
+def test_update_nav_top_compact_never_hides_buttons(app):
+    """Colapsa a solo iconos, nunca a menú hamburguesa (spec v8 §5.4) --
+    los botones siguen todos visibles y clicables, solo cambia el estilo."""
+    win = _make_win()
+    bar = build_nav_top(win)  # noqa: F841
+    update_nav_top_compact(win, win._nav_top_full_width - 1)
+    for btn in win._nav_top_text_buttons:
+        assert not btn.isHidden()

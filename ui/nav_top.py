@@ -53,6 +53,7 @@ def build_nav_top(win) -> QWidget:
     # activarse en tiempo de ejecución como en la edición con licencia.
     if not win.es_version_free:
         nav_defs.append((NAV_DOWNLOAD, "Descargas"))
+    nav_buttons = []
     for nav_id, tooltip in nav_defs:
         btn = QToolButton()
         btn.setObjectName("navButton")
@@ -72,6 +73,7 @@ def build_nav_top(win) -> QWidget:
         )
         win.nav_group.addButton(btn, nav_id)
         layout.addWidget(btn)
+        nav_buttons.append(btn)
         # El botón de descargas solo aparece con licencia activada de
         # verdad. En la versión free ni siquiera se construye (ver
         # nav_defs más arriba), así que este condicional solo puede
@@ -106,7 +108,36 @@ def build_nav_top(win) -> QWidget:
     win.library_toggle_btn.toggled.connect(partial(toggle_library_sidebar, win))
     layout.addWidget(win.library_toggle_btn)
 
+    # Umbral de colapso a solo-iconos (spec v8 §5.4: "nunca a menú
+    # hamburguesa"): el ancho real que necesitan estos botones con su
+    # texto completo, medido con sizeHint() en vez de un píxel fijo a
+    # ojo -- así el umbral se ajusta solo a la fuente/DPI reales de cada
+    # máquina, igual que ya hace download_panel.py con QFontMetrics para
+    # sus propios botones de ancho variable. global_search_btn no entra
+    # en la lista a colapsar (siempre fue solo icono, sin texto que
+    # quitar) pero sí cuenta para el ancho total, porque ocupa sitio en
+    # la fila igualmente.
+    todos_los_widgets = nav_buttons + [win.global_search_btn, win.more_menu_btn, win.library_toggle_btn]
+    margenes = layout.contentsMargins()
+    win._nav_top_full_width = (
+        margenes.left() + margenes.right()
+        + sum(w.sizeHint().width() for w in todos_los_widgets)
+        + layout.spacing() * (len(todos_los_widgets) - 1)
+    )
+    win._nav_top_text_buttons = nav_buttons + [win.more_menu_btn, win.library_toggle_btn]
+
     return bar
+
+
+def update_nav_top_compact(win, width: int) -> None:
+    """Colapsa la barra superior a solo iconos (nunca a menú hamburguesa,
+    spec v8 §5.4) cuando el ancho disponible ya no basta para las
+    pestañas con su texto completo -- el umbral es el ancho real medido
+    en build_nav_top(), no un valor fijo a ojo."""
+    compact = width < win._nav_top_full_width
+    style = Qt.ToolButtonIconOnly if compact else Qt.ToolButtonTextBesideIcon
+    for btn in win._nav_top_text_buttons:
+        btn.setToolButtonStyle(style)
 
 
 def toggle_library_sidebar(win, visible: bool) -> None:

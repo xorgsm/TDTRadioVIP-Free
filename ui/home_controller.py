@@ -26,12 +26,26 @@ class HomeController:
         self.win = window
 
     def update_home_compact(self, width: int) -> None:
+        """width es el ancho de _home_viewport (el área scrolleable de
+        Inicio), no el de la ventana entera -- vive dentro del splitter
+        junto al panel del reproductor, así que puede ser bastante más
+        estrecho que la ventana incluso en su ancho mínimo (860px). Dos
+        umbrales, no uno (spec v8 §5.4): 520px ya apilaba la fila de
+        "reproduciendo ahora"/salud en vertical; 360px (un margen real
+        por debajo de eso, no elegido a ojo) encoge además el hero en
+        altura -- menos padding, título más pequeño -- en vez de obligar
+        a un layout distinto o esconder contenido."""
         win = self.win
         compact = width < 520
+        very_compact = width < 360
         direction = QBoxLayout.TopToBottom if compact else QBoxLayout.LeftToRight
         win._home_now_layout.setDirection(direction)
         win._home_health_layout.setDirection(direction)
         win._home_layout.setContentsMargins(2, 4, 2 if compact else 20, 18)
+        margin = 14 if very_compact else 22
+        win._home_hero_layout.setContentsMargins(margin, margin - 4, margin, margin - 4)
+        win._home_hero_layout.setSpacing(6 if very_compact else 10)
+        win.home_greeting.setStyleSheet("font-size: 15pt;" if very_compact else "")
 
     def home_resume_or_search(self):
         win = self.win
