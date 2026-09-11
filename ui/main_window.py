@@ -605,6 +605,7 @@ class MainWindow(QMainWindow):
             self,
             self.playback,
             lambda indice: self.nav_group.button(indice).click(),
+            self.window_chrome.toggle_player_fullscreen,
         )
 
 

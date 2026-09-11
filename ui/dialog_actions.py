@@ -227,7 +227,7 @@ class DialogActionsController:
             for teclas, descripcion in describe_shortcuts()
         )
         extra = (
-            ("F11", "Pantalla completa"),
+            ("F11", "Pantalla completa (alternativa a F)"),
             ("Esc", "Salir de pantalla completa"),
             ("Ctrl+K", "Búsqueda global"),
         )

@@ -88,7 +88,12 @@ SHORTCUT_SPECS: tuple[ShortcutSpec, ...] = (
     ShortcutSpec(Qt.Key_Up, "Up", "volume_up", "Subir volumen"),
     ShortcutSpec(Qt.Key_Down, "Down", "volume_down", "Bajar volumen"),
     ShortcutSpec(Qt.Key_M, "M", "toggle_mute", "Silenciar o restaurar el sonido"),
-    ShortcutSpec(Qt.Key_F, "F", "toggle_favorite", "Marcar o desmarcar favorito"),
+    # F = pantalla completa, como en VLC, mpv y YouTube. Antes estaba
+    # asignada a favorito, que chocaba con esa expectativa (y con el F11 que
+    # la ventana ya registraba para lo mismo).
+    ShortcutSpec(Qt.Key_F, "F", "toggle_fullscreen", "Pantalla completa"),
+    # Favorito se va a Ctrl+D, la combinación de "marcador" de toda la vida.
+    ShortcutSpec(None, "Ctrl+D", "toggle_favorite", "Marcar o desmarcar favorito", is_simple=False),
     *(
         ShortcutSpec(
             None,
@@ -160,7 +165,11 @@ def _volume_delta(playback, delta: int) -> None:
         on_volume_changed(max(0, min(100, delta)))
 
 
-def build_callbacks(playback, go_to_section: Callable[[int], None]) -> dict:
+def build_callbacks(
+    playback,
+    go_to_section: Callable[[int], None],
+    toggle_fullscreen: Callable[[], None] | None = None,
+) -> dict:
     """Mapa acción -> función a ejecutar."""
     callbacks = {
         "toggle_play": lambda: playback.toggle_play(),
@@ -174,6 +183,8 @@ def build_callbacks(playback, go_to_section: Callable[[int], None]) -> dict:
         "toggle_mute": lambda: playback.toggle_mute(),
         "toggle_favorite": lambda: playback.toggle_favorite_current(),
     }
+    if toggle_fullscreen is not None:
+        callbacks["toggle_fullscreen"] = lambda: toggle_fullscreen()
     for indice in range(6):
         # indice=indice fija el valor en la definición: sin eso las seis
         # lambdas compartirían la última variable del bucle.
@@ -231,6 +242,7 @@ def register_shortcuts(
     container: QWidget,
     playback,
     go_to_section: Callable[[int], None],
+    toggle_fullscreen: Callable[[], None] | None = None,
 ) -> tuple[PlaybackShortcutFilter, list[QShortcut]]:
     """
     Instala los atajos y devuelve ``(filtro, lista de QShortcut)``.
@@ -238,7 +250,7 @@ def register_shortcuts(
     Ambos deben guardarse en la ventana: si se descartan, el recolector de
     basura se los lleva y los atajos dejan de responder sin error visible.
     """
-    callbacks = build_callbacks(playback, go_to_section)
+    callbacks = build_callbacks(playback, go_to_section, toggle_fullscreen)
 
     # El filtro va en la QApplication para ver la pulsación antes de que la
     # consuma cualquier widget; él mismo comprueba que la ventana sea la suya.

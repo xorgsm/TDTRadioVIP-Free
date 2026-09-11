@@ -200,6 +200,32 @@ def test_accion_invoca_el_metodo_de_reproduccion(accion, metodo):
     assert metodo in playback.llamadas
 
 
+def test_f_alterna_pantalla_completa():
+    """F es la tecla de pantalla completa en VLC/mpv/YouTube."""
+    spec = next(s for s in SHORTCUT_SPECS if s.sequence == "F")
+    assert spec.action == "toggle_fullscreen"
+
+    llamadas = []
+    callbacks = build_callbacks(
+        _PlaybackDoble(), lambda _i: None, lambda: llamadas.append("fullscreen")
+    )
+    callbacks["toggle_fullscreen"]()
+    assert llamadas == ["fullscreen"]
+
+
+def test_favorito_es_ctrl_d_y_no_una_tecla_suelta():
+    """Ctrl+D (marcador) libera F para pantalla completa."""
+    spec = next(s for s in SHORTCUT_SPECS if s.action == "toggle_favorite")
+    assert spec.sequence == "Ctrl+D"
+    assert not spec.is_simple
+
+
+def test_sin_callback_de_pantalla_completa_no_se_registra_la_accion():
+    """Un contexto sin ventana (tests) no debe reventar por F."""
+    callbacks = build_callbacks(_PlaybackDoble(), lambda _i: None)
+    assert "toggle_fullscreen" not in callbacks
+
+
 @pytest.mark.parametrize("accion,offset", [
     ("seek_forward", SEEK_STEP_MS),
     ("seek_backward", -SEEK_STEP_MS),
