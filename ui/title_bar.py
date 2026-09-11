@@ -5,6 +5,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
 
 from core import config as cfg
+from ui.visual import set_variant
 
 
 def build_title_bar(win) -> QWidget:
@@ -41,6 +42,22 @@ def build_title_bar(win) -> QWidget:
     version_label.setObjectName("titleVersion")
     version_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
+    # Insignia FREE / LICENCIADA / SIN ACTIVAR junto a la versión, para
+    # distinguir de un vistazo con qué edición se está probando algo --
+    # mismo criterio de 3 estados que ya usaba
+    # DialogActionsController.show_about ("Acerca de"), solo que visible
+    # siempre, no solo al abrir ese diálogo.
+    win.edition_badge = QLabel()
+    win.edition_badge.setObjectName("editionBadge")
+    update_edition_badge(win)
+
+    version_row = QHBoxLayout()
+    version_row.setContentsMargins(0, 0, 0, 0)
+    version_row.setSpacing(6)
+    version_row.addWidget(version_label)
+    version_row.addWidget(win.edition_badge)
+    version_row.addStretch(1)
+
     # Columna de ancho natural (antes se fijaba a NAV_RAIL_WIDTH para
     # alinear el menú con el contenido bajo el raíl lateral; ese raíl ya
     # no existe -- ver ui.nav_top -- así que la marca simplemente ocupa
@@ -51,7 +68,7 @@ def build_title_bar(win) -> QWidget:
     marca_col_layout.setSpacing(0)
     marca_col_layout.addStretch(1)
     marca_col_layout.addWidget(marca)
-    marca_col_layout.addWidget(version_label)
+    marca_col_layout.addLayout(version_row)
     marca_col_layout.addStretch(1)
     fila.addWidget(marca_col)
 
@@ -84,3 +101,19 @@ def build_title_bar(win) -> QWidget:
 
     barra.installEventFilter(win)
     return barra
+
+
+def update_edition_badge(win) -> None:
+    """Texto/color de win.edition_badge según edición y activación --
+    reutilizable (no solo se llama al construir la barra de título): la
+    llama también DialogActionsController.open_activation_dialog tras
+    activar VIP con éxito, para que la insignia pase de "SIN ACTIVAR" a
+    "LICENCIADA" sin tener que reiniciar la app."""
+    if win.es_version_free:
+        texto, variante = "FREE", "free"
+    elif win.activated:
+        texto, variante = "LICENCIADA", "licensed"
+    else:
+        texto, variante = "SIN ACTIVAR", "unactivated"
+    win.edition_badge.setText(texto)
+    set_variant(win.edition_badge, variante)

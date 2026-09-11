@@ -31,6 +31,7 @@ from ui.scheduled_recordings_dialog import ScheduledRecordingsDialog
 from ui.stats_dialog import StatsDialog
 from ui.stream_diagnostics_dialog import StreamDiagnosticsDialog
 from ui.style import build_style
+from ui.title_bar import update_edition_badge
 
 
 class DialogActionsController:
@@ -67,6 +68,7 @@ class DialogActionsController:
             win.activated = True
             win.cast_btn.setVisible(True)
             win.activate_vip_action.setVisible(False)
+            update_edition_badge(win)
             win.statusBar().showMessage("Funciones VIP activadas. ¡Gracias!", 6000)
 
     def open_stream_diagnostics(self):

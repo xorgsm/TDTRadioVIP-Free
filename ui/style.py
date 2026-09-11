@@ -990,6 +990,26 @@ QLabel#titleVersion {
     letter-spacing: 0.7px;
     background: transparent;
 }
+QLabel#editionBadge {
+    background-color: transparent;
+    border-radius: 8px;
+    padding: 1px 7px;
+    font-size: 6.5pt;
+    font-weight: 800;
+    letter-spacing: 1px;
+}
+QLabel#editionBadge[uiVariant="free"] {
+    color: #55a7e8;
+    border: 1px solid #55a7e8;
+}
+QLabel#editionBadge[uiVariant="licensed"] {
+    color: #42c985;
+    border: 1px solid #42c985;
+}
+QLabel#editionBadge[uiVariant="unactivated"] {
+    color: #f26f6c;
+    border: 1px solid #f26f6c;
+}
 /* ---------- Controles de ventana (minimizar / maximizar / cerrar) ---------- */
 QToolButton#winCtrlButton {
     background: transparent;

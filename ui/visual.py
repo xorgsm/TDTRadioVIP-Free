@@ -18,6 +18,11 @@ VALID_VARIANTS = frozenset({
     "radio",
     "podcast",
     "download",
+    # Insignia de edición junto a la versión en la barra de título -- ver
+    # ui.title_bar.update_edition_badge.
+    "free",
+    "licensed",
+    "unactivated",
 })
 
 VALID_STATES = frozenset({"default", "active", "loading", "empty", "error"})

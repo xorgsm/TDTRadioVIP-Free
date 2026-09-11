@@ -53,6 +53,7 @@ FROZEN_EXPECTED_ATTRS = {
     "content_widget", "current_logo", "current_name", "current_tvg_id",
     "current_type", "current_url", "delegate", "dialogs", "download_panel",
     "downloads_dir",
+    "edition_badge",
     "epg", "epg_btn",
     "epg_guide", "equalizer", "es_version_free",
     "fav_btn", "fav_list", "favorites", "fullscreen_btn",
