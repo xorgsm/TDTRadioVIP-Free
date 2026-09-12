@@ -25,6 +25,7 @@ from ui.command_palette import CommandPalette
 from ui.dialogs import SettingsDialog
 from ui.equalizer_dialog import EqualizerDialog
 from ui.mosaic_view import MosaicView
+from ui.keyboard_shortcuts import describe_shortcuts
 from ui.nav_sections import NAV_DOWNLOAD, NAV_FAV, NAV_HIST, NAV_HOME, NAV_RADIO, NAV_TV
 from ui.recurring_dialog import RecurringRecordingsDialog
 from ui.scheduled_recordings_dialog import ScheduledRecordingsDialog
@@ -210,6 +211,42 @@ class DialogActionsController:
         carpeta = log_file_path().parent
         carpeta.mkdir(parents=True, exist_ok=True)
         os.startfile(carpeta)
+
+    def show_keyboard_shortcuts(self):
+        """
+        Lista de atajos disponibles, generada desde SHORTCUT_SPECS para que
+        no pueda quedarse desfasada respecto a los atajos reales.
+        """
+        win = self.win
+        filas = "".join(
+            f"<tr>"
+            f"<td style='padding:4px 18px 4px 0; font-weight:700; "
+            f"color:{palette.ACCENT};'>{teclas}</td>"
+            f"<td style='padding:4px 0;'>{descripcion}</td>"
+            f"</tr>"
+            for teclas, descripcion in describe_shortcuts()
+        )
+        extra = (
+            ("F11", "Pantalla completa (alternativa a F)"),
+            ("Esc", "Salir de pantalla completa"),
+            ("Ctrl+K", "Búsqueda global"),
+        )
+        filas += "".join(
+            f"<tr>"
+            f"<td style='padding:4px 18px 4px 0; font-weight:700; "
+            f"color:{palette.ACCENT};'>{teclas}</td>"
+            f"<td style='padding:4px 0;'>{descripcion}</td>"
+            f"</tr>"
+            for teclas, descripcion in extra
+        )
+        QMessageBox.information(
+            win, "Atajos de teclado",
+            "<b>Atajos de teclado</b><br>"
+            "<span style='font-size:9pt;'>Las teclas sueltas no actúan "
+            "mientras escribes en un campo de texto o te mueves por la lista "
+            "de canales.</span><br><br>"
+            f"<table>{filas}</table>",
+        )
 
     def show_about(self):
         win = self.win

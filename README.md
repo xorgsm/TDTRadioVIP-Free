@@ -1,4 +1,4 @@
-# TDT & Radio VIP 7.6.5.2
+# TDT & Radio VIP 8.1
 
 Aplicación de escritorio para Windows construida con Python, PySide6 y VLC.
 Reúne televisión, radio, EPG, podcasts, grabaciones y herramientas multimedia.
@@ -40,7 +40,17 @@ con Inno Setup usando `TDTRadioVIP_Setup.iss`.
 
 ## Datos y privacidad
 
-Los perfiles y ajustes de toda la rama 7.6.x comparten la carpeta de datos
-`TDTRadioVIP_7.6.0`. Backups personales, listas M3U, claves privadas, registros
+Los perfiles y ajustes de las ramas 7.6.x y 8.x comparten la carpeta de datos
+`TDTRadioVIP_7.6.0` (`APP_DATA_NAME` no cambia con el salto a 8.0, para que la
+actualización conserve perfiles, licencia, favoritos y ajustes). Backups
+personales, listas M3U, claves privadas, registros
 de licencias y herramientas internas de emisión de licencias no forman parte
 del paquete de fuentes limpio.
+
+La sección VPN (edición VIP con licencia activada, ver
+`docs/superpowers/specs/2026-09-11-vpn-client-design.md`) guarda los
+perfiles WireGuard que el usuario importa en `vpn/*.conf` dentro de la
+carpeta del perfil activo, sin cifrar -- mismo nivel de protección que el
+resto de datos de perfil (favoritos, cuenta de Soulseek, etc.). La app no
+opera servidores VPN propios: cada perfil es la suscripción VPN del propio
+usuario.

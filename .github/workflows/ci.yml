@@ -1,0 +1,76 @@
+# Verificacion continua: lint + tests en cada push y pull request.
+#
+# Este workflow es para el repo VIP (origin/TDTRadioVIP-Source). La edicion
+# Free tiene el suyo en su propio repo, disparado sobre su rama 'main'; si
+# algun dia se fusionan historiales, conviene unificarlos en vez de dejar dos
+# ficheros con el mismo nombre haciendo cosas distintas.
+#
+# Por que no se instala requirements.txt entero:
+#   la suite pasa sin python-vlc, libtorrent ni pychromecast -- comprobado en
+#   un venv limpio con solo PySide6/requests/pytest/ruff (284 passed). Son
+#   dependencias binarias pesadas (libtorrent no siempre tiene rueda para la
+#   version de Python del runner) y meterlas aqui haria el CI lento y fragil
+#   sin cubrir ni un test mas. player/vlc_player.py ademas envuelve
+#   "import vlc" en try/except y degrada con vlc=None, que es exactamente el
+#   caso de un runner sin VLC instalado.
+
+name: CI
+
+on:
+  push:
+    # free-*: la edicion Free se mantiene en su propia rama larga y se
+    # publica por separado, asi que necesita la misma verificacion.
+    branches: ["master", "feature/**", "free-*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # Un push nuevo sobre la misma rama cancela la ejecucion anterior.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Lint y tests
+    # Windows: es la unica plataforma de destino de la app (instalador Inno
+    # Setup, rutas %APPDATA%), asi que el CI debe correr donde corre. Ademas
+    # evita tener que instalar a mano las libs de sistema que PySide6 necesita
+    # en Linux incluso en modo offscreen (libegl1, libxkbcommon0, ...).
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Descargar el repositorio
+        uses: actions/checkout@v4
+
+      - name: Preparar Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          # 3.12 es la version con la que se construye el release (ver README
+          # y TDTRadioVIP.spec); el CI debe usar la misma.
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Instalar dependencias de verificacion
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "PySide6>=6.5" "requests>=2.31" "pytest>=7.4" "pytest-cov>=5.0" "ruff>=0.6"
+
+      - name: Comprobar estilo con ruff
+        run: python -m ruff check .
+
+      # "python -m pytest", NO el script "pytest" a secas: -m antepone el
+      # directorio actual a sys.path, que es lo que permite resolver
+      # "from core.X import ..." / "from ui.X import ...". Sin el -m, pytest
+      # no anade la raiz del repo al import path y todo falla con
+      # ModuleNotFoundError -- no se nota en local porque ahi siempre se
+      # invoca con -m.
+      - name: Ejecutar la suite de tests con cobertura
+        env:
+          QT_QPA_PLATFORM: offscreen  # sin esto Qt aborta: no hay pantalla
+        run: python -m pytest --cov=core --cov=ui --cov=player --cov-report=term-missing -q
+
+      - name: Comprobar que todo el codigo compila
+        # Detecta errores de sintaxis en modulos que ningun test importa
+        # (paneles de torrents, cast, etc.), que ruff no siempre alcanza.
+        run: python -m compileall -q core ui player main.py main_free.py

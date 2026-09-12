@@ -121,6 +121,9 @@ def _build_settings_menu(win, menu: QMenu) -> None:
 def _build_help_menu(win, menu: QMenu) -> None:
     submenu = menu.addMenu("Ayuda y sistema")
     submenu.addAction("Acerca de", win.dialogs.show_about)
+    # Los atajos no se descubren solos: sin esta entrada, el usuario tendría
+    # que dar con ellos por casualidad.
+    submenu.addAction("Atajos de teclado…", win.dialogs.show_keyboard_shortcuts)
     submenu.addAction("Estadísticas de uso…", win.dialogs.open_stats_dialog)
     submenu.addAction("Buscar actualizaciones", win.updates.check_for_update)
     submenu.addAction("Abrir carpeta de logs", win.dialogs.open_logs_folder)

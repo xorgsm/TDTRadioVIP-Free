@@ -50,3 +50,8 @@ graphify-out/
 
 .superpowers/
 .worktrees/
+
+# Utillaje local de agentes de IA (definiciones de skills y su lock). No es
+# código del producto ni debe viajar en el ZIP de fuentes.
+.agents/
+skills-lock.json
