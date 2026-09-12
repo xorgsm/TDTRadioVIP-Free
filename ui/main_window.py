@@ -27,10 +27,12 @@ from core import history as hist_store
 from core import recorder as rec_module
 from core import recording_schedule
 from core import backup as backup_module
+from core import updater
 from player.vlc_player import VLCPlayer
 from ui.dialogs import SettingsDialog
 from ui.equalizer_dialog import EqualizerDialog
 from ui.style import ACCENT_PRESETS, build_style
+from ui.toast import show_toast
 from ui.visual import set_variant
 from ui import palette
 from ui.channel_menu_controller import ChannelMenuController
@@ -242,6 +244,8 @@ class MainWindow(QMainWindow):
         self.tray.setup()
         if self.settings.get("automatic_backups_enabled", True):
             QTimer.singleShot(1500, self._run_automatic_backup)
+        if self.settings.get("automatic_update_check", True):
+            QTimer.singleShot(5000, self._check_update_automatically)
         if self.settings.get("resume_last_stream", False):
             QTimer.singleShot(2200, self._resume_last_stream)
 
@@ -1948,6 +1952,41 @@ class MainWindow(QMainWindow):
         elif result:
             self.statusBar().showMessage("Copia de seguridad automática creada.", 4000)
 
+    def _check_update_automatically(self):
+        """
+        Comprobación silenciosa al arrancar (como mucho una vez al día, ver
+        core.updater.check_for_update_if_due) -- si hay una versión nueva,
+        avisa con un toast no bloqueante; si no la hay, si la URL está
+        vacía o si ya se comprobó hoy, no hace nada visible. Nunca
+        descarga ni instala sola -- ver _on_automatic_update_check_done()
+        para lo que pasa si el usuario pulsa "Ver".
+        """
+        if self._is_closing:
+            return
+        url = self.settings.get("update_check_url", "")
+        if not url:
+            return
+        worker = FetchWorker(
+            updater.check_for_update_if_due,
+            url,
+            cfg.get_app_data_dir() / "updates",
+            cfg.APP_VERSION,
+        )
+        worker.done.connect(self._on_automatic_update_check_done)
+        self._auto_update_check_worker = worker
+        worker.start()
+
+    def _on_automatic_update_check_done(self, resultado):
+        if self._is_closing or not resultado:
+            return
+        version = resultado.get("version", "?")
+        show_toast(
+            self, f"Hay una actualización disponible: {version}",
+            undo_text="Ver",
+            on_undo=lambda: self.updates.on_update_check_done(resultado),
+            timeout_ms=12000,
+        )
+
     def _resume_last_stream(self):
         if self._is_closing or self.current_url or not self.history:
             return
@@ -1958,7 +1997,7 @@ class MainWindow(QMainWindow):
                 entry.get("tvg_id", ""), entry.get("logo", ""),
             )
 
-    # _check_for_update / _on_update_check_done / _on_update_download_done
+    # check_for_update / on_update_check_done / _on_update_download_done
     # viven ahora en ui.update_check_controller.UpdateCheckController
     # (self.updates).
 

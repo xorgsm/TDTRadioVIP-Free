@@ -13,6 +13,7 @@ Coder By X@R
 """
 import hashlib
 import re
+import time
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlsplit
@@ -85,6 +86,42 @@ def check_for_update(update_check_url: str, current_version: str = APP_VERSION) 
     if _version_tuple(version_remota) > _version_tuple(current_version):
         return data
     return None
+
+
+def check_for_update_if_due(
+    update_check_url: str,
+    marker_dir: str | Path,
+    current_version: str = APP_VERSION,
+    min_interval_hours: int = 24,
+) -> Optional[dict]:
+    """
+    Como check_for_update(), pero para la comprobación automática al
+    arrancar (ver ui.main_window.MainWindow._check_update_automatically):
+    solo llega a consultar la red si han pasado al menos
+    min_interval_hours desde el último intento, con resultado o sin él.
+    Sin esto, cada arranque de la app golpearía el manifiesto remoto
+    aunque el usuario abra y cierre varias veces al día. La comprobación
+    manual (Ayuda > Buscar actualizaciones) sigue llamando a
+    check_for_update() directamente, sin este límite.
+
+    La fecha del último intento se guarda como el mtime de un fichero
+    marcador vacío en marker_dir, no en los ajustes -- así no depende de
+    que se llame a core.config.save_settings() para persistir. Nunca
+    lanza, igual que check_for_update().
+    """
+    marker_path = Path(marker_dir) / ".last_check"
+    try:
+        due = (time.time() - marker_path.stat().st_mtime) >= min_interval_hours * 3600
+    except OSError:
+        due = True
+    if not due:
+        return None
+    try:
+        marker_path.parent.mkdir(parents=True, exist_ok=True)
+        marker_path.touch()
+    except OSError:
+        pass
+    return check_for_update(update_check_url, current_version)
 
 
 def validate_download_manifest(data: dict) -> dict:

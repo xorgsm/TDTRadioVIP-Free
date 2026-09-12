@@ -1,7 +1,9 @@
 """
 Controlador de comprobación de actualizaciones de TDT & Radio VIP: consulta
 manual desde Ayuda > Buscar actualizaciones, y descarga/verificación segura
-(SHA-256) del instalador si el usuario lo pide.
+(SHA-256) del instalador si el usuario lo pide. La comprobación automática
+al arrancar (ver ui/main_window.py) reutiliza on_update_check_done() para
+que el diálogo y la descarga sean idénticos en ambos casos.
 
 Extraído de ui/main_window.py por el mismo motivo que
 ui.playback_controller.PlaybackController y el resto de controladores —
@@ -43,11 +45,18 @@ class UpdateCheckController:
             return
         win.statusBar().showMessage("Comprobando actualizaciones…", 4000)
         worker = FetchWorker(updater.check_for_update, url, cfg.APP_VERSION)
-        worker.done.connect(self._on_update_check_done)
+        worker.done.connect(self.on_update_check_done)
         win._update_check_worker = worker
         worker.start()
 
-    def _on_update_check_done(self, resultado):
+    def on_update_check_done(self, resultado):
+        """
+        Muestra el diálogo de "hay una versión nueva" y, si el usuario
+        acepta, la descarga/verificación/ejecución -- llamado tanto tras la
+        comprobación manual como, con el mismo resultado de
+        core.updater.check_for_update(), desde el aviso de la comprobación
+        automática al arrancar (ver ui/main_window.py).
+        """
         win = self.win
         if win._is_closing:
             return

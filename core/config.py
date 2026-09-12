@@ -21,7 +21,7 @@ APP_ORG = "CoderByXOR"
 # carpeta propia, para poder probarla junto a 7.5.11 sin modificar sus datos.
 APP_DATA_NAME = "TDTRadioVIP_7.6.0"
 LEGACY_APP_ORG = "CoderByXOR"
-APP_VERSION = "7.6.5.2"
+APP_VERSION = "7.6.5.3"
 # Correo al que el cliente envía su ID de equipo para pedir el código de
 # activación. Centralizado aquí para no tener que buscarlo por el código
 # si algún día cambia.
@@ -88,6 +88,12 @@ DEFAULT_SETTINGS = {
     # qué un repo privado no sirve aquí (GitHub bloquea la descarga anónima
     # de assets privados, y no hay forma segura de meter un token en la app).
     "update_check_url": "https://github.com/xorgsm/TDTRadioVIP-Free/releases/latest/download/manifest.json",
+    # Comprobación automática al arrancar (como mucho una vez al día, ver
+    # core.updater.check_for_update_if_due) -- solo avisa con un aviso no
+    # bloqueante si hay una versión nueva, nunca descarga ni instala sola.
+    # Desactivarlo deja solo la comprobación manual de Ayuda > Buscar
+    # actualizaciones.
+    "automatic_update_check": True,
     "automatic_backups_enabled": True,
     "automatic_backup_interval_days": 1,
     "automatic_backup_retention": 7,

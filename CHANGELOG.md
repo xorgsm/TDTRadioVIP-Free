@@ -2,6 +2,20 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [7.6.5.3] — 2026-09-12
+
+### Added
+- **Comprobación automática de actualizaciones al iniciar**
+  (`core/updater.check_for_update_if_due`, `ui/main_window.py`): además de
+  la comprobación manual (Ayuda → Buscar actualizaciones), la app mira en
+  segundo plano si hay una versión nueva al arrancar, como mucho una vez
+  al día. Si la hay, avisa con un aviso flotante no bloqueante con un
+  botón «Ver» -- pulsarlo abre el mismo diálogo de siempre (descarga
+  verificada por SHA-256 y confirmación antes de ejecutar el instalador).
+  La app nunca descarga ni instala nada sin que el usuario lo pida
+  explícitamente. Puede desactivarse en Ajustes → Mantenimiento
+  automático → «Buscar actualizaciones automáticamente al iniciar».
+
 ## [7.6.5.2] — 2026-09-07
 
 ### Fixed

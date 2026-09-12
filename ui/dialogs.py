@@ -280,6 +280,11 @@ class SettingsDialog(QDialog):
             bool(self.settings.get("automatic_stream_diagnostics", True))
         )
         form_maintenance.addRow("Diagnóstico:", self.auto_diagnostics_check)
+        self.auto_update_check_check = QCheckBox("Buscar actualizaciones automáticamente al iniciar")
+        self.auto_update_check_check.setChecked(
+            bool(self.settings.get("automatic_update_check", True))
+        )
+        form_maintenance.addRow("Actualizaciones:", self.auto_update_check_check)
         content_layout.addWidget(panel_maintenance)
 
         # ---- Apariencia ----
@@ -515,6 +520,7 @@ class SettingsDialog(QDialog):
         self.settings["automatic_stream_diagnostics"] = (
             self.auto_diagnostics_check.isChecked()
         )
+        self.settings["automatic_update_check"] = self.auto_update_check_check.isChecked()
         if self._custom_selected and self._custom_color:
             self.settings["accent_color"] = self._custom_color
         else:
