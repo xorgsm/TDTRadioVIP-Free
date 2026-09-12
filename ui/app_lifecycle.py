@@ -20,6 +20,7 @@ from ui.fetch_worker import (
     shutdown_workers,
 )
 from ui.onboarding import OnboardingDialog
+from ui.toast import show_toast
 
 
 class AppLifecycle:
@@ -52,6 +53,9 @@ class AppLifecycle:
         # la cola de arranque diferido; es solo higiene de disco, no algo
         # que el usuario esté esperando ver.
         QTimer.singleShot(4000, self.cleanup_old_updates)
+
+        if win.settings.get("automatic_update_check", True):
+            QTimer.singleShot(5000, self.check_update_automatically)
 
     def show_onboarding(self):
         win = self.win
@@ -121,6 +125,43 @@ class AppLifecycle:
             updater.cleanup_obsolete_updates(cfg.get_app_data_dir() / "updates")
         except OSError:
             pass
+
+    def check_update_automatically(self):
+        """
+        Comprobación silenciosa al arrancar (como mucho una vez al día, ver
+        core.updater.check_for_update_if_due) -- si hay una versión nueva,
+        avisa con un toast no bloqueante; si no la hay, si la URL está
+        vacía o si ya se comprobó hoy, no hace nada visible. Nunca
+        descarga ni instala sola -- ver _on_automatic_update_check_done()
+        para lo que pasa si el usuario pulsa "Ver".
+        """
+        win = self.win
+        if win._is_closing:
+            return
+        url = win.settings.get("update_check_url", "")
+        if not url:
+            return
+        worker = FetchWorker(
+            updater.check_for_update_if_due,
+            url,
+            cfg.get_app_data_dir() / "updates",
+            cfg.APP_VERSION,
+        )
+        worker.done.connect(self._on_automatic_update_check_done)
+        win._auto_update_check_worker = worker
+        worker.start()
+
+    def _on_automatic_update_check_done(self, resultado):
+        win = self.win
+        if win._is_closing or not resultado:
+            return
+        version = resultado.get("version", "?")
+        show_toast(
+            win, f"Hay una actualización disponible: {version}",
+            undo_text="Ver",
+            on_undo=lambda: win.updates.on_update_check_done(resultado),
+            timeout_ms=12000,
+        )
 
     def resume_last_stream(self):
         win = self.win
