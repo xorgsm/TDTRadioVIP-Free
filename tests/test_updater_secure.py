@@ -1,10 +1,13 @@
 import hashlib
+import os
+import time
 
 import pytest
 
 from core import updater
 from core.updater import (
     check_for_update,
+    check_for_update_if_due,
     cleanup_obsolete_updates,
     download_verified_update,
     validate_download_manifest,
@@ -160,3 +163,58 @@ def test_update_check_does_not_crash_on_giant_version(monkeypatch):
         ),
     )
     assert check_for_update("https://updates.test/manifest.json", "7.6.1") is None
+
+
+def test_check_for_update_if_due_runs_on_first_call(tmp_path, monkeypatch):
+    """Sin marcador previo (primer arranque), debe comprobar ya mismo."""
+    llamadas = []
+    monkeypatch.setattr(
+        updater, "check_for_update",
+        lambda url, version: llamadas.append((url, version)) or {"version": "9.0"},
+    )
+    resultado = check_for_update_if_due("https://updates.test/manifest.json", tmp_path, "8.1.0")
+
+    assert resultado == {"version": "9.0"}
+    assert llamadas == [("https://updates.test/manifest.json", "8.1.0")]
+    assert (tmp_path / ".last_check").exists()
+
+
+def test_check_for_update_if_due_skips_when_checked_recently(tmp_path, monkeypatch):
+    (tmp_path / ".last_check").touch()
+
+    def no_debe_llamarse(*args, **kwargs):
+        pytest.fail("no debe consultar la red si el marcador es reciente")
+
+    monkeypatch.setattr(updater, "check_for_update", no_debe_llamarse)
+
+    assert check_for_update_if_due(
+        "https://updates.test/manifest.json", tmp_path, "8.1.0", min_interval_hours=24
+    ) is None
+
+
+def test_check_for_update_if_due_runs_again_after_interval(tmp_path, monkeypatch):
+    marker = tmp_path / ".last_check"
+    marker.touch()
+    old = time.time() - (25 * 3600)
+    os.utime(marker, (old, old))
+
+    monkeypatch.setattr(updater, "check_for_update", lambda url, version: {"version": "9.0"})
+
+    resultado = check_for_update_if_due(
+        "https://updates.test/manifest.json", tmp_path, "8.1.0", min_interval_hours=24
+    )
+
+    assert resultado == {"version": "9.0"}
+
+
+def test_check_for_update_if_due_tolerates_missing_marker_directory(tmp_path, monkeypatch):
+    """El directorio de destino (p.ej. updates/) puede no existir todavía
+    en una instalación nueva -- no debe reventar la comprobación al arrancar."""
+    monkeypatch.setattr(updater, "check_for_update", lambda url, version: None)
+
+    resultado = check_for_update_if_due(
+        "https://updates.test/manifest.json", tmp_path / "updates-no-creado", "8.1.0"
+    )
+
+    assert resultado is None
+    assert (tmp_path / "updates-no-creado" / ".last_check").exists()

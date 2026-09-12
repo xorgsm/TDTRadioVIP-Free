@@ -120,7 +120,7 @@ DEFAULT_DOWNLOADS_DIRNAME = "TDT Radio VIP"
 # ui.epg_controller.EpgController (self.epg):
 #     _open_epg_dialog, _tune_to_tvg_id, _load_epg, _on_epg_loaded
 # ui.update_check_controller.UpdateCheckController (self.updates):
-#     _check_for_update, _on_update_check_done, _on_update_download_done
+#     check_for_update, on_update_check_done, _on_update_download_done
 # ui.library_controller.LibraryController (self.library):
 #     _open_add_entry_dialog, _edit_custom_entry, _delete_custom_entry,
 #     _open_import_playlist_dialog, _fetch_playlist_text, _on_playlist_fetched,
