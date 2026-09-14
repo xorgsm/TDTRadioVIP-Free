@@ -2,6 +2,26 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.3.0] — 2026-09-14
+
+### Changed
+- **Cliente VPN (edición VIP): WireGuard → OpenVPN**
+  (`core/vpn_client.py`, `core/vpn_profiles.py`, sección «VPN» en
+  Ajustes): el usuario sigue aportando su propia suscripción VPN (modelo
+  bring-your-own, sin servidores propios), pero ahora importa un `.ovpn`
+  en vez de un `.conf` de WireGuard. Conectar y desconectar ya **no**
+  piden permiso de administrador de Windows en cada operación -- OpenVPN
+  ≥ 2.4 instala su servicio interactivo una sola vez (durante la
+  instalación de OpenVPN, no la hace esta app) y a partir de ahí
+  cualquier usuario del grupo local "OpenVPN Administrators" puede
+  conectar/desconectar sin UAC. Detecta si falta el cliente oficial de
+  OpenVPN y enlaza a la descarga en vez de fallar en silencio. Diseño
+  completo en `docs/superpowers/specs/2026-09-11-vpn-client-design.md`.
+- **Cambio incompatible:** los perfiles VPN de WireGuard guardados en
+  8.1.0/8.2.0 no son compatibles con este formato. Quien actualice tiene
+  que volver a importar sus perfiles como `.ovpn`; no hay migración
+  automática.
+
 ## [8.2.0] — 2026-09-12
 
 ### Added

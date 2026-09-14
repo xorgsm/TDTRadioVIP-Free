@@ -1,6 +1,6 @@
-# Cliente VPN (WireGuard) en la edición VIP — v8.1
+# Cliente VPN (OpenVPN) en la edición VIP — v8.3
 
-**Estado:** Diseño aprobado e implementado (2026-09-11). Versión publicada: **8.1.0**.
+**Estado:** Diseño aprobado e implementado (2026-09-14). Reemplaza la v8.1 (WireGuard).
 **Clasificación:** Arquitectónico (brainstorming completo: preguntas → enfoques → diseño → spec).
 
 ## 1. Motivación
@@ -8,100 +8,117 @@
 Algunas listas públicas de M3U/radio están restringidas por país (geobloqueo).
 La app ya centraliza descubrimiento y reproducción de TV, radio y podcasts
 (ver `PRODUCT.md`); sin poder salir de la IP local del usuario, esas listas
-quedan fuera de alcance aunque sean públicas y gratuitas. Se añade un
-cliente VPN a la parte licenciada (edición VIP con licencia activada) para
-que el usuario pueda conectar con un servidor de otro país usando **su
-propia** suscripción VPN.
+quedan fuera de alcance aunque sean públicas y gratuitas. La v8.1 añadió un
+cliente VPN basado en WireGuard para esto (edición VIP con licencia
+activada), pero el cliente oficial de WireGuard para Windows pide UAC en
+**cada** conexión/desconexión (instala/quita un servicio por túnel cada
+vez) y su modelo de un solo `.conf` por perfil resultó confuso en la
+interfaz. Esta revisión sustituye WireGuard por OpenVPN sin cambiar el
+modelo de fondo: el usuario sigue aportando su propia suscripción VPN.
 
-## 2. Alcance decidido
+## 2. Qué cambia respecto a v8.1
 
-Preguntas resueltas con el usuario antes de implementar (ver conversación):
+- **Protocolo: OpenVPN en vez de WireGuard.** El usuario importa un
+  `.ovpn` (en vez de un `.conf` de WireGuard) que le da su proveedor.
+  Sigue siendo bring-your-own: la app no opera servidores VPN propios.
+- **Sin UAC por conexión.** OpenVPN ≥ 2.4 instala un *Interactive
+  Service* una sola vez (con privilegios de administrador, durante la
+  instalación de OpenVPN — no la hace esta app). A partir de ahí,
+  cualquier usuario del grupo local de Windows **"OpenVPN
+  Administrators"** puede conectar/desconectar sin UAC, pilotando
+  `openvpn-gui.exe` por línea de comandos (`--command connect <nombre>` /
+  `--command disconnect <nombre>`). Ver
+  [OpenVPN/openvpn-gui](https://github.com/OpenVPN/openvpn-gui) y el
+  [ticket #811](https://community.openvpn.net/openvpn/ticket/811).
+- **Detección de instalación:** igual que antes pero busca
+  `openvpn-gui.exe` (ruta estándar `Program Files\OpenVPN\bin\` o PATH)
+  en vez de `wireguard.exe`.
+- **Migración:** no automática. Los perfiles `.conf` de WireGuard
+  importados en v8.1/8.2 **no** son compatibles con este formato; el
+  usuario tiene que volver a importar sus perfiles como `.ovpn`. Se
+  documenta como cambio incompatible en `CHANGELOG.md`, no se escribe
+  lógica de migración (YAGNI: proyecto en fase temprana, sin base de
+  usuarios con perfiles VPN ya guardados que justifique el coste).
 
-- **Modelo: bring-your-own.** El usuario aporta su propia suscripción VPN
-  (archivo `.conf` de WireGuard que le da su proveedor). La app **no**
-  opera servidores VPN propios ni integra la API de un proveedor
-  comercial — sin coste de infraestructura ni responsabilidad legal por
-  el tráfico que pase por servidores propios.
-- **Protocolo: WireGuard.** Un solo archivo de configuración, cliente
-  oficial ligero y moderno.
-- **WireGuard debe estar instalado aparte.** La app detecta
-  `wireguard.exe` (ruta estándar de instalación o PATH); si no lo
-  encuentra, muestra un aviso con enlace a la descarga oficial en vez de
-  bundlearlo con el instalador.
-- **Ubicación: nueva sección «VPN» dentro del diálogo de Ajustes**
-  existente (`ui/dialogs/settings.py`), gated a VIP con licencia activada
-  de verdad.
-- **Varios perfiles guardados.** El usuario puede importar más de un
-  `.conf` (p. ej. uno por país) y elegir cuál activar desde un combo,
-  igual que ya gestiona perfiles de usuario en el mismo diálogo.
-
-**Fuera de alcance v1 (YAGNI):** sin auto-conexión, sin detección
-automática de "lista bloqueada por región", sin selección automática de
-servidor, sin más de un túnel activo a la vez.
+**Sigue fuera de alcance (igual que v1):** sin auto-conexión, sin
+detección automática de "lista bloqueada por región", sin selección
+automática de servidor, sin más de un túnel activo a la vez.
 
 ## 3. Componentes
 
-- **`core/vpn_profiles.py`** — CRUD puro de perfiles. Copia el `.conf`
-  importado a `get_profile_data_dir() / "vpn" / <túnel>.conf` (misma
-  carpeta de datos del perfil que ya usa `core/soulseek_account.py`) y
-  mantiene un índice `vpn_profiles.json` (nombre visible → nombre de
-  túnel saneado). Sin cifrado: mismo nivel de protección que el resto de
-  datos de perfil ya existentes en el proyecto, no es una regresión.
-  Valida que el archivo importado tenga pinta de `.conf` de WireGuard
-  (`[Interface]` / `[Peer]`) antes de aceptarlo.
-- **`core/vpn_client.py`** — controla `wireguard.exe`:
-  - `connect()` / `disconnect()` usan `/installtunnelservice` y
-    `/uninstalltunnelservice`. Estas dos operaciones **requieren
-    elevación** (mismo comportamiento que la app oficial de WireGuard),
-    así que se lanzan con `ShellExecuteExW` y el verbo `runas` — Windows
-    muestra un UAC cada vez que se conecta o desconecta. Se documenta
-    como limitación conocida de v1: no hay forma de evitarlo con el
-    cliente oficial de WireGuard.
-  - `status()` consulta `sc query WireGuardTunnel$<túnel>`, que no
-    necesita elevación, para refrescar el estado sin lanzar ningún UAC.
-  - Procesos auxiliares (`sc query`) lanzados con
-    `creationflags=CREATE_NO_WINDOW`, igual que ya hace
-    `core/recorder.py` para ffmpeg.
-- **UI** — sección «VPN» en `SettingsDialog`, construida solo si
-  `parent.activated and not parent.es_version_free` (mismo criterio ya
-  usado en `ui/dialog_actions.py` para "Ir a Descargas" en la paleta de
-  comandos: `win.activated` también vale `True` en la build Free, que
-  arranca "activada" para desbloquear todo — hay que excluirla aparte).
-  Combo de perfiles, etiqueta de estado, y tres botones que actúan al
-  momento (Importar, Eliminar, Conectar/Desconectar), sin esperar al
-  "Guardar" del diálogo — mismo patrón que los botones de gestión de
-  perfil de usuario ya presentes en la misma pantalla.
+- **`core/vpn_profiles.py`** — CRUD de perfiles. Copia el `.ovpn`
+  importado a `get_profile_data_dir() / "vpn" / <túnel>.ovpn` (misma
+  carpeta de datos del perfil de siempre) y mantiene el índice
+  `vpn_profiles.json`. Valida que el archivo importado tenga pinta de
+  `.ovpn` (directivas `client` y `remote`) antes de aceptarlo.
+  **Novedad respecto a v8.1:** además de guardar su propia copia,
+  registra el perfil con OpenVPN copiándolo también a
+  `vpn_client.find_config_dir()` (carpeta que vigila el servicio
+  interactivo) y pide un `rescan` — si esa copia falla (p. ej. el
+  usuario no pertenece al grupo "OpenVPN Administrators" y no tiene
+  permiso de escritura ahí), se aborta el import con un
+  `VpnProfileError` explicando el motivo. Esto acopla `vpn_profiles.py`
+  a `vpn_client.py` (antes eran independientes) — es necesario porque
+  OpenVPN conecta perfiles **por nombre** desde una carpeta conocida por
+  el GUI, no por ruta explícita como hacía `wireguard.exe`.
+- **`core/vpn_client.py`** — controla `openvpn-gui.exe`:
+  - `connect()`/`disconnect()` mandan `--command connect|disconnect
+    <túnel>` sin elevar (el propio GUI habla con el servicio
+    interactivo, ya elevado de antemano). Son *fire-and-forget*: no
+    bloquean hasta que el túnel termine de levantarse, a diferencia de
+    WireGuard que sí esperaba a que `/installtunnelservice` terminara.
+    Limitación conocida de v8.3: el estado puede tardar unos segundos en
+    reflejar "Conectado" tras pulsar el botón.
+  - `status()` no tiene un comando de solo-lectura por CLI (ver
+    [issue #104](https://github.com/OpenVPN/openvpn-gui/issues/104)), así
+    que lee el log por perfil que ya escribe el servicio interactivo
+    (`<config_dir>/../log/<túnel>.log`) buscando la última aparición de
+    "Initialization Sequence Completed" frente a la de
+    "SIGTERM"/"process exiting".
+  - `find_config_dir()` lee `HKLM\SOFTWARE\OpenVPN-GUI\config_dir` del
+    registro (valor que usa el propio GUI internamente); si no existe,
+    cae a `Program Files\OpenVPN\config`.
+  - Procesos auxiliares lanzados con `creationflags=CREATE_NO_WINDOW`,
+    igual que antes.
+- **UI** — misma sección «VPN» en `SettingsDialog`, gated a
+  `parent.activated and not parent.es_version_free` (sin cambios en el
+  criterio de licencia). Cambia el texto de los avisos (ya no menciona
+  UAC en cada conexión) y el filtro del diálogo de importar
+  (`*.ovpn` en vez de `*.conf`).
 
 ## 4. Manejo de errores
 
-- WireGuard no instalado → aviso + botón "Descargar WireGuard…"
-  (`QDesktopServices.openUrl` a `wireguard.com/install`), sin mostrar los
-  controles de conectar/perfiles.
-- UAC cancelado por el usuario o `wireguard.exe` devuelve código de
-  salida distinto de cero → `VpnClientError` con mensaje explicando el
-  motivo, mostrado con `QMessageBox.warning`.
-- Eliminar un perfil cuyo túnel está en marcha → se intenta desconectar
-  primero; si la desconexión falla (p. ej. UAC cancelado), se aborta el
-  borrado en vez de dejar un servicio de Windows huérfano sin perfil que
-  lo referencie.
-- `.conf` importado sin `[Interface]`/`[Peer]` → rechazado con
+- OpenVPN no instalado → aviso + botón "Descargar OpenVPN…"
+  (`QDesktopServices.openUrl` a `openvpn.net/community-downloads`), sin
+  mostrar los controles de conectar/perfiles.
+- `.ovpn` importado sin `client`/`remote` → rechazado con
   `VpnProfileError` antes de copiarlo, no se llega a crear el perfil.
+- No se puede registrar el perfil en la carpeta de configs de OpenVPN
+  (permiso denegado, normalmente por no estar en el grupo "OpenVPN
+  Administrators") → se deshace la copia local y se aborta el import con
+  un mensaje explicando el motivo y el grupo necesario.
+- Eliminar un perfil cuyo túnel está en marcha → se intenta desconectar
+  primero (mismo criterio que v8.1); si falla, se aborta el borrado.
 
 ## 5. Testing
 
-- `tests/test_vpn_profiles.py` — CRUD puro sobre un directorio de perfil
-  temporal: importar, listar, obtener, eliminar, colisión de nombres,
-  saneado de nombre de túnel, rechazo de `.conf` inválido.
+- `tests/test_vpn_profiles.py` — CRUD sobre un directorio de perfil
+  temporal más el registro/baja en la carpeta de configs de OpenVPN
+  (con `vpn_client.find_config_dir` y `vpn_client.rescan` sustituidos
+  por dobles de prueba).
 - `tests/test_vpn_client.py` — construcción de argumentos de
-  `connect()`/`disconnect()` y parseo de `sc query` en `status()`, con
-  `subprocess` y `_run_elevated` sustituidos por dobles de prueba. No
-  cubre el UAC real ni el servicio de Windows real: no son reproducibles
-  en CI ni deseables en una suite automática.
+  `connect()`/`disconnect()`, lectura de `find_config_dir()` desde el
+  registro (con `winreg` sustituido por un doble), y parseo del log en
+  `status()`. No cubre el servicio interactivo real ni el propio
+  `openvpn-gui.exe`: no son reproducibles en CI.
 
 ## 6. Decisión de versión
 
-Este cambio, sumado al trabajo ya completado y documentado como "sin
-publicar" en `CHANGELOG.md` (atajos de teclado, CI en GitHub Actions,
-reparto de `ui/dialogs.py`/`ui/style.py` en paquetes), se publica como
-**8.1.0**: funcionalidad nueva sin ruptura de compatibilidad, coherente
-con `MINOR` en SemVer.
+Cambio incompatible en el formato de perfiles VPN guardados (WireGuard →
+OpenVPN, sin migración) sobre una función que ya se publicó en 8.1.0/8.2.0.
+Se publica como **8.3.0**: aunque no rompe ninguna API pública del
+proyecto, sí rompe los perfiles VPN ya guardados por quien actualice,
+coherente con tratarlo como cambio de comportamiento notable (se
+documenta explícitamente en `CHANGELOG.md`, no se sube a `MAJOR` porque
+el proyecto no seguía SemVer estricto de compatibilidad de datos de
+usuario antes de esto).
