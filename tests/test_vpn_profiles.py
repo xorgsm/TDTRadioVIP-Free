@@ -144,6 +144,28 @@ def test_delete_profile_is_a_no_op_when_missing(monkeypatch, tmp_path):
         config._profile_dir_for.cache_clear()
 
 
+def test_import_profile_from_text_registers_it_without_a_source_file(monkeypatch, tmp_path):
+    openvpn_config_dir = _redirect_profiles(monkeypatch, tmp_path)
+    body = "client\ndev tun\nproto udp\nremote jp1.vpngate.net 1194\n"
+    try:
+        entry = vpn_profiles.import_profile_from_text("Japón (VPNGate)", body)
+        assert entry["name"] == "Japón (VPNGate)"
+        assert Path(entry["conf_path"]).read_text(encoding="utf-8") == body
+        registered = openvpn_config_dir / f"{entry['tunnel']}.ovpn"
+        assert registered.read_text(encoding="utf-8") == body
+    finally:
+        config._profile_dir_for.cache_clear()
+
+
+def test_import_profile_from_text_rejects_invalid_content(monkeypatch, tmp_path):
+    _redirect_profiles(monkeypatch, tmp_path)
+    try:
+        with pytest.raises(vpn_profiles.VpnProfileError, match="no parece"):
+            vpn_profiles.import_profile_from_text("Bogus", "not an openvpn conf")
+    finally:
+        config._profile_dir_for.cache_clear()
+
+
 def test_list_profiles_sorted_case_insensitively(monkeypatch, tmp_path):
     _redirect_profiles(monkeypatch, tmp_path)
     source_a = _write_conf(tmp_path / "src", "a.ovpn")

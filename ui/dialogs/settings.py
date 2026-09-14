@@ -15,6 +15,7 @@ from core import config as cfg
 from core import countries
 from core import vpn_client, vpn_profiles
 from ui import palette
+from ui.dialogs.vpngate_picker import VpnGatePickerDialog
 from ui.style import ACCENT_PRESETS, DEFAULT_ACCENT
 from ui.visual import set_surface
 
@@ -292,23 +293,26 @@ class SettingsDialog(QDialog):
         vpn_row = QHBoxLayout()
         importar_btn = QPushButton("Importar perfil (.ovpn)…")
         importar_btn.clicked.connect(self._on_vpn_import)
+        gratis_btn = QPushButton("Servidor gratuito (VPNGate)…")
+        gratis_btn.clicked.connect(self._on_vpn_gate_pick)
         eliminar_btn = QPushButton("Eliminar")
         eliminar_btn.clicked.connect(self._on_vpn_delete)
         self.vpn_toggle_btn = QPushButton("Conectar")
         self.vpn_toggle_btn.clicked.connect(self._on_vpn_toggle)
         vpn_row.addWidget(importar_btn)
+        vpn_row.addWidget(gratis_btn)
         vpn_row.addWidget(eliminar_btn)
         vpn_row.addWidget(self.vpn_toggle_btn)
         form_vpn.addRow(vpn_row)
 
         aviso = QLabel(
-            "Usa tu propia suscripción VPN: importa el .ovpn que te da tu "
-            "proveedor para cada país o servidor. No hace falta permiso de "
-            "administrador para conectar ni desconectar -- solo la primera "
-            "vez, si tu usuario de Windows todavía no pertenece al grupo "
-            "«OpenVPN Administrators», el propio instalador de OpenVPN "
-            "puede añadirlo. El estado puede tardar unos segundos en "
-            "reflejar el cambio."
+            "Importa el .ovpn de tu propia suscripción VPN, o elige un "
+            "servidor gratuito de VPNGate sin necesitar ninguna cuenta. No "
+            "hace falta permiso de administrador para conectar ni "
+            "desconectar -- solo la primera vez, si tu usuario de Windows "
+            "todavía no pertenece al grupo «OpenVPN Administrators», el "
+            "propio instalador de OpenVPN puede añadirlo. El estado puede "
+            "tardar unos segundos en reflejar el cambio."
         )
         aviso.setWordWrap(True)
         aviso.setObjectName("dialogSubtitle")
@@ -359,6 +363,26 @@ class SettingsDialog(QDialog):
             vpn_profiles.import_profile(nombre, Path(path))
         except vpn_profiles.VpnProfileError as exc:
             QMessageBox.warning(self, "Importar perfil VPN", str(exc))
+            return
+        self._reload_vpn_combo(select_name=nombre)
+
+    def _on_vpn_gate_pick(self):
+        dialog = VpnGatePickerDialog(self)
+        if dialog.exec() != QDialog.Accepted or dialog.selected_server is None:
+            return
+        server = dialog.selected_server
+        pais = server.get("country_long") or server.get("country_short") or "VPNGate"
+        nombre, ok = QInputDialog.getText(
+            self, "Servidor gratuito (VPNGate)", "Nombre para este perfil:",
+            text=f"{pais} (VPNGate)",
+        )
+        nombre = (nombre or "").strip()
+        if not ok or not nombre:
+            return
+        try:
+            vpn_profiles.import_profile_from_text(nombre, server["ovpn_text"])
+        except vpn_profiles.VpnProfileError as exc:
+            QMessageBox.warning(self, "Servidor gratuito (VPNGate)", str(exc))
             return
         self._reload_vpn_combo(select_name=nombre)
 
