@@ -53,4 +53,5 @@ perfiles OpenVPN que el usuario importa en `vpn/*.ovpn` dentro de la
 carpeta del perfil activo, sin cifrar -- mismo nivel de protección que el
 resto de datos de perfil (favoritos, cuenta de Soulseek, etc.). La app no
 opera servidores VPN propios: cada perfil es la suscripción VPN del propio
-usuario.
+usuario, o un servidor gratuito elegido de VPNGate (ver
+`docs/superpowers/specs/2026-09-14-vpngate-free-servers-design.md`).

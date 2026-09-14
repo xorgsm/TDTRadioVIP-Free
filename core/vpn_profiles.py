@@ -124,12 +124,15 @@ def _unregister_from_openvpn(tunnel: str) -> None:
         vpn_client.rescan()
 
 
-def import_profile(display_name: str, source_conf: Path, profile: Optional[str] = None) -> dict:
-    """Copia `source_conf` a la carpeta VPN del perfil, la registra con
-    OpenVPN, y la indexa bajo `display_name`. Lanza VpnProfileError si el
-    nombre ya existe, el archivo de origen no existe, no es un .ovpn
-    legible, o no se pudo registrar con OpenVPN (normalmente por no
-    pertenecer al grupo "OpenVPN Administrators")."""
+def _import_text(
+    display_name: str, text: str, source_label: str, profile: Optional[str] = None
+) -> dict:
+    """Núcleo común de import_profile()/import_profile_from_text(): valida
+    el nombre y el contenido, elige un nombre de túnel, escribe el .ovpn
+    en la carpeta del perfil y lo registra con OpenVPN. `source_label` es
+    solo para el mensaje de error si el contenido no parece un .ovpn
+    válido (nombre de archivo o "servidor de VPNGate", según quien
+    llame)."""
     display_name = display_name.strip()
     if not display_name:
         raise VpnProfileError("El perfil necesita un nombre.")
@@ -138,16 +141,9 @@ def import_profile(display_name: str, source_conf: Path, profile: Optional[str] 
     if display_name in index:
         raise VpnProfileError(f"Ya existe un perfil VPN llamado «{display_name}».")
 
-    source_conf = Path(source_conf)
-    if not source_conf.is_file():
-        raise VpnProfileError(f"No se encuentra el archivo: {source_conf}")
-    try:
-        text = source_conf.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        raise VpnProfileError(f"No se pudo leer «{source_conf.name}»: {exc}") from exc
     if "client" not in text or "remote " not in text:
         raise VpnProfileError(
-            f"«{source_conf.name}» no parece un archivo de configuración de OpenVPN "
+            f"«{source_label}» no parece un archivo de configuración de OpenVPN "
             "válido (faltan las directivas 'client' o 'remote')."
         )
 
@@ -158,9 +154,9 @@ def import_profile(display_name: str, source_conf: Path, profile: Optional[str] 
     vpn_dir.mkdir(parents=True, exist_ok=True)
     dest = vpn_dir / f"{tunnel}.ovpn"
     try:
-        shutil.copy2(source_conf, dest)
+        dest.write_text(text, encoding="utf-8")
     except OSError as exc:
-        raise VpnProfileError(f"No se pudo copiar el archivo: {exc}") from exc
+        raise VpnProfileError(f"No se pudo guardar el archivo: {exc}") from exc
 
     try:
         _register_with_openvpn(dest, tunnel)
@@ -175,6 +171,32 @@ def import_profile(display_name: str, source_conf: Path, profile: Optional[str] 
     index[display_name] = {"tunnel": tunnel}
     _save_index(index, profile)
     return {"name": display_name, "tunnel": tunnel, "conf_path": str(dest)}
+
+
+def import_profile(display_name: str, source_conf: Path, profile: Optional[str] = None) -> dict:
+    """Copia `source_conf` a la carpeta VPN del perfil, la registra con
+    OpenVPN, y la indexa bajo `display_name`. Lanza VpnProfileError si el
+    nombre ya existe, el archivo de origen no existe, no es un .ovpn
+    legible, o no se pudo registrar con OpenVPN (normalmente por no
+    pertenecer al grupo "OpenVPN Administrators")."""
+    source_conf = Path(source_conf)
+    if not source_conf.is_file():
+        raise VpnProfileError(f"No se encuentra el archivo: {source_conf}")
+    try:
+        text = source_conf.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise VpnProfileError(f"No se pudo leer «{source_conf.name}»: {exc}") from exc
+    return _import_text(display_name, text, source_conf.name, profile)
+
+
+def import_profile_from_text(
+    display_name: str, ovpn_text: str, profile: Optional[str] = None
+) -> dict:
+    """Igual que import_profile(), pero a partir del contenido .ovpn ya
+    en memoria en vez de un archivo -- lo usa el selector de servidores
+    gratuitos de VPNGate (ver core/vpngate.py) para no tener que escribir
+    un archivo temporal solo para volver a leerlo."""
+    return _import_text(display_name, ovpn_text, "servidor de VPNGate", profile)
 
 
 def delete_profile(name: str, profile: Optional[str] = None) -> None:

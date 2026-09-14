@@ -25,6 +25,7 @@ DIALOGOS_ESPERADOS = {
     "ManageChannelsDialog": "manage_channels",
     "RecordingsLibraryDialog": "recordings_library",
     "SettingsDialog": "settings",
+    "VpnGatePickerDialog": "vpngate_picker",
 }
 
 LIMITE_LINEAS = 800  # límite de tamaño de archivo del proyecto (AGENTS.md)

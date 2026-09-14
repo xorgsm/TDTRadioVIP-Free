@@ -2,6 +2,19 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.4.0] — 2026-09-14
+
+### Added
+- **Servidores VPN gratuitos vía VPNGate** (`core/vpngate.py`,
+  `ui/dialogs/vpngate_picker.py`): nuevo botón "Servidor gratuito
+  (VPNGate)…" en Ajustes → VPN, junto al de importar un `.ovpn` propio.
+  Descarga la lista pública de servidores del proyecto VPNGate
+  (Universidad de Tsukuba) -- voluntarios, sin cuenta ni suscripción -- y
+  deja elegir uno por país; a partir de ahí es un perfil VPN más, igual
+  que uno importado a mano. Complementa el modelo bring-your-own de
+  8.3.0, no lo sustituye. Diseño completo en
+  `docs/superpowers/specs/2026-09-14-vpngate-free-servers-design.md`.
+
 ## [8.3.0] — 2026-09-14
 
 ### Changed
