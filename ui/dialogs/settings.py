@@ -257,24 +257,27 @@ class SettingsDialog(QDialog):
     # ---------- VPN ----------
 
     def _build_vpn_panel(self, content_layout: QVBoxLayout) -> None:
-        """Sección VPN: conecta con la suscripción WireGuard propia del
+        """Sección VPN: conecta con la suscripción OpenVPN propia del
         usuario para acceder a listas públicas con restricción geográfica.
-        La app no opera servidores VPN propios -- solo importa el .conf
-        que ya trae el proveedor y arranca/para ese túnel (ver
-        core/vpn_client.py y core/vpn_profiles.py)."""
+        La app no opera servidores VPN propios -- solo importa el .ovpn
+        que ya trae el proveedor y pide a openvpn-gui.exe que conecte o
+        desconecte ese perfil por nombre (ver core/vpn_client.py y
+        core/vpn_profiles.py)."""
         panel_vpn, form_vpn = _panel("VPN")
 
-        if not vpn_client.is_wireguard_installed():
+        if not vpn_client.is_openvpn_installed():
             aviso = QLabel(
-                "Para conectar necesitas el cliente oficial de WireGuard "
+                "Para conectar necesitas el cliente oficial de OpenVPN "
                 "instalado en este PC."
             )
             aviso.setWordWrap(True)
             aviso.setObjectName("dialogSubtitle")
             form_vpn.addRow(aviso)
-            descargar_btn = QPushButton("Descargar WireGuard…")
+            descargar_btn = QPushButton("Descargar OpenVPN…")
             descargar_btn.clicked.connect(
-                lambda: QDesktopServices.openUrl(QUrl("https://www.wireguard.com/install/"))
+                lambda: QDesktopServices.openUrl(
+                    QUrl("https://openvpn.net/community-downloads/")
+                )
             )
             form_vpn.addRow(descargar_btn)
             content_layout.addWidget(panel_vpn)
@@ -287,7 +290,7 @@ class SettingsDialog(QDialog):
         form_vpn.addRow("Estado:", self.vpn_status_label)
 
         vpn_row = QHBoxLayout()
-        importar_btn = QPushButton("Importar perfil (.conf)…")
+        importar_btn = QPushButton("Importar perfil (.ovpn)…")
         importar_btn.clicked.connect(self._on_vpn_import)
         eliminar_btn = QPushButton("Eliminar")
         eliminar_btn.clicked.connect(self._on_vpn_delete)
@@ -299,10 +302,13 @@ class SettingsDialog(QDialog):
         form_vpn.addRow(vpn_row)
 
         aviso = QLabel(
-            "Usa tu propia suscripción VPN: importa el .conf que te da tu "
-            "proveedor para cada país o servidor. Conectar y desconectar "
-            "piden permiso de administrador de Windows -- lo pide el "
-            "propio cliente de WireGuard, no es cosa de esta app."
+            "Usa tu propia suscripción VPN: importa el .ovpn que te da tu "
+            "proveedor para cada país o servidor. No hace falta permiso de "
+            "administrador para conectar ni desconectar -- solo la primera "
+            "vez, si tu usuario de Windows todavía no pertenece al grupo "
+            "«OpenVPN Administrators», el propio instalador de OpenVPN "
+            "puede añadirlo. El estado puede tardar unos segundos en "
+            "reflejar el cambio."
         )
         aviso.setWordWrap(True)
         aviso.setObjectName("dialogSubtitle")
@@ -339,7 +345,7 @@ class SettingsDialog(QDialog):
 
     def _on_vpn_import(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "Importar perfil VPN", "", "WireGuard (*.conf)"
+            self, "Importar perfil VPN", "", "OpenVPN (*.ovpn)"
         )
         if not path:
             return

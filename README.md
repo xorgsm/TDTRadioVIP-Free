@@ -49,7 +49,7 @@ del paquete de fuentes limpio.
 
 La sección VPN (edición VIP con licencia activada, ver
 `docs/superpowers/specs/2026-09-11-vpn-client-design.md`) guarda los
-perfiles WireGuard que el usuario importa en `vpn/*.conf` dentro de la
+perfiles OpenVPN que el usuario importa en `vpn/*.ovpn` dentro de la
 carpeta del perfil activo, sin cifrar -- mismo nivel de protección que el
 resto de datos de perfil (favoritos, cuenta de Soulseek, etc.). La app no
 opera servidores VPN propios: cada perfil es la suscripción VPN del propio

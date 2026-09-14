@@ -1,16 +1,24 @@
 """
-Perfiles VPN (WireGuard) del perfil activo de la app.
+Perfiles VPN (OpenVPN) del perfil activo de la app.
 
-Cada perfil VPN es un .conf de WireGuard que el usuario importa desde su
+Cada perfil VPN es un .ovpn de OpenVPN que el usuario importa desde su
 propia suscripción -- la app no opera servidores VPN propios, solo guarda
-el archivo y arranca/para el túnel correspondiente (ver
-core/vpn_client.py). Sirve para acceder a listas públicas de TV/radio con
-restricción geográfica, conectando a un servidor del país de la lista.
+el archivo y pide a openvpn-gui.exe que conecte/desconecte el túnel
+correspondiente (ver core/vpn_client.py). Sirve para acceder a listas
+públicas de TV/radio con restricción geográfica, conectando a un servidor
+del país de la lista.
 
 Igual que core/soulseek_account.py: JSON plano en la carpeta de datos del
 PERFIL activo (get_profile_data_dir()), mismo nivel de protección que el
 resto de datos de perfil ya existentes en el proyecto -- no es una
-regresión guardar aquí la clave privada que trae el .conf.
+regresión guardar aquí las credenciales que traiga el .ovpn.
+
+A diferencia de la versión anterior con WireGuard, este módulo ya no es
+CRUD puro: OpenVPN conecta los túneles por NOMBRE desde una carpeta que
+vigila el servicio interactivo (core.vpn_client.find_config_dir()), no
+por ruta explícita, así que import_profile()/delete_profile() también
+copian/borran el .ovpn ahí -- ver
+docs/superpowers/specs/2026-09-11-vpn-client-design.md.
 
 Coder By X@R
 """
@@ -19,17 +27,20 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
+from core import vpn_client
 from core.config import get_profile_data_dir
 from core.json_store import read_json, write_json_atomic
 
 VPN_DIR_NAME = "vpn"
 INDEX_FILE = "vpn_profiles.json"
-# Límite de WireGuard para el nombre del adaptador/servicio del túnel.
+# openvpn-gui no documenta un límite estricto para el nombre de un
+# perfil, pero se mantiene corto y saneado como con WireGuard antes --
+# es también el nombre del archivo .ovpn en la carpeta de configs.
 _MAX_TUNNEL_LEN = 32
 
 
 class VpnProfileError(Exception):
-    """Perfil VPN inválido, duplicado, o archivo .conf no legible."""
+    """Perfil VPN inválido, duplicado, o archivo .ovpn no legible."""
 
 
 def _vpn_dir(profile: Optional[str] = None) -> Path:
@@ -50,7 +61,7 @@ def _save_index(index: dict, profile: Optional[str] = None) -> None:
 
 
 def _sanitize_tunnel_name(display_name: str, taken: set) -> str:
-    """Deriva un nombre de túnel válido para WireGuard a partir del nombre
+    """Deriva un nombre de perfil válido para OpenVPN a partir del nombre
     que ve el usuario: solo alfanuméricos, "-" y "_", máximo 32
     caracteres, y único frente a `taken` (sufijo numérico si colisiona)."""
     base = re.sub(r"[^A-Za-z0-9_-]+", "_", display_name).strip("_") or "vpn"
@@ -76,7 +87,7 @@ def list_profiles(profile: Optional[str] = None) -> list:
         result.append({
             "name": name,
             "tunnel": tunnel,
-            "conf_path": str(vpn_dir / f"{tunnel}.conf"),
+            "conf_path": str(vpn_dir / f"{tunnel}.ovpn"),
         })
     result.sort(key=lambda item: item["name"].casefold())
     return result
@@ -89,10 +100,36 @@ def get_profile(name: str, profile: Optional[str] = None) -> Optional[dict]:
     return None
 
 
+def _register_with_openvpn(dest: Path, tunnel: str) -> None:
+    """Copia `dest` a la carpeta que vigila el servicio interactivo de
+    OpenVPN, con el nombre de túnel como nombre de archivo, y pide un
+    rescan para que openvpn-gui.exe lo reconozca sin reiniciar.
+
+    Puede fallar con PermissionError si el usuario no pertenece al grupo
+    de Windows "OpenVPN Administrators" (esa carpeta solo admite
+    escritura sin elevación para ese grupo) -- quien llama lo traduce en
+    un VpnProfileError con instrucciones."""
+    config_dir = vpn_client.find_config_dir()
+    config_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(dest, config_dir / f"{tunnel}.ovpn")
+    vpn_client.rescan()
+
+
+def _unregister_from_openvpn(tunnel: str) -> None:
+    try:
+        (vpn_client.find_config_dir() / f"{tunnel}.ovpn").unlink(missing_ok=True)
+    except OSError:
+        pass
+    else:
+        vpn_client.rescan()
+
+
 def import_profile(display_name: str, source_conf: Path, profile: Optional[str] = None) -> dict:
-    """Copia `source_conf` a la carpeta VPN del perfil y lo registra bajo
-    `display_name`. Lanza VpnProfileError si el nombre ya existe, el
-    archivo de origen no existe, o no es un .conf de WireGuard legible."""
+    """Copia `source_conf` a la carpeta VPN del perfil, la registra con
+    OpenVPN, y la indexa bajo `display_name`. Lanza VpnProfileError si el
+    nombre ya existe, el archivo de origen no existe, no es un .ovpn
+    legible, o no se pudo registrar con OpenVPN (normalmente por no
+    pertenecer al grupo "OpenVPN Administrators")."""
     display_name = display_name.strip()
     if not display_name:
         raise VpnProfileError("El perfil necesita un nombre.")
@@ -108,10 +145,10 @@ def import_profile(display_name: str, source_conf: Path, profile: Optional[str] 
         text = source_conf.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         raise VpnProfileError(f"No se pudo leer «{source_conf.name}»: {exc}") from exc
-    if "[Interface]" not in text or "[Peer]" not in text:
+    if "client" not in text or "remote " not in text:
         raise VpnProfileError(
-            f"«{source_conf.name}» no parece un archivo de configuración de WireGuard "
-            "válido (faltan las secciones [Interface] o [Peer])."
+            f"«{source_conf.name}» no parece un archivo de configuración de OpenVPN "
+            "válido (faltan las directivas 'client' o 'remote')."
         )
 
     taken = {entry.get("tunnel") for entry in index.values() if isinstance(entry, dict)}
@@ -119,11 +156,21 @@ def import_profile(display_name: str, source_conf: Path, profile: Optional[str] 
 
     vpn_dir = _vpn_dir(profile)
     vpn_dir.mkdir(parents=True, exist_ok=True)
-    dest = vpn_dir / f"{tunnel}.conf"
+    dest = vpn_dir / f"{tunnel}.ovpn"
     try:
         shutil.copy2(source_conf, dest)
     except OSError as exc:
         raise VpnProfileError(f"No se pudo copiar el archivo: {exc}") from exc
+
+    try:
+        _register_with_openvpn(dest, tunnel)
+    except OSError as exc:
+        dest.unlink(missing_ok=True)
+        raise VpnProfileError(
+            "No se pudo registrar el perfil en OpenVPN. Comprueba que tu "
+            "usuario de Windows pertenece al grupo «OpenVPN Administrators» "
+            f"(detalle: {exc})."
+        ) from exc
 
     index[display_name] = {"tunnel": tunnel}
     _save_index(index, profile)
@@ -131,15 +178,17 @@ def import_profile(display_name: str, source_conf: Path, profile: Optional[str] 
 
 
 def delete_profile(name: str, profile: Optional[str] = None) -> None:
-    """Quita el perfil del índice y borra su .conf. No toca el servicio
-    de Windows del túnel si estuviera en marcha -- quien llama debe
-    desconectarlo antes con core.vpn_client.disconnect() si procede."""
+    """Quita el perfil del índice, borra su .ovpn local y su copia
+    registrada con OpenVPN. No desconecta el túnel si estuviera en
+    marcha -- quien llama debe desconectarlo antes con
+    core.vpn_client.disconnect() si procede."""
     index = _load_index(profile)
     entry = index.pop(name, None)
     if entry is None:
         return
     tunnel = entry.get("tunnel") if isinstance(entry, dict) else None
     if tunnel:
-        conf = _vpn_dir(profile) / f"{tunnel}.conf"
+        conf = _vpn_dir(profile) / f"{tunnel}.ovpn"
         conf.unlink(missing_ok=True)
+        _unregister_from_openvpn(tunnel)
     _save_index(index, profile)
