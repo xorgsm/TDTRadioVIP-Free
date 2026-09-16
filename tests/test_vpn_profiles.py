@@ -100,6 +100,69 @@ def test_import_profile_rejects_when_openvpn_registration_fails(monkeypatch, tmp
         config._profile_dir_for.cache_clear()
 
 
+def test_register_retries_after_permission_error_if_uac_grant_succeeds(monkeypatch, tmp_path):
+    """Instalaciones de OpenVPN donde el instalador no dejó permiso de
+    escritura para "OpenVPN Administrators" en la carpeta de configs
+    (aunque el usuario sí pertenezca al grupo): la primera copia falla
+    con PermissionError, se pide una elevación única
+    (vpn_client.grant_config_dir_access()) y, si el usuario la acepta,
+    se reintenta la copia una vez."""
+    openvpn_config_dir = _redirect_profiles(monkeypatch, tmp_path)
+    calls = {"copy_attempts": 0}
+    real_copy = vpn_profiles.shutil.copy2
+
+    def _flaky_copy2(src, dst):
+        calls["copy_attempts"] += 1
+        if calls["copy_attempts"] == 1:
+            raise PermissionError(13, "Permission denied", str(dst))
+        return real_copy(src, dst)
+
+    monkeypatch.setattr(vpn_profiles.shutil, "copy2", _flaky_copy2)
+    monkeypatch.setattr(vpn_profiles.vpn_client, "grant_config_dir_access", lambda: True)
+    source = _write_conf(tmp_path / "src")
+    try:
+        entry = vpn_profiles.import_profile("Portugal", source)
+        assert calls["copy_attempts"] == 2
+        registered = openvpn_config_dir / f"{entry['tunnel']}.ovpn"
+        assert registered.read_text(encoding="utf-8") == source.read_text(encoding="utf-8")
+    finally:
+        config._profile_dir_for.cache_clear()
+
+
+def test_register_gives_up_when_uac_grant_is_declined(monkeypatch, tmp_path):
+    _redirect_profiles(monkeypatch, tmp_path)
+
+    def _always_denied(src, dst):
+        raise PermissionError(13, "Permission denied", str(dst))
+
+    monkeypatch.setattr(vpn_profiles.shutil, "copy2", _always_denied)
+    monkeypatch.setattr(vpn_profiles.vpn_client, "grant_config_dir_access", lambda: False)
+    source = _write_conf(tmp_path / "src")
+    try:
+        with pytest.raises(vpn_profiles.VpnProfileError, match="OpenVPN Administrators"):
+            vpn_profiles.import_profile("Portugal", source)
+        assert vpn_profiles.list_profiles() == []
+    finally:
+        config._profile_dir_for.cache_clear()
+
+
+def test_register_reports_error_when_still_failing_after_granted_access(monkeypatch, tmp_path):
+    _redirect_profiles(monkeypatch, tmp_path)
+
+    def _always_denied(src, dst):
+        raise PermissionError(13, "Permission denied", str(dst))
+
+    monkeypatch.setattr(vpn_profiles.shutil, "copy2", _always_denied)
+    monkeypatch.setattr(vpn_profiles.vpn_client, "grant_config_dir_access", lambda: True)
+    source = _write_conf(tmp_path / "src")
+    try:
+        with pytest.raises(vpn_profiles.VpnProfileError, match="Portugal|acceso|Permission"):
+            vpn_profiles.import_profile("Portugal", source)
+        assert vpn_profiles.list_profiles() == []
+    finally:
+        config._profile_dir_for.cache_clear()
+
+
 def test_two_profiles_with_colliding_sanitized_names_get_distinct_tunnels(monkeypatch, tmp_path):
     _redirect_profiles(monkeypatch, tmp_path)
     source_a = _write_conf(tmp_path / "src", "a.ovpn")

@@ -2,6 +2,158 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.1] — 2026-09-16
+
+### Fixed
+- **Descargas de YouTube: "ERROR: Postprocessing: ffprobe and ffmpeg not
+  found"** (`resources/ffmpeg/ffmpeg.exe`): el `ffmpeg.exe` empaquetado
+  con la 8.6.0 no era el binario real (~97 MB) sino un puntero de Git
+  LFS sin resolver (134 bytes de texto) -- esta copia local del proyecto
+  no es un clon git de verdad, así que `git lfs pull` nunca se ejecutó
+  sobre ella. `core/config.get_ffmpeg_dir()` solo comprueba que el
+  archivo exista, no que sea un ejecutable válido, así que la app creía
+  tener ffmpeg empaquetado y se lo pasaba a yt-dlp con
+  `--ffmpeg-location`; yt-dlp no encontraba ahí ni ffmpeg ni ffprobe
+  funcionando y fallaba toda descarga que necesitara postproceso
+  (extraer audio, fusionar vídeo+audio). Restaurado el binario real
+  (verificado por SHA-256 contra el puntero LFS:
+  `1326dde4c84ff1f96fe6b8916c5bed29e163e9b5dccf995f6f3db069d143ec5e`).
+  No se toca `ffprobe.exe` -- sigue deliberadamente sin empaquetar (ver
+  `core/mp3_info.py`), y con ffmpeg funcionando de nuevo yt-dlp deja de
+  necesitarlo para el postproceso.
+
+## [8.6.0] — 2026-09-16
+
+### Added
+- **Cliente VPN (edición VIP): reactivado "Importar perfil (.ovpn)…"**
+  (`ui/dialogs/vpn_dialog.py`, `core/vpn_profiles.py`): el modelo
+  bring-your-own se había retirado en 8.5.0 para que VPNGate fuera la
+  única fuente (100% gratis, sin depender de terceros). En la práctica,
+  VPNGate depende de qué voluntarios estén conectados en cada momento y
+  suele estar dominado por servidores de Japón/Corea -- confirmado con
+  un usuario real: de 99 servidores disponibles, los mejor puntuados
+  eran todos de Japón. Se reactiva el botón de importar un `.ovpn`
+  propio **junto a** VPNGate (no en su lugar), para quien encuentre un
+  perfil gratuito de otro proveedor (p.ej. ProtonVPN free, Windscribe
+  free) y quiera más variedad de país. `core/vpn_profiles.import_profile()`
+  nunca se había quitado del todo (solo el botón en Ajustes), así que
+  no hizo falta tocar su lógica.
+
+### Changed
+- **Cliente VPN (edición VIP): sección propia en vez de escondida al
+  final de Preferencias** (`ui/dialogs/vpn_dialog.py`, `ui/more_menu.py`,
+  `ui/dialog_actions.py`): la sección VPN vivía como la quinta de seis
+  secciones dentro de un único diálogo con scroll (Ajustes), lo que la
+  dejaba prácticamente invisible para quien no supiera de antemano que
+  estaba ahí -- reportado por un usuario real que no encontraba cómo
+  tener más países. Se extrae a su propio diálogo (`VpnDialog`) con una
+  entrada de primer nivel «VPN…» en el menú «Más ▾», junto a «Guía EPG»
+  -- un clic en vez de abrir Preferencias y bajar hasta el final. Sigue
+  disponible solo en la edición VIP con licencia activada (mismo
+  criterio que «Herramientas de audio»/«Activar VIP…»).
+
+## [8.5.4] — 2026-09-15
+
+### Fixed
+- **Cliente VPN (edición VIP): la desconexión automática al cerrar la
+  app (añadida en 8.5.3) podía no llegar a ejecutarse, sin ningún
+  aviso** (`core/vpn_client.py`): `_run()` solo capturaba `OSError`
+  alrededor de `subprocess.run()`, pero si `openvpn-gui.exe` no
+  respondía a tiempo (10s), `subprocess.run()` lanza
+  `subprocess.TimeoutExpired`, que **no** hereda de `OSError` -- se
+  escapaba sin convertir a `VpnClientError`. Como esta app no tiene
+  manejador global de excepciones (ni consola, al ser un `.exe` sin
+  ventana), esa excepción desaparecía en silencio y cortaba el resto
+  del cierre de la app a medias, sin dejar el túnel VPN desconectado ni
+  ningún rastro en el log. Confirmado con un usuario real: la VPN se
+  quedaba conectada al cerrar pese al arreglo de 8.5.3.
+  `AppLifecycle.disconnect_vpn_profiles()` (`ui/app_lifecycle.py`)
+  ahora además captura cualquier excepción por perfil (no solo
+  `VpnClientError`) y la deja registrada en el log en vez de dejar que
+  aborte el resto del cierre -- best-effort por diseño, nunca debe
+  bloquear cerrar la app.
+
+## [8.5.3] — 2026-09-15
+
+### Fixed
+- **Cliente VPN (edición VIP): el estado siempre salía "Desconectado"
+  aunque el túnel estuviera realmente activo, y se acumulaban túneles
+  duplicados** (`core/vpn_client.py`): `find_log_dir()` asumía que el
+  log de cada perfil vivía junto a la carpeta de configs
+  (`...\OpenVPN\log`, hermana de `...\OpenVPN\config`) -- confirmado en
+  una instalación real (OpenVPN GUI 11.66.0.0 / OpenVPN 2.7.7) que esa
+  carpeta ni existe: el log lo escribe siempre openvpn-gui.exe en la
+  carpeta de logs *por usuario* (`%USERPROFILE%\OpenVPN\log`, o lo que
+  diga `HKCU\SOFTWARE\OpenVPN-GUI\log_dir` si existe), sin relación con
+  dónde viva el `.ovpn`. Como la app nunca encontraba el log real,
+  `status()` devolvía siempre "desconectado" -- el botón de Ajustes
+  nunca pasaba a "Desconectar", así que cada vez que el usuario pulsaba
+  "Conectar" creyendo que no había túnel activo, se abría uno nuevo
+  encima del anterior sin cerrar el que ya estaba (varios `openvpn.exe`
+  y varios adaptadores TAP-Windows6 acumulados en Windows). Con el log
+  encontrado en el sitio correcto, `status()` refleja la conexión real
+  y el botón/etiqueta de Ajustes (ver 8.5.2) se comporta como toca.
+
+### Added
+- **La VPN se desconecta sola al cerrar la app**
+  (`ui/app_lifecycle.py`): hasta ahora, cerrar TDT Radio VIP no tocaba
+  el túnel VPN -- openvpn-gui.exe seguía gestionándolo aparte, así que
+  se quedaba conectado hasta desconectarlo a mano. `AppLifecycle.shutdown()`
+  ahora llama a `disconnect_vpn_profiles()`, que corta cualquier perfil
+  VPN que siga conectado antes de cerrar.
+
+## [8.5.2] — 2026-09-15
+
+### Changed
+- **Cliente VPN (edición VIP): estado de conexión visible y en verde
+  dentro de la propia app** (`core/vpn_client.py`,
+  `ui/dialogs/settings.py`, `ui/style/builder.py`): hasta ahora, para
+  saber si la VPN estaba realmente conectada (o para desconectarla) casi
+  siempre hacía falta mirar la ventana propia de `openvpn-gui.exe` (la
+  que muestra el log de conexión y sus propios botones
+  Desconectar/Reconectar), porque `connect()` la abre automáticamente y
+  el estado en Ajustes solo se releía al abrir el diálogo o pulsar el
+  botón. Ahora: (1) `connect()` activa "silent_connection" en
+  openvpn-gui.exe antes de conectar, así que esa ventana ya no aparece
+  sola; (2) el botón de conectar/desconectar y la etiqueta de estado en
+  Ajustes → VPN se releen solos cada 2 segundos mientras el diálogo está
+  abierto y se pintan en verde ("success", mismo verde que el resto de
+  la app) al conectar. Todo el control queda dentro de la app, sin
+  depender del icono ni de la ventana de OpenVPN.
+
+## [8.5.1] — 2026-09-15
+
+### Fixed
+- **Cliente VPN (edición VIP): "No se pudo registrar el perfil en
+  OpenVPN" aunque el usuario ya pertenece al grupo "OpenVPN
+  Administrators"** (`core/vpn_client.py`, `core/vpn_profiles.py`): en
+  instalaciones de OpenVPN donde el instalador no dejó permiso de
+  escritura para ese grupo en `...\OpenVPN\config\` (pasa aunque el
+  usuario sí sea miembro del grupo -- confirmado en una máquina real con
+  OpenVPN 2.7.7), importar un servidor de VPNGate fallaba siempre con
+  `PermissionError`. Ahora, si la copia del `.ovpn` falla por permisos,
+  la app pide una única elevación (UAC) para conceder ese acceso con
+  `icacls` y reintenta -- sin pasos manuales ni conocimientos de grupos
+  de Windows por parte del usuario. Si cancela el UAC o el problema
+  persiste, se mantiene el mensaje de error anterior como red de
+  seguridad.
+
+## [8.5.0] — 2026-09-14
+
+### Removed
+- **Cliente VPN (edición VIP): retirado el modelo "trae tu propia VPN"**
+  (`ui/dialogs/settings.py`, `core/vpn_profiles.py`, `core/vpngate.py`):
+  desaparece el botón "Importar perfil (.ovpn)…" que dejaba usar una
+  suscripción VPN de pago propia. VPNGate (servidores públicos gratis,
+  sin cuenta) pasa a ser la única fuente de perfiles VPN de la app --
+  con esto el apartado de VPN queda 100% gratis y sin ninguna
+  suscripción de terceros de por medio, en línea con el objetivo
+  original de `docs/superpowers/specs/2026-09-14-vpngate-free-servers-design.md`.
+  **Cambio incompatible:** quien ya tuviera un perfil VPN importado a
+  mano (no VPNGate) sigue pudiendo conectarlo/desconectarlo/borrarlo si
+  ya estaba guardado, pero no hay forma de importar uno nuevo así --
+  solo mediante "Servidor gratuito (VPNGate)…".
+
 ## [8.4.0] — 2026-09-14
 
 ### Added

@@ -27,10 +27,12 @@ PRODUCT.md).
 
 Coder By X@R
 """
+import ctypes
 import os
 import shutil
 import subprocess
 import winreg
+from ctypes import wintypes
 from pathlib import Path
 from typing import Optional
 
@@ -42,6 +44,29 @@ _CREATE_NO_WINDOW = 0x08000000
 _DEFAULT_CONFIG_DIRNAME = "config"
 _CONNECTED_MARKER = "Initialization Sequence Completed"
 _DISCONNECTED_MARKERS = ("SIGTERM", "process exiting")
+_SW_HIDE = 0
+_SEE_MASK_NOCLOSEPROCESS = 0x00000040
+_INFINITE = 0xFFFFFFFF
+
+
+class _ShellExecuteInfoW(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", wintypes.DWORD),
+        ("fMask", ctypes.c_ulong),
+        ("hwnd", wintypes.HWND),
+        ("lpVerb", wintypes.LPCWSTR),
+        ("lpFile", wintypes.LPCWSTR),
+        ("lpParameters", wintypes.LPCWSTR),
+        ("lpDirectory", wintypes.LPCWSTR),
+        ("nShow", ctypes.c_int),
+        ("hInstApp", wintypes.HINSTANCE),
+        ("lpIDList", ctypes.c_void_p),
+        ("lpClass", wintypes.LPCWSTR),
+        ("hKeyClass", wintypes.HANDLE),
+        ("dwHotKey", wintypes.DWORD),
+        ("hIcon", wintypes.HANDLE),
+        ("hProcess", wintypes.HANDLE),
+    ]
 
 
 class VpnClientError(Exception):
@@ -96,9 +121,67 @@ def find_config_dir() -> Path:
 
 def find_log_dir() -> Path:
     """Carpeta donde el servicio interactivo escribe el log de cada
-    perfil conectado -- hermana de find_config_dir() en una instalación
-    estándar de OpenVPN."""
-    return find_config_dir().parent / "log"
+    perfil conectado.
+
+    NO es una carpeta hermana de find_config_dir() -- comprobado en una
+    instalación real (OpenVPN GUI 11.66.0.0 / OpenVPN 2.7.7): el config
+    puede vivir en la carpeta global (`Program Files\\OpenVPN\\config`,
+    compartida, ver find_config_dir()) pero el log lo escribe siempre
+    openvpn-gui.exe en la carpeta de logs *por usuario* que guarda en el
+    registro bajo `HKCU\\SOFTWARE\\OpenVPN-GUI\\log_dir` -- si esa clave
+    no existe, su propio valor por defecto (código fuente de
+    openvpn-gui, registry.c) es `%USERPROFILE%\\OpenVPN\\log`. Usar
+    find_config_dir().parent aquí hacía que status() no encontrase
+    nunca el log real y devolviera "desconectado" aunque el túnel
+    estuviera activo."""
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"SOFTWARE\OpenVPN-GUI") as key:
+            value, _ = winreg.QueryValueEx(key, "log_dir")
+            if value:
+                return Path(os.path.expandvars(value))
+    except OSError:
+        pass
+    return Path(os.path.expandvars(r"%USERPROFILE%\OpenVPN\log"))
+
+
+def _run_elevated(file: str, parameters: str) -> Optional[int]:
+    """Lanza `file parameters` con el verbo "runas" (pide UAC) y espera a
+    que termine. Devuelve el código de salida del proceso, o None si el
+    usuario canceló el UAC o no se pudo lanzar."""
+    info = _ShellExecuteInfoW()
+    info.cbSize = ctypes.sizeof(info)
+    info.fMask = _SEE_MASK_NOCLOSEPROCESS
+    info.lpVerb = "runas"
+    info.lpFile = file
+    info.lpParameters = parameters
+    info.nShow = _SW_HIDE
+    if not ctypes.windll.shell32.ShellExecuteExW(ctypes.byref(info)):
+        return None
+    if not info.hProcess:
+        return None
+    ctypes.windll.kernel32.WaitForSingleObject(info.hProcess, _INFINITE)
+    exit_code = wintypes.DWORD()
+    ctypes.windll.kernel32.GetExitCodeProcess(info.hProcess, ctypes.byref(exit_code))
+    ctypes.windll.kernel32.CloseHandle(info.hProcess)
+    return exit_code.value
+
+
+def grant_config_dir_access() -> bool:
+    """Pide una única elevación (UAC) para dar permiso de escritura al
+    grupo "OpenVPN Administrators" sobre find_config_dir(), con
+    `icacls /grant`.
+
+    Autoreparación para instalaciones de OpenVPN donde el instalador no
+    dejó esa ACL puesta en la carpeta de configs -- pasa aunque el
+    usuario ya pertenezca al grupo (el grupo por sí solo no da acceso si
+    la carpeta nunca lo concedió). La usa
+    core.vpn_profiles._register_with_openvpn() cuando copiar el .ovpn
+    falla con PermissionError. Devuelve True si el usuario aceptó el UAC
+    e icacls terminó con éxito; False si lo canceló o icacls falló."""
+    config_dir = find_config_dir()
+    parameters = f'"{config_dir}" /grant "OpenVPN Administrators:(OI)(CI)M"'
+    exit_code = _run_elevated("icacls.exe", parameters)
+    return exit_code == 0
 
 
 def _run(exe: Path, *args: str) -> None:
@@ -115,7 +198,16 @@ def _run(exe: Path, *args: str) -> None:
             timeout=10,
             check=False,
         )
-    except OSError as exc:
+    except (OSError, subprocess.SubprocessError) as exc:
+        # subprocess.SubprocessError además de OSError: si
+        # openvpn-gui.exe no responde en 10s (servicio interactivo
+        # ocupado), subprocess.run() lanza TimeoutExpired, que NO
+        # hereda de OSError -- sin capturarlo aparte se escapaba sin
+        # convertir a VpnClientError, y como esta app no tiene ningún
+        # manejador global de excepciones, desaparecía en silencio
+        # (comprobado: cortaba a medias
+        # AppLifecycle.disconnect_vpn_profiles() al cerrar la app, sin
+        # rastro en ningún log ni aviso visible).
         raise VpnClientError(f"No se pudo lanzar openvpn-gui.exe: {exc}") from exc
 
 
@@ -127,10 +219,21 @@ def connect(conf_path: Path, tunnel: str) -> None:
     `conf_path` no se usa para construir el comando (OpenVPN conecta por
     nombre, no por ruta), se mantiene en la firma para no romper a quien
     ya llama a connect() igual que con el wireguard.exe anterior.
-    """
+
+    Antes de conectar, activa "silent_connection" -- si no,
+    openvpn-gui.exe muestra su propia ventana con el log de conexión y
+    los botones Desconectar/Reconectar cada vez, y el estado de verdad
+    solo se ve ahí en vez de en esta app (ver
+    ui.dialogs.settings.SettingsDialog._refresh_vpn_status, que ya lee
+    el mismo log y pinta el botón de conectar en verde). Es solo
+    cosmético: si falla, no debe impedir el connect real."""
     exe = find_openvpn_gui_exe()
     if exe is None:
         raise VpnClientError("OpenVPN no está instalado en este PC.")
+    try:
+        _run(exe, "--command", "silent_connection", "1")
+    except VpnClientError:
+        pass
     _run(exe, "--command", "connect", tunnel)
 
 

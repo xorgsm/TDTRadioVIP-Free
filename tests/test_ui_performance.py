@@ -269,6 +269,86 @@ def test_cleanup_old_updates_skips_after_window_starts_closing(monkeypatch):
     assert calls == []
 
 
+def test_disconnect_vpn_profiles_disconnects_only_connected_tunnels(monkeypatch):
+    from core import vpn_client, vpn_profiles
+
+    window = SimpleNamespace(_is_closing=False)
+    lifecycle = AppLifecycle(window)
+    monkeypatch.setattr(vpn_client, "is_openvpn_installed", lambda: True)
+    monkeypatch.setattr(
+        vpn_profiles, "list_profiles",
+        lambda: [
+            {"name": "Japón", "tunnel": "japon", "conf_path": "x"},
+            {"name": "Croacia", "tunnel": "croacia", "conf_path": "y"},
+        ],
+    )
+    monkeypatch.setattr(vpn_client, "status", lambda tunnel: tunnel == "japon")
+    disconnected = []
+    monkeypatch.setattr(vpn_client, "disconnect", lambda tunnel: disconnected.append(tunnel))
+    lifecycle.disconnect_vpn_profiles()
+    assert disconnected == ["japon"]
+
+
+def test_disconnect_vpn_profiles_is_a_no_op_without_openvpn_installed(monkeypatch):
+    from core import vpn_client, vpn_profiles
+
+    window = SimpleNamespace(_is_closing=False)
+    lifecycle = AppLifecycle(window)
+    monkeypatch.setattr(vpn_client, "is_openvpn_installed", lambda: False)
+    calls = []
+    monkeypatch.setattr(vpn_profiles, "list_profiles", lambda: calls.append("called") or [])
+    lifecycle.disconnect_vpn_profiles()
+    assert calls == []
+
+
+def test_disconnect_vpn_profiles_ignores_disconnect_errors(monkeypatch):
+    from core import vpn_client, vpn_profiles
+
+    window = SimpleNamespace(_is_closing=False)
+    lifecycle = AppLifecycle(window)
+    monkeypatch.setattr(vpn_client, "is_openvpn_installed", lambda: True)
+    monkeypatch.setattr(
+        vpn_profiles, "list_profiles",
+        lambda: [{"name": "Japón", "tunnel": "japon", "conf_path": "x"}],
+    )
+    monkeypatch.setattr(vpn_client, "status", lambda tunnel: True)
+
+    def _raise(tunnel):
+        raise vpn_client.VpnClientError("no se pudo lanzar openvpn-gui.exe")
+
+    monkeypatch.setattr(vpn_client, "disconnect", _raise)
+    lifecycle.disconnect_vpn_profiles()  # no debe propagar el error
+
+
+def test_disconnect_vpn_profiles_swallows_any_exception_not_just_vpn_client_error(monkeypatch):
+    """Reproduce el fallo real reportado: subprocess.TimeoutExpired no es
+    un VpnClientError, y sin capturarlo aparte cortaba el resto del
+    cierre de la app en silencio (ver core.vpn_client._run)."""
+    from core import vpn_client, vpn_profiles
+
+    window = SimpleNamespace(_is_closing=False)
+    lifecycle = AppLifecycle(window)
+    monkeypatch.setattr(vpn_client, "is_openvpn_installed", lambda: True)
+    monkeypatch.setattr(
+        vpn_profiles, "list_profiles",
+        lambda: [
+            {"name": "Japón", "tunnel": "japon", "conf_path": "x"},
+            {"name": "Croacia", "tunnel": "croacia", "conf_path": "y"},
+        ],
+    )
+    monkeypatch.setattr(vpn_client, "status", lambda tunnel: True)
+    disconnected = []
+
+    def _flaky_disconnect(tunnel):
+        if tunnel == "japon":
+            raise RuntimeError("openvpn-gui.exe no respondió a tiempo")
+        disconnected.append(tunnel)
+
+    monkeypatch.setattr(vpn_client, "disconnect", _flaky_disconnect)
+    lifecycle.disconnect_vpn_profiles()  # no debe propagar el error
+    assert disconnected == ["croacia"]  # sigue con el resto de perfiles
+
+
 def test_backup_uses_captured_profile_directory(tmp_path, monkeypatch):
     first, second = tmp_path / "first", tmp_path / "second"
     first.mkdir()

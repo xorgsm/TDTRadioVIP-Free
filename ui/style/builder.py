@@ -78,6 +78,8 @@ QPushButton[uiVariant="info"], QLabel[uiVariant="info"],
 QPushButton[uiVariant="tv"], QLabel[uiVariant="tv"] {{ color: {palette.ACCENT_INFO}; }}
 QPushButton[uiVariant="radio"], QLabel[uiVariant="radio"],
 QPushButton[uiVariant="podcast"], QLabel[uiVariant="podcast"] {{ color: {palette.ACCENT_CATEGORY_ORANGE}; }}
+QLabel[uiVariant="success"] {{ color: {palette.SUCCESS}; }}
+QLabel[uiVariant="secondary"] {{ color: {palette.TEXT_SECONDARY}; }}
 QWidget[uiState="error"] {{ border: 1px solid {palette.DANGER}; }}
 QWidget[uiState="loading"] {{ color: {palette.ACCENT_INFO}; }}
 QWidget[uiState="empty"] {{ color: {palette.TEXT_MUTED}; }}
@@ -292,6 +294,16 @@ QPushButton[uiVariant="danger"], QToolButton[uiVariant="danger"] {{
 }}
 QPushButton[uiVariant="danger"]:hover, QToolButton[uiVariant="danger"]:hover {{
     background-color: {palette.DANGER};
+    color: #ffffff;
+}}
+QPushButton[uiVariant="success"], QToolButton[uiVariant="success"] {{
+    background-color: {shades['soft']};
+    color: {palette.SUCCESS};
+    border: 1px solid {palette.SUCCESS};
+    border-radius: 10px;
+}}
+QPushButton[uiVariant="success"]:hover, QToolButton[uiVariant="success"]:hover {{
+    background-color: {palette.SUCCESS};
     color: #ffffff;
 }}
 QWidget[uiSurface="mediaPanel"] {{ background: transparent; }}

@@ -14,6 +14,8 @@ from core import backup as backup_module
 from core import config as cfg
 from core import recording_schedule
 from core import updater
+from core import vpn_client, vpn_profiles
+from core.logger import get_logger
 from ui.fetch_worker import (
     FetchWorker,
     process_events_during_shutdown,
@@ -21,6 +23,8 @@ from ui.fetch_worker import (
 )
 from ui.onboarding import OnboardingDialog
 from ui.toast import show_toast
+
+log = get_logger(__name__)
 
 
 class AppLifecycle:
@@ -174,9 +178,39 @@ class AppLifecycle:
                 entry.get("tvg_id", ""), entry.get("logo", ""),
             )
 
+    def disconnect_vpn_profiles(self) -> None:
+        """Corta cualquier túnel VPN que siga conectado al cerrar la app.
+
+        Sin esto, openvpn-gui.exe sigue gestionando el túnel de forma
+        totalmente independiente de la app -- cerrar TDT Radio VIP no lo
+        tocaba, se quedaba conectado hasta desconectarlo a mano (en
+        Ajustes o en la ventana propia de OpenVPN). No hace falta que el
+        usuario pertenezca a ningún grupo especial para desconectar (ver
+        core/vpn_client.py), así que es seguro intentarlo siempre que
+        haya perfiles.
+
+        `except Exception` a propósito, con log: esto corre dentro de
+        closeEvent() y esta app no tiene manejador global de
+        excepciones (ni consola, al ser un .exe sin ventana) -- un
+        fallo aquí sin capturar (confirmado con un usuario real:
+        openvpn-gui.exe sin responder a tiempo, subprocess.run()
+        lanzando TimeoutExpired) desaparecía en silencio y cortaba el
+        resto del cierre a medias, sin ningún rastro. Mejor un intento
+        de best-effort por perfil que nunca bloquee cerrar la app."""
+        if not vpn_client.is_openvpn_installed():
+            return
+        for entry in vpn_profiles.list_profiles():
+            tunnel = entry["tunnel"]
+            try:
+                if vpn_client.status(tunnel):
+                    vpn_client.disconnect(tunnel)
+            except Exception:
+                log.exception("Fallo al desconectar el perfil VPN %s al cerrar la app", tunnel)
+
     def shutdown(self):
         win = self.win
         win._is_closing = True
+        self.disconnect_vpn_profiles()
         FetchWorker.begin_shutdown()
         reminder_timer = getattr(win, "_reminder_timer", None)
         if reminder_timer is not None:

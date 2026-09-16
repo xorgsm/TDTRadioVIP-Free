@@ -13,6 +13,7 @@ from ui.dialogs.import_playlist import ImportPlaylistDialog
 from ui.dialogs.m3u_editor import M3UEditorDialog
 from ui.dialogs.export_playlist import ExportPlaylistDialog
 from ui.dialogs.manage_channels import ManageChannelsDialog
+from ui.dialogs.vpn_dialog import VpnDialog
 from ui.dialogs.vpngate_picker import VpnGatePickerDialog
 
 __all__ = [
@@ -23,5 +24,6 @@ __all__ = [
     "ManageChannelsDialog",
     "RecordingsLibraryDialog",
     "SettingsDialog",
+    "VpnDialog",
     "VpnGatePickerDialog",
 ]

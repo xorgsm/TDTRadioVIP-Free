@@ -1,12 +1,13 @@
 """
 Perfiles VPN (OpenVPN) del perfil activo de la app.
 
-Cada perfil VPN es un .ovpn de OpenVPN que el usuario importa desde su
-propia suscripción -- la app no opera servidores VPN propios, solo guarda
-el archivo y pide a openvpn-gui.exe que conecte/desconecte el túnel
-correspondiente (ver core/vpn_client.py). Sirve para acceder a listas
-públicas de TV/radio con restricción geográfica, conectando a un servidor
-del país de la lista.
+Cada perfil VPN es un .ovpn de OpenVPN de un servidor gratuito de VPNGate
+(core/vpngate.py) -- la app no opera servidores VPN propios ni admite
+traer una suscripción propia (bring-your-own, retirado tras 8.4.0), solo
+guarda el archivo y pide a openvpn-gui.exe que conecte/desconecte el
+túnel correspondiente (ver core/vpn_client.py). Sirve para acceder a
+listas públicas de TV/radio con restricción geográfica, conectando a un
+servidor del país de la lista.
 
 Igual que core/soulseek_account.py: JSON plano en la carpeta de datos del
 PERFIL activo (get_profile_data_dir()), mismo nivel de protección que el
@@ -105,13 +106,24 @@ def _register_with_openvpn(dest: Path, tunnel: str) -> None:
     OpenVPN, con el nombre de túnel como nombre de archivo, y pide un
     rescan para que openvpn-gui.exe lo reconozca sin reiniciar.
 
-    Puede fallar con PermissionError si el usuario no pertenece al grupo
-    de Windows "OpenVPN Administrators" (esa carpeta solo admite
-    escritura sin elevación para ese grupo) -- quien llama lo traduce en
-    un VpnProfileError con instrucciones."""
+    Puede fallar con PermissionError si esa carpeta no concede escritura
+    al usuario actual -- pasa tanto si no pertenece al grupo de Windows
+    "OpenVPN Administrators" como si pertenece pero el instalador de
+    OpenVPN nunca dejó esa ACL puesta en la carpeta. En ese caso se pide
+    una única elevación (UAC) para arreglarlo con
+    vpn_client.grant_config_dir_access() y se reintenta la copia una
+    vez; si el usuario cancela el UAC o sigue fallando, se propaga el
+    error y quien llama lo traduce en un VpnProfileError con
+    instrucciones."""
     config_dir = vpn_client.find_config_dir()
     config_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(dest, config_dir / f"{tunnel}.ovpn")
+    dest_in_config = config_dir / f"{tunnel}.ovpn"
+    try:
+        shutil.copy2(dest, dest_in_config)
+    except PermissionError:
+        if not vpn_client.grant_config_dir_access():
+            raise
+        shutil.copy2(dest, dest_in_config)
     vpn_client.rescan()
 
 
@@ -163,8 +175,11 @@ def _import_text(
     except OSError as exc:
         dest.unlink(missing_ok=True)
         raise VpnProfileError(
-            "No se pudo registrar el perfil en OpenVPN. Comprueba que tu "
-            "usuario de Windows pertenece al grupo «OpenVPN Administrators» "
+            "No se pudo registrar el perfil en OpenVPN. Si apareció una "
+            "ventana pidiendo permiso de administrador, acéptala para que "
+            "la app configure el acceso ella sola; si la cancelaste o el "
+            "problema persiste, comprueba que tu usuario de Windows "
+            "pertenece al grupo «OpenVPN Administrators» "
             f"(detalle: {exc})."
         ) from exc
 

@@ -6,10 +6,10 @@ justo para esto: acceder a listas públicas de TV/radio con restricción
 geográfica sin que el usuario tenga que pagar ni configurar nada aparte.
 Ver docs/superpowers/specs/2026-09-14-vpngate-free-servers-design.md.
 
-No sustituye el modelo "trae tu propia VPN" de core/vpn_profiles.py --
-lo complementa: aquí se resuelve la lista de servidores gratuitos
-disponibles ahora mismo, y el que elija el usuario se importa igual que
-cualquier otro .ovpn, con vpn_profiles.import_profile_from_text().
+Es la única fuente de perfiles VPN de core/vpn_profiles.py desde que se
+retiró el modelo "trae tu propia VPN" tras 8.4.0: aquí se resuelve la
+lista de servidores gratuitos disponibles ahora mismo, y el que elija el
+usuario se importa con vpn_profiles.import_profile_from_text().
 
 Coder By X@R
 """

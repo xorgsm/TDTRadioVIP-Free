@@ -44,6 +44,16 @@ class DialogActionsController:
     def open_equalizer_dialog(self):
         EqualizerDialog(self.win).exec()
 
+    def open_vpn_dialog(self):
+        """VPN (edición VIP con licencia activada): ver el docstring de
+        ui.dialogs.vpn_dialog para por qué se extrajo de Ajustes a su
+        propio diálogo, con entrada directa en el menú "Más ▾" (ver
+        ui.more_menu._build_settings_menu, que solo la añade cuando
+        win.activated and not win.es_version_free)."""
+        from ui.dialogs import VpnDialog
+
+        VpnDialog(self.win).exec()
+
     def open_activation_dialog(self):
         """
         Configuración > Activar VIP…: reabre el diálogo de activación para

@@ -26,8 +26,8 @@ _DOWNLOAD_TOOL_TABS = {
 
 def build_more_menu_button(win) -> QToolButton:
     """Botón "Más ▾": agrupa gestión de contenido, grabaciones, herramientas
-    de audio, guía EPG, ajustes y ayuda -- todo lo que antes vivía en la
-    barra de menú clásica (Archivo/Configuración/Ayuda)."""
+    de audio, guía EPG, VPN, ajustes y ayuda -- todo lo que antes vivía en
+    la barra de menú clásica (Archivo/Configuración/Ayuda)."""
     btn = QToolButton()
     btn.setObjectName("navButton")
     btn.setToolTip("Más opciones")
@@ -48,6 +48,13 @@ def build_more_menu_button(win) -> QToolButton:
     if not win.es_version_free:
         _build_audio_tools_menu(win, menu)
     menu.addAction("Guía EPG", win.epg.open_dialog)
+    # Entrada de primer nivel, no anidada en "Ajustes": antes vivía
+    # escondida al final del scroll de Preferencias y costaba encontrarla
+    # (ver ui.dialog_actions.open_vpn_dialog y el docstring de
+    # ui.dialogs.vpn_dialog). Mismo criterio de licencia que
+    # _build_audio_tools_menu.
+    if win.activated and not win.es_version_free:
+        menu.addAction("VPN…", win.dialogs.open_vpn_dialog)
     _build_settings_menu(win, menu)
     _build_help_menu(win, menu)
     btn.setMenu(menu)

@@ -48,7 +48,7 @@ def test_more_menu_has_all_top_level_categories(app):
     btn = build_more_menu_button(win)
     assert _action_texts(btn.menu()) == [
         "Gestión de contenido", "Grabaciones", "Herramientas de audio",
-        "Guía EPG", "Ajustes", "Ayuda y sistema",
+        "Guía EPG", "VPN…", "Ajustes", "Ayuda y sistema",
     ]
 
 
@@ -56,6 +56,27 @@ def test_more_menu_omits_audio_tools_for_free_edition(app):
     win = _make_win(es_version_free=True, activated=False)
     btn = build_more_menu_button(win)
     assert "Herramientas de audio" not in _action_texts(btn.menu())
+
+
+def test_more_menu_vpn_opens_vpn_dialog(app):
+    """VPN vivía escondida al final del scroll de Preferencias -- ahora es
+    una entrada de primer nivel en "Más ▾" (ver ui.dialog_actions.open_vpn_dialog)."""
+    win = _make_win()
+    btn = build_more_menu_button(win)
+    _find_action(btn.menu(), "VPN…").trigger()
+    win.dialogs.open_vpn_dialog.assert_called_once_with()
+
+
+def test_more_menu_omits_vpn_for_free_edition(app):
+    win = _make_win(es_version_free=True, activated=False)
+    btn = build_more_menu_button(win)
+    assert "VPN…" not in _action_texts(btn.menu())
+
+
+def test_more_menu_omits_vpn_when_unactivated(app):
+    win = _make_win(es_version_free=False, activated=False)
+    btn = build_more_menu_button(win)
+    assert "VPN…" not in _action_texts(btn.menu())
 
 
 def test_more_menu_shows_activate_vip_when_licensed_and_unactivated(app):

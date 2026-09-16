@@ -25,6 +25,7 @@ DIALOGOS_ESPERADOS = {
     "ManageChannelsDialog": "manage_channels",
     "RecordingsLibraryDialog": "recordings_library",
     "SettingsDialog": "settings",
+    "VpnDialog": "vpn_dialog",
     "VpnGatePickerDialog": "vpngate_picker",
 }
 
