@@ -79,6 +79,45 @@ def test_connect_runs_command_connect_with_tunnel_name(monkeypatch):
     ]
 
 
+def test_connect_kills_orphaned_process_when_connect_command_times_out(monkeypatch):
+    """Reproduce el bug real: un servidor VPNGate inalcanzable hace que
+    "--command connect" no responda a tiempo -- el timeout de _run()
+    solo mata nuestra llamada a openvpn-gui.exe, no el proceso
+    openvpn.exe real que el servicio interactivo ya había arrancado, así
+    que hay que matarlo aparte para no dejarlo huérfano (comprobado con
+    un usuario real: dos procesos openvpn.exe acumulados tras dos
+    intentos fallidos contra el mismo servidor)."""
+    monkeypatch.setattr(
+        vpn_client, "find_openvpn_gui_exe", lambda: Path(r"C:\OpenVPN\bin\openvpn-gui.exe")
+    )
+
+    def _fake_run(exe, *args):
+        if args[1] == "connect":
+            raise vpn_client.VpnClientError("timed out after 10.0 seconds")
+
+    monkeypatch.setattr(vpn_client, "_run", _fake_run)
+    kill_calls = []
+    monkeypatch.setattr(
+        vpn_client, "_kill_orphaned_tunnel_process", lambda tunnel: kill_calls.append(tunnel)
+    )
+    with pytest.raises(vpn_client.VpnClientError, match="timed out"):
+        vpn_client.connect(Path(r"C:\data\mx.ovpn"), "Mexico_VPNGate")
+    assert kill_calls == ["Mexico_VPNGate"]
+
+
+def test_connect_does_not_kill_process_when_connect_succeeds(monkeypatch):
+    monkeypatch.setattr(
+        vpn_client, "find_openvpn_gui_exe", lambda: Path(r"C:\OpenVPN\bin\openvpn-gui.exe")
+    )
+    monkeypatch.setattr(vpn_client, "_run", lambda exe, *args: None)
+    kill_calls = []
+    monkeypatch.setattr(
+        vpn_client, "_kill_orphaned_tunnel_process", lambda tunnel: kill_calls.append(tunnel)
+    )
+    vpn_client.connect(Path(r"C:\data\es.ovpn"), "es")
+    assert kill_calls == []
+
+
 def test_disconnect_runs_command_disconnect_with_tunnel_name(monkeypatch):
     monkeypatch.setattr(
         vpn_client, "find_openvpn_gui_exe", lambda: Path(r"C:\OpenVPN\bin\openvpn-gui.exe")
@@ -118,7 +157,7 @@ def test_status_true_when_last_event_is_connect(monkeypatch, tmp_path):
         encoding="utf-8",
     )
     monkeypatch.setattr(vpn_client, "find_log_dir", lambda: tmp_path)
-    monkeypatch.setattr(vpn_client, "_is_openvpn_process_running", lambda: True)
+    monkeypatch.setattr(vpn_client, "_is_tunnel_process_running", lambda tunnel: True)
     assert vpn_client.status("es") is True
 
 
@@ -142,7 +181,7 @@ def test_status_true_after_reconnect_following_a_disconnect(monkeypatch, tmp_pat
         encoding="utf-8",
     )
     monkeypatch.setattr(vpn_client, "find_log_dir", lambda: tmp_path)
-    monkeypatch.setattr(vpn_client, "_is_openvpn_process_running", lambda: True)
+    monkeypatch.setattr(vpn_client, "_is_tunnel_process_running", lambda tunnel: True)
     assert vpn_client.status("es") is True
 
 
@@ -159,43 +198,89 @@ def test_status_false_when_log_says_connected_but_no_process_running(monkeypatch
         encoding="utf-8",
     )
     monkeypatch.setattr(vpn_client, "find_log_dir", lambda: tmp_path)
-    monkeypatch.setattr(vpn_client, "_is_openvpn_process_running", lambda: False)
+    monkeypatch.setattr(vpn_client, "_is_tunnel_process_running", lambda tunnel: False)
     assert vpn_client.status("es") is False
 
 
-def test_is_openvpn_process_running_true_when_tasklist_finds_it(monkeypatch):
+def test_status_passes_the_right_tunnel_to_the_process_check(monkeypatch, tmp_path):
+    (tmp_path / "es.log").write_text("Initialization Sequence Completed\n", encoding="utf-8")
+    monkeypatch.setattr(vpn_client, "find_log_dir", lambda: tmp_path)
+    seen = []
+    monkeypatch.setattr(
+        vpn_client, "_is_tunnel_process_running", lambda tunnel: seen.append(tunnel) or True
+    )
+    vpn_client.status("es")
+    assert seen == ["es"]
+
+
+def test_is_tunnel_process_running_true_when_command_line_matches_tunnel(monkeypatch):
     class _FakeResult:
         stdout = (
-            '"openvpn.exe","1234","Services","0","12,345 K"\r\n'
+            'openvpn --log "log\\Japan_VPNGate.log" --config "Japan_VPNGate.ovpn" --service x\r\n'
         )
 
-    monkeypatch.setattr(
-        vpn_client.subprocess, "run", lambda *args, **kwargs: _FakeResult()
-    )
-    assert vpn_client._is_openvpn_process_running() is True
+    monkeypatch.setattr(vpn_client.subprocess, "run", lambda *args, **kwargs: _FakeResult())
+    assert vpn_client._is_tunnel_process_running("Japan_VPNGate") is True
 
 
-def test_is_openvpn_process_running_false_when_tasklist_finds_nothing(monkeypatch):
+def test_is_tunnel_process_running_false_when_only_a_different_tunnel_matches(monkeypatch):
+    """Reproduce el bug real: un intento fallido de conexión a un
+    servidor VPNGate inalcanzable dejó procesos openvpn.exe huérfanos de
+    un túnel distinto corriendo a la vez que otro túnel sí estaba
+    conectado -- sin distinguir por línea de comandos, el estado de un
+    túnel muerto (p.ej. "Mexico_VPNGate") heredaba el "conectado" del
+    huérfano de otro túnel completamente distinto (p.ej.
+    "Japan_VPNGate")."""
+
     class _FakeResult:
-        stdout = "INFO: No tasks are running which match the specified criteria.\r\n"
+        stdout = (
+            'openvpn --log "log\\Japan_VPNGate.log" --config "Japan_VPNGate.ovpn" --service x\r\n'
+        )
 
-    monkeypatch.setattr(
-        vpn_client.subprocess, "run", lambda *args, **kwargs: _FakeResult()
-    )
-    assert vpn_client._is_openvpn_process_running() is False
+    monkeypatch.setattr(vpn_client.subprocess, "run", lambda *args, **kwargs: _FakeResult())
+    assert vpn_client._is_tunnel_process_running("Mexico_VPNGate") is False
 
 
-def test_is_openvpn_process_running_true_when_tasklist_fails(monkeypatch):
-    """Fail-safe: si tasklist no se puede ejecutar, no se debe negar un
-    estado "conectado" que solo se puede confirmar por el log -- mejor
-    un falso "conectado" ocasional que romper el comportamiento anterior
-    cuando este chequeo adicional no es fiable."""
+def test_is_tunnel_process_running_false_when_no_process_running(monkeypatch):
+    class _FakeResult:
+        stdout = ""
+
+    monkeypatch.setattr(vpn_client.subprocess, "run", lambda *args, **kwargs: _FakeResult())
+    assert vpn_client._is_tunnel_process_running("es") is False
+
+
+def test_is_tunnel_process_running_true_when_query_fails(monkeypatch):
+    """Fail-safe: si la consulta de procesos no se puede ejecutar, no se
+    debe negar un estado "conectado" que solo se puede confirmar por el
+    log -- mejor un falso "conectado" ocasional que romper el
+    comportamiento anterior cuando este chequeo adicional no es
+    fiable."""
 
     def _raise(*args, **kwargs):
-        raise OSError("tasklist no encontrado")
+        raise OSError("powershell no encontrado")
 
     monkeypatch.setattr(vpn_client.subprocess, "run", _raise)
-    assert vpn_client._is_openvpn_process_running() is True
+    assert vpn_client._is_tunnel_process_running("es") is True
+
+
+def test_kill_orphaned_tunnel_process_targets_the_right_tunnel(monkeypatch):
+    monkeypatch.setattr(vpn_client, "find_log_dir", lambda: Path("."))
+    calls = []
+    monkeypatch.setattr(
+        vpn_client.subprocess, "run",
+        lambda args, **kwargs: calls.append(args) or None,
+    )
+    vpn_client._kill_orphaned_tunnel_process("Mexico_VPNGate")
+    [args] = calls
+    assert "Mexico_VPNGate.ovpn" in args[-1]
+
+
+def test_kill_orphaned_tunnel_process_swallows_failures(monkeypatch):
+    def _raise(*args, **kwargs):
+        raise OSError("powershell no encontrado")
+
+    monkeypatch.setattr(vpn_client.subprocess, "run", _raise)
+    vpn_client._kill_orphaned_tunnel_process("es")  # no debe lanzar
 
 
 def test_find_openvpn_gui_exe_prefers_standard_install_path(monkeypatch, tmp_path):

@@ -226,7 +226,19 @@ def connect(conf_path: Path, tunnel: str) -> None:
     solo se ve ahí en vez de en esta app (ver
     ui.dialogs.settings.SettingsDialog._refresh_vpn_status, que ya lee
     el mismo log y pinta el botón de conectar en verde). Es solo
-    cosmético: si falla, no debe impedir el connect real."""
+    cosmético: si falla, no debe impedir el connect real.
+
+    Si el comando "connect" no responde a tiempo (servidor VPNGate
+    inalcanzable, comprobado con un usuario real contra un servidor
+    caído: el log se queda parado en "Attempting to establish TCP
+    connection"), se intenta matar el proceso openvpn.exe huérfano
+    antes de propagar el error -- el timeout de _run() solo mata nuestra
+    llamada a openvpn-gui.exe, no el proceso openvpn.exe real que ya
+    había arrancado el servicio interactivo (son procesos
+    independientes); sin esto, cada intento fallido contra un servidor
+    caído dejaba un proceso huérfano corriendo para siempre, intentando
+    reconectar solo, y varios intentos fallidos consecutivos se iban
+    acumulando."""
     exe = find_openvpn_gui_exe()
     if exe is None:
         raise VpnClientError("OpenVPN no está instalado en este PC.")
@@ -234,7 +246,11 @@ def connect(conf_path: Path, tunnel: str) -> None:
         _run(exe, "--command", "silent_connection", "1")
     except VpnClientError:
         pass
-    _run(exe, "--command", "connect", tunnel)
+    try:
+        _run(exe, "--command", "connect", tunnel)
+    except VpnClientError:
+        _kill_orphaned_tunnel_process(tunnel)
+        raise
 
 
 def disconnect(tunnel: str) -> None:
@@ -258,8 +274,40 @@ def rescan() -> None:
     _run(exe, "--command", "rescan")
 
 
-def _is_openvpn_process_running() -> bool:
-    """True si hay al menos un proceso openvpn.exe corriendo ahora mismo.
+def _openvpn_process_command_lines() -> Optional[str]:
+    """Líneas de comando de todos los procesos openvpn.exe corriendo
+    ahora mismo, o None si la consulta falló (entorno restringido,
+    PowerShell no disponible...) -- se distingue de "" (consulta
+    correcta, ningún proceso) a propósito, para que quien llama decida
+    el fallback.
+
+    tasklist no expone la línea de comandos completa sin permisos
+    elevados (`/V` solo da el título de ventana), así que se usa
+    Get-CimInstance/Win32_Process por PowerShell -- necesario para
+    poder distinguir A QUÉ túnel pertenece cada proceso (ver
+    _is_tunnel_process_running)."""
+    try:
+        result = subprocess.run(
+            [
+                "powershell", "-NoProfile", "-NonInteractive", "-Command",
+                "(Get-CimInstance Win32_Process -Filter \"Name='openvpn.exe'\" "
+                "-ErrorAction SilentlyContinue).CommandLine",
+            ],
+            creationflags=_CREATE_NO_WINDOW,
+            timeout=10,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return result.stdout
+
+
+def _is_tunnel_process_running(tunnel: str) -> bool:
+    """True si hay un proceso openvpn.exe corriendo ahora mismo cuya
+    línea de comandos referencia el túnel `tunnel` (busca
+    "<tunnel>.ovpn" en `--config "<tunnel>.ovpn"`).
 
     status() solo mira el log del túnel, pero ese log solo se actualiza
     en eventos puntuales (arranque, cambios de ruta, renegociación TLS
@@ -270,33 +318,52 @@ def _is_openvpn_process_running() -> bool:
     quede ningún proceso real (confirmado con un usuario real: la VPN
     aparecía siempre conectada al arrancar la app, y el botón
     "Desconectar" no tenía ningún efecto porque no había nada que
-    desconectar -- openvpn-gui.exe no puede añadir un evento de
-    desconexión al log de un túnel que ya no existe).
+    desconectar).
 
-    No se distingue por túnel (tasklist no expone la línea de comandos
-    sin `/V`, poco fiable entre versiones de Windows) -- no hace falta:
-    el diseño no admite más de un túnel activo a la vez (ver
-    docs/superpowers/specs/2026-09-11-vpn-client-design.md), así que
-    "algún openvpn.exe corriendo" y "el túnel que nos interesa está
-    corriendo" son equivalentes en la práctica.
+    Se distingue por túnel a propósito -- el diseño asume que no hay
+    más de un túnel activo a la vez (ver
+    docs/superpowers/specs/2026-09-11-vpn-client-design.md), pero en la
+    práctica sí pueden coexistir varios procesos openvpn.exe: un
+    intento de conexión contra un servidor VPNGate inalcanzable deja un
+    proceso huérfano (ver connect()) que puede seguir vivo a la vez que
+    otro túnel sí está conectado de verdad. Comprobado con un usuario
+    real: sin este chequeo específico, el estado de un túnel muerto
+    heredaba el "conectado" del proceso huérfano de otro túnel
+    completamente distinto.
 
-    Si `tasklist` falla (entorno restringido, etc.) se asume True para
+    Si la consulta falla (entorno restringido, etc.) se asume True para
     no romper el comportamiento anterior basado solo en el log -- mejor
     un falso "conectado" ocasional que negar el estado real cuando el
     propio chequeo no es fiable.
     """
+    command_lines = _openvpn_process_command_lines()
+    if command_lines is None:
+        return True
+    return f"{tunnel}.ovpn".lower() in command_lines.lower()
+
+
+def _kill_orphaned_tunnel_process(tunnel: str) -> None:
+    """Mata cualquier proceso openvpn.exe huérfano para `tunnel`.
+
+    Se llama desde connect() cuando el comando "connect" no responde a
+    tiempo -- ver el docstring de connect() para el porqué. Best-effort:
+    un fallo aquí (PowerShell no disponible, etc.) no debe ocultar el
+    error real de connect() que ya se está propagando."""
+    config_name = f"{tunnel}.ovpn"
+    command = (
+        "Get-CimInstance Win32_Process -Filter \"Name='openvpn.exe'\" "
+        f"-ErrorAction SilentlyContinue | Where-Object {{ $_.CommandLine -like '*{config_name}*' }} "
+        "| ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+    )
     try:
-        result = subprocess.run(
-            ["tasklist", "/FI", "IMAGENAME eq openvpn.exe", "/NH"],
+        subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", command],
             creationflags=_CREATE_NO_WINDOW,
             timeout=10,
-            capture_output=True,
-            text=True,
             check=False,
         )
     except (OSError, subprocess.SubprocessError):
-        return True
-    return "openvpn.exe" in result.stdout.lower()
+        pass
 
 
 def status(tunnel: str) -> bool:
@@ -308,9 +375,10 @@ def status(tunnel: str) -> bool:
     reciente que la última desconexión -- si el log no existe todavía
     (nunca se ha conectado ese perfil), se considera desconectado. Si el
     log dice "conectado" se comprueba además que exista un proceso
-    openvpn.exe real (ver _is_openvpn_process_running) para no quedarse
-    en un falso "conectado" permanente cuando el túnel murió sin dejar
-    rastro de desconexión en el log.
+    openvpn.exe real para *este* túnel (ver _is_tunnel_process_running)
+    para no quedarse en un falso "conectado" permanente cuando el túnel
+    murió sin dejar rastro de desconexión en el log, ni confundirlo con
+    el proceso de otro túnel distinto.
     """
     log_path = find_log_dir() / f"{tunnel}.log"
     try:
@@ -323,4 +391,4 @@ def status(tunnel: str) -> bool:
     last_disconnected = max(text.rfind(marker) for marker in _DISCONNECTED_MARKERS)
     if last_connected <= last_disconnected:
         return False
-    return _is_openvpn_process_running()
+    return _is_tunnel_process_running(tunnel)

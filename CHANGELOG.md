@@ -2,6 +2,29 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.3] — 2026-09-17
+
+### Fixed
+- **VPN: procesos `openvpn.exe` huérfanos tras un servidor VPNGate
+  inalcanzable, y el estado de un túnel podía heredar el "conectado"
+  de otro túnel distinto** (`core/vpn_client.py`): si el comando
+  "connect" contra un servidor VPNGate caído no respondía a tiempo
+  (comprobado con un usuario real contra un servidor de México que se
+  quedó atascado en "Attempting to establish TCP connection"), el
+  timeout de `_run()` solo mataba nuestra llamada a `openvpn-gui.exe`,
+  no el proceso `openvpn.exe` real que el servicio interactivo ya
+  había arrancado -- quedaba huérfano, intentando conectar para
+  siempre, y cada intento fallido acumulaba uno más. Además, el
+  chequeo de "proceso vivo" añadido en 8.6.2 no distinguía por túnel
+  (`tasklist` no expone la línea de comandos): si había un huérfano de
+  un túnel corriendo a la vez que otro túnel sí estaba conectado de
+  verdad, el estado del túnel muerto heredaba el "conectado" del
+  huérfano ajeno. Ahora `connect()` mata el proceso huérfano si el
+  comando no responde a tiempo, y el chequeo de proceso (vía
+  PowerShell/`Win32_Process`, no `tasklist`) mira la línea de comandos
+  para confirmar que el proceso vivo pertenece al túnel que se está
+  consultando.
+
 ## [8.6.2] — 2026-09-17
 
 ### Fixed
