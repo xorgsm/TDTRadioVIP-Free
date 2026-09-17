@@ -14,11 +14,13 @@ comportamiento que tenía aquí wireguard.exe (pedía UAC en cada conexión
 porque instalaba/quitaba un servicio por túnel cada vez) -- ver
 docs/superpowers/specs/2026-09-11-vpn-client-design.md.
 
-`connect()`/`disconnect()` son fire-and-forget: openvpn-gui.exe recibe el
-comando y se lo pasa al servicio interactivo, pero no hay forma de
-bloquear hasta que el túnel termine de levantarse (limitación conocida,
-documentada en el spec). `status()` tampoco tiene un comando de
-solo-lectura por CLI (ver
+`connect()`/`disconnect()` piden el comando a openvpn-gui.exe, que se lo
+pasa al servicio interactivo, pero no hay forma de bloquear hasta que el
+túnel termine de levantarse (limitación conocida, documentada en el
+spec) -- sí se verifica que el proceso openvpn.exe real acabe en el
+estado esperado tras el comando (ver el docstring de cada función), para
+no depender solo de que la IPC con openvpn-gui.exe llegue a tiempo.
+`status()` tampoco tiene un comando de solo-lectura por CLI (ver
 https://github.com/OpenVPN/openvpn-gui/issues/104), así que lee el log
 por perfil que ya escribe el servicio interactivo.
 
@@ -31,6 +33,7 @@ import ctypes
 import os
 import shutil
 import subprocess
+import time
 import winreg
 from ctypes import wintypes
 from pathlib import Path
@@ -47,6 +50,8 @@ _DISCONNECTED_MARKERS = ("SIGTERM", "process exiting")
 _SW_HIDE = 0
 _SEE_MASK_NOCLOSEPROCESS = 0x00000040
 _INFINITE = 0xFFFFFFFF
+_DISCONNECT_VERIFY_ATTEMPTS = 5
+_DISCONNECT_VERIFY_INTERVAL_SECONDS = 1
 
 
 class _ShellExecuteInfoW(ctypes.Structure):
@@ -254,10 +259,32 @@ def connect(conf_path: Path, tunnel: str) -> None:
 
 
 def disconnect(tunnel: str) -> None:
+    """Pide a openvpn-gui.exe que desconecte el perfil `tunnel`, y se
+    asegura de que el proceso openvpn.exe real muera pase lo que pase.
+
+    El propio openvpn.exe puede estar en medio de su propio ciclo de
+    reconexión automática (`ping-restart`, ver PUSH_REPLY del servidor)
+    justo cuando se pide desconectar -- comprobado con un usuario real:
+    un túnel que se estaba reconectando solo por inestabilidad del
+    adaptador TAP o por un fallo de autenticación del servidor VPNGate
+    parecía "reconectarse solo" tras pulsar Desconectar, porque el
+    comando de desconexión podía llegar justo en medio de ese ciclo. Si
+    el proceso sigue vivo un rato después de pedir la desconexión (o si
+    ni siquiera se pudo pedir -- p.ej. openvpn-gui.exe no respondió a
+    tiempo), se mata directamente en vez de darlo por hecho -- así
+    "Desconectar" es una garantía, no un intento best-effort."""
     exe = find_openvpn_gui_exe()
     if exe is None:
         raise VpnClientError("OpenVPN no está instalado en este PC.")
-    _run(exe, "--command", "disconnect", tunnel)
+    try:
+        _run(exe, "--command", "disconnect", tunnel)
+    except VpnClientError:
+        pass
+    for _ in range(_DISCONNECT_VERIFY_ATTEMPTS):
+        if not _is_tunnel_process_running(tunnel):
+            return
+        time.sleep(_DISCONNECT_VERIFY_INTERVAL_SECONDS)
+    _kill_orphaned_tunnel_process(tunnel)
 
 
 def rescan() -> None:

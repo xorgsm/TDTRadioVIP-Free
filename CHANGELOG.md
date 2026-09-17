@@ -2,6 +2,26 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.4] — 2026-09-17
+
+### Fixed
+- **VPN: "Desconectar" podía parecer que no hacía nada si el túnel
+  estaba en medio de su propio ciclo de reconexión automática**
+  (`core/vpn_client.py`): OpenVPN reconecta solo (`ping-restart`)
+  cuando detecta un corte de red -- confirmado con un usuario real
+  contra un servidor VPNGate (Japón) cuyo log mostraba
+  "TUN/TAP I/O operation aborted, restarting" y "AUTH_FAILED"
+  repetidos, el propio adaptador TAP y el servidor gratuito fallando
+  por su cuenta. Si el comando "disconnect" llegaba justo en medio de
+  uno de esos ciclos, el proceso `openvpn.exe` podía seguir vivo (o
+  incluso volver a reconectar) inmediatamente después, dando la
+  sensación de que la app "reconectaba sola" tras pulsar Desconectar.
+  Ahora `disconnect()` verifica que el proceso realmente murió tras
+  pedir la desconexión y, si sigue vivo pasados unos segundos (o si ni
+  siquiera se pudo pedir la desconexión a tiempo), lo mata
+  directamente -- "Desconectar" pasa a ser una garantía, no un intento
+  best-effort.
+
 ## [8.6.3] — 2026-09-17
 
 ### Fixed

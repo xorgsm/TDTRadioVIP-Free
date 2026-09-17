@@ -124,8 +124,61 @@ def test_disconnect_runs_command_disconnect_with_tunnel_name(monkeypatch):
     )
     calls = []
     monkeypatch.setattr(vpn_client, "_run", lambda exe, *args: calls.append((exe, args)))
+    monkeypatch.setattr(vpn_client, "_is_tunnel_process_running", lambda tunnel: False)
     vpn_client.disconnect("es")
     assert calls == [(Path(r"C:\OpenVPN\bin\openvpn-gui.exe"), ("--command", "disconnect", "es"))]
+
+
+def test_disconnect_does_not_kill_when_process_already_gone(monkeypatch):
+    monkeypatch.setattr(
+        vpn_client, "find_openvpn_gui_exe", lambda: Path(r"C:\OpenVPN\bin\openvpn-gui.exe")
+    )
+    monkeypatch.setattr(vpn_client, "_run", lambda exe, *args: None)
+    monkeypatch.setattr(vpn_client, "_is_tunnel_process_running", lambda tunnel: False)
+    kill_calls = []
+    monkeypatch.setattr(
+        vpn_client, "_kill_orphaned_tunnel_process", lambda tunnel: kill_calls.append(tunnel)
+    )
+    vpn_client.disconnect("es")
+    assert kill_calls == []
+
+
+def test_disconnect_kills_process_if_still_running_after_verify_attempts(monkeypatch):
+    """Reproduce el bug real: el proceso openvpn.exe seguía vivo (atrapado
+    en su propio ciclo de reconexión) después de pedirle la desconexión
+    a openvpn-gui.exe -- "Desconectar" debe garantizar que el túnel
+    muere, no solo intentarlo."""
+    monkeypatch.setattr(
+        vpn_client, "find_openvpn_gui_exe", lambda: Path(r"C:\OpenVPN\bin\openvpn-gui.exe")
+    )
+    monkeypatch.setattr(vpn_client, "_run", lambda exe, *args: None)
+    monkeypatch.setattr(vpn_client, "_is_tunnel_process_running", lambda tunnel: True)
+    monkeypatch.setattr(vpn_client.time, "sleep", lambda seconds: None)
+    kill_calls = []
+    monkeypatch.setattr(
+        vpn_client, "_kill_orphaned_tunnel_process", lambda tunnel: kill_calls.append(tunnel)
+    )
+    vpn_client.disconnect("Japan_VPNGate")
+    assert kill_calls == ["Japan_VPNGate"]
+
+
+def test_disconnect_kills_process_even_when_disconnect_command_times_out(monkeypatch):
+    monkeypatch.setattr(
+        vpn_client, "find_openvpn_gui_exe", lambda: Path(r"C:\OpenVPN\bin\openvpn-gui.exe")
+    )
+
+    def _raise(exe, *args):
+        raise vpn_client.VpnClientError("timed out after 10.0 seconds")
+
+    monkeypatch.setattr(vpn_client, "_run", _raise)
+    monkeypatch.setattr(vpn_client, "_is_tunnel_process_running", lambda tunnel: True)
+    monkeypatch.setattr(vpn_client.time, "sleep", lambda seconds: None)
+    kill_calls = []
+    monkeypatch.setattr(
+        vpn_client, "_kill_orphaned_tunnel_process", lambda tunnel: kill_calls.append(tunnel)
+    )
+    vpn_client.disconnect("es")  # no debe lanzar
+    assert kill_calls == ["es"]
 
 
 def test_rescan_is_a_no_op_when_openvpn_not_installed(monkeypatch):
