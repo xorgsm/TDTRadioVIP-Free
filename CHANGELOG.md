@@ -2,6 +2,28 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.2] — 2026-09-17
+
+### Fixed
+- **VPN: aparecía siempre "Conectado" al arrancar y "Desconectar" no
+  tenía ningún efecto** (`core/vpn_client.py`): `status()` decidía el
+  estado leyendo solo el log por túnel que escribe el servicio
+  interactivo de OpenVPN, comparando la última aparición de
+  "Initialization Sequence Completed" contra la de
+  "SIGTERM"/"process exiting" -- si el túnel moría sin un cierre
+  limpio (corte de red, suspensión del PC, cierre forzado de la app,
+  etc.) el log se quedaba con el marcador de conexión como último
+  evento para siempre, sin ningún rastro de desconexión. `status()`
+  reportaba "conectado" de forma indefinida en cada arranque, y como
+  no quedaba ningún proceso `openvpn.exe` real que desconectar, pulsar
+  "Desconectar" tampoco añadía nada nuevo al log (comprobado con un
+  usuario real: log estancado desde una renegociación TLS de la
+  sesión anterior, sin proceso `openvpn.exe` corriendo). Ahora
+  `status()`, cuando el log dice "conectado", comprueba además con
+  `tasklist` que exista un proceso `openvpn.exe` real antes de
+  confirmarlo -- si `tasklist` fallara, se asume conectado para no
+  romper el comportamiento anterior basado solo en el log.
+
 ## [8.6.1] — 2026-09-16
 
 ### Fixed

@@ -258,6 +258,47 @@ def rescan() -> None:
     _run(exe, "--command", "rescan")
 
 
+def _is_openvpn_process_running() -> bool:
+    """True si hay al menos un proceso openvpn.exe corriendo ahora mismo.
+
+    status() solo mira el log del túnel, pero ese log solo se actualiza
+    en eventos puntuales (arranque, cambios de ruta, renegociación TLS
+    cada hora) -- si el túnel muere sin un cierre limpio (corte de red,
+    suspensión del PC, apagado forzado...) el log se queda con
+    "Initialization Sequence Completed" como último evento para siempre,
+    y status() reportaría "conectado" de forma indefinida aunque no
+    quede ningún proceso real (confirmado con un usuario real: la VPN
+    aparecía siempre conectada al arrancar la app, y el botón
+    "Desconectar" no tenía ningún efecto porque no había nada que
+    desconectar -- openvpn-gui.exe no puede añadir un evento de
+    desconexión al log de un túnel que ya no existe).
+
+    No se distingue por túnel (tasklist no expone la línea de comandos
+    sin `/V`, poco fiable entre versiones de Windows) -- no hace falta:
+    el diseño no admite más de un túnel activo a la vez (ver
+    docs/superpowers/specs/2026-09-11-vpn-client-design.md), así que
+    "algún openvpn.exe corriendo" y "el túnel que nos interesa está
+    corriendo" son equivalentes en la práctica.
+
+    Si `tasklist` falla (entorno restringido, etc.) se asume True para
+    no romper el comportamiento anterior basado solo en el log -- mejor
+    un falso "conectado" ocasional que negar el estado real cuando el
+    propio chequeo no es fiable.
+    """
+    try:
+        result = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq openvpn.exe", "/NH"],
+            creationflags=_CREATE_NO_WINDOW,
+            timeout=10,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return True
+    return "openvpn.exe" in result.stdout.lower()
+
+
 def status(tunnel: str) -> bool:
     """True si el túnel `tunnel` está conectado ahora mismo.
 
@@ -265,7 +306,11 @@ def status(tunnel: str) -> bool:
     lee el log que el servicio interactivo mantiene por perfil, buscando
     si la última aparición de "Initialization Sequence Completed" es más
     reciente que la última desconexión -- si el log no existe todavía
-    (nunca se ha conectado ese perfil), se considera desconectado.
+    (nunca se ha conectado ese perfil), se considera desconectado. Si el
+    log dice "conectado" se comprueba además que exista un proceso
+    openvpn.exe real (ver _is_openvpn_process_running) para no quedarse
+    en un falso "conectado" permanente cuando el túnel murió sin dejar
+    rastro de desconexión en el log.
     """
     log_path = find_log_dir() / f"{tunnel}.log"
     try:
@@ -276,4 +321,6 @@ def status(tunnel: str) -> bool:
     if last_connected == -1:
         return False
     last_disconnected = max(text.rfind(marker) for marker in _DISCONNECTED_MARKERS)
-    return last_connected > last_disconnected
+    if last_connected <= last_disconnected:
+        return False
+    return _is_openvpn_process_running()

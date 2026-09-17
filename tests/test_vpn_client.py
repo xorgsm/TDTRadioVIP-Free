@@ -118,6 +118,7 @@ def test_status_true_when_last_event_is_connect(monkeypatch, tmp_path):
         encoding="utf-8",
     )
     monkeypatch.setattr(vpn_client, "find_log_dir", lambda: tmp_path)
+    monkeypatch.setattr(vpn_client, "_is_openvpn_process_running", lambda: True)
     assert vpn_client.status("es") is True
 
 
@@ -141,7 +142,60 @@ def test_status_true_after_reconnect_following_a_disconnect(monkeypatch, tmp_pat
         encoding="utf-8",
     )
     monkeypatch.setattr(vpn_client, "find_log_dir", lambda: tmp_path)
+    monkeypatch.setattr(vpn_client, "_is_openvpn_process_running", lambda: True)
     assert vpn_client.status("es") is True
+
+
+def test_status_false_when_log_says_connected_but_no_process_running(monkeypatch, tmp_path):
+    """Reproduce el bug real: el túnel murió sin un cierre limpio (corte
+    de red, suspensión del PC...) y el log se quedó con "Initialization
+    Sequence Completed" como último evento para siempre, sin ningún
+    SIGTERM/process exiting -- sin el chequeo de proceso vivo, status()
+    reportaría "conectado" de forma indefinida (comprobado con un
+    usuario real: la VPN aparecía siempre conectada al arrancar la app
+    y el botón "Desconectar" no tenía ningún efecto)."""
+    (tmp_path / "es.log").write_text(
+        "Initialization Sequence Completed\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(vpn_client, "find_log_dir", lambda: tmp_path)
+    monkeypatch.setattr(vpn_client, "_is_openvpn_process_running", lambda: False)
+    assert vpn_client.status("es") is False
+
+
+def test_is_openvpn_process_running_true_when_tasklist_finds_it(monkeypatch):
+    class _FakeResult:
+        stdout = (
+            '"openvpn.exe","1234","Services","0","12,345 K"\r\n'
+        )
+
+    monkeypatch.setattr(
+        vpn_client.subprocess, "run", lambda *args, **kwargs: _FakeResult()
+    )
+    assert vpn_client._is_openvpn_process_running() is True
+
+
+def test_is_openvpn_process_running_false_when_tasklist_finds_nothing(monkeypatch):
+    class _FakeResult:
+        stdout = "INFO: No tasks are running which match the specified criteria.\r\n"
+
+    monkeypatch.setattr(
+        vpn_client.subprocess, "run", lambda *args, **kwargs: _FakeResult()
+    )
+    assert vpn_client._is_openvpn_process_running() is False
+
+
+def test_is_openvpn_process_running_true_when_tasklist_fails(monkeypatch):
+    """Fail-safe: si tasklist no se puede ejecutar, no se debe negar un
+    estado "conectado" que solo se puede confirmar por el log -- mejor
+    un falso "conectado" ocasional que romper el comportamiento anterior
+    cuando este chequeo adicional no es fiable."""
+
+    def _raise(*args, **kwargs):
+        raise OSError("tasklist no encontrado")
+
+    monkeypatch.setattr(vpn_client.subprocess, "run", _raise)
+    assert vpn_client._is_openvpn_process_running() is True
 
 
 def test_find_openvpn_gui_exe_prefers_standard_install_path(monkeypatch, tmp_path):
