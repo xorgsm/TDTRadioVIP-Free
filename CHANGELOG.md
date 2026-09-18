@@ -2,6 +2,49 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.5] — 2026-09-18
+
+### Fixed
+- **VPN: el diálogo (y con él toda la app) podía congelarse varios
+  segundos al conectar, desconectar, eliminar un perfil, o simplemente
+  con el diálogo VPN abierto** (`ui/dialogs/vpn_dialog.py`): las tres
+  operaciones llamaban a `core/vpn_client.py` (`connect()`,
+  `disconnect()`, `status()`) directamente desde el hilo de la UI.
+  `status()` puede lanzar un proceso PowerShell por consulta (para
+  comprobar si el túnel sigue vivo, ver 8.6.3) y se releía cada 2s
+  mientras el diálogo estaba abierto; `disconnect()` (desde 8.6.4)
+  puede tardar varios segundos verificando que el proceso murió de
+  verdad antes de forzar su cierre. Al vivir en el único hilo de
+  eventos de la app, cualquiera de esas llamadas bloqueaba toda la
+  ventana, no solo el diálogo VPN. Ahora las tres se ejecutan en un
+  hilo aparte (`_VpnWorker`, un `QThread`) y solo el resultado final
+  toca la UI; como mucho una operación VPN corre a la vez (una
+  consulta de estado en curso no se apila con otra, y una acción de
+  conectar/desconectar/eliminar espera a que termine cualquier
+  consulta pendiente).
+
+### Security
+- Revisión de seguridad de `core/license.py` (verificación RSA-2048 de
+  códigos de activación V2 e ID de hardware): sin hallazgos CRITICAL ni
+  HIGH. Se documenta en el propio código, junto a la comparación final
+  de `validate_code()`, la invariante real que hay que preservar
+  (comparar el bloque PKCS#1 v1.5 completo, nunca un prefijo) para que
+  una futura simplificación no la rompa por error.
+
+### Tests
+- Primera cobertura de `core/license.py` (antes sin ningún test:
+  módulo criptográfico/de licencia, distribuido además compilado a
+  `.pyd` con Cython -- ver `setup_license.py`) con un par de claves
+  RSA-2048 propio para poder firmar códigos de prueba sin tocar la
+  clave privada real.
+- Cobertura nueva para `core/favorites.py`, `core/history.py`,
+  `core/podcasts.py`, `core/radio.py`, `core/soulseek_client.py` y
+  `core/torrent_client.py` -- ninguno tenía test propio hasta ahora.
+- `tests/test_vpn_dialog.py`: cubre el hilo en segundo plano de
+  `ui/dialogs/vpn_dialog.py` de arriba (con un `QThread` real, no
+  doblado) para confirmar que la UI ya no bloquea.
+- 446 → 686 tests.
+
 ## [8.6.4] — 2026-09-17
 
 ### Fixed
