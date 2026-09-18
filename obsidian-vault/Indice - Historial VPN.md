@@ -2,7 +2,7 @@
 tags: [tdtradiovip, vpn, indice]
 ---
 
-# Historial de VPN (8.1.0 → 8.6.4)
+# Historial de VPN (8.1.0 → 8.6.5)
 
 Mapa de contenido (MOC) del cliente VPN de la edición VIP: desde la
 primera versión con WireGuard hasta los tres fixes de estado/procesos
@@ -38,6 +38,10 @@ servidores gratuitos de VPNGate.
    túnel real (Japón, VPNGate) se reconectaba solo por inestabilidad
    del adaptador TAP y fallos de autenticación del servidor,
    compitiendo con el botón "Desconectar".
+7. [[8.6.5 - Dialogo VPN congelaba la app entera]] — ortogonal a los
+   tres anteriores: no toca la detección de estado, corrige que
+   `status()`/`connect()`/`disconnect()` se llamaran directamente en
+   el hilo de la UI, congelando toda la app mientras duraban.
 
 ## El hilo común
 

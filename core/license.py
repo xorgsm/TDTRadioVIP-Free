@@ -264,6 +264,20 @@ def validate_code(hardware_id: str, code: str) -> bool:
     # hmac.compare_digest para comparaciones sensibles (downloader.py,
     # soulseek_client.py, updater.py); esta era la única que seguía usando
     # "==" normal, inconsistente con ese estándar propio.
+    #
+    # Nota de seguridad (revisión de core/license.py, 8.6.5): lo que
+    # hace inviable falsificar un código NO es que esta comparación sea
+    # de tiempo constante -- decoded/expected no son secretos (decoded
+    # sale de una operación con la clave PÚBLICA, replicable por
+    # cualquiera sin oráculo alguno) -- sino que es una comparación del
+    # bloque completo de 256 bytes, byte a byte, nunca un prefijo ni una
+    # subcadena. Ese es justo el hueco que explota el ataque clásico de
+    # Bleichenbacher contra verificadores PKCS#1 v1.5 laxos (los que se
+    # conforman con encontrar el DigestInfo en algún punto del bloque e
+    # ignoran la basura sobrante). Si algún día se "simplifica" esto a un
+    # startswith()/in sobre expected, se vuelve falsificable aunque se
+    # conserve compare_digest -- la invariante a proteger es "todo el
+    # bloque, nunca un prefijo", no el tiempo constante.
     return hmac.compare_digest(decoded, expected)
 
 

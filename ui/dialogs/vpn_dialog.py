@@ -24,9 +24,9 @@ puede seguir usándolo como un perfil más.
 Coder By X@R
 """
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
-from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtCore import QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QDialogButtonBox, QFileDialog, QHBoxLayout, QInputDialog, QLabel,
@@ -42,6 +42,40 @@ from ui.visual import set_surface, set_variant
 # abierto -- así se ve "Conectado" en verde sin tener que cerrar y
 # reabrir el diálogo ni mirar la ventana propia de openvpn-gui.exe.
 _VPN_STATUS_POLL_MS = 2000
+
+
+class _VpnWorker(QThread):
+    """Ejecuta una llamada a core.vpn_client (o cualquier callable sin
+    argumentos) en un hilo aparte y notifica el resultado con una señal.
+
+    connect()/disconnect()/status() hablan con openvpn-gui.exe y, en el
+    caso de disconnect(), pueden quedarse esperando varios segundos
+    (hasta _DISCONNECT_VERIFY_ATTEMPTS intentos de 1s verificando que el
+    proceso murió, más el propio timeout de 10s de cada subprocess.run
+    si openvpn-gui.exe no responde) -- y status() lanza un PowerShell
+    (Get-CimInstance) en cada consulta. Todo eso llamado directamente
+    desde un slot de Qt bloquea el hilo de la UI (el único que hay en
+    una app Qt): el diálogo entero -- y con él, toda la ventana
+    principal, que comparte el mismo bucle de eventos -- se queda
+    congelado mientras dura. Confirmado leyendo el código: antes de
+    este cambio, _refresh_vpn_status() (cada 2s mientras el diálogo
+    está abierto) y _on_vpn_toggle()/_on_vpn_delete() llamaban a estas
+    funciones tal cual, en el hilo de la UI."""
+
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, func: Callable[[], object], parent=None):
+        super().__init__(parent)
+        self._func = func
+
+    def run(self) -> None:
+        try:
+            result = self._func()
+        except vpn_client.VpnClientError as exc:
+            self.failed.emit(str(exc))
+        else:
+            self.succeeded.emit(result)
 
 
 class VpnDialog(QDialog):
@@ -82,6 +116,13 @@ class VpnDialog(QDialog):
             root.addStretch(1)
             self._add_close_button(root)
             return
+
+        # Un único worker "en curso" a la vez -- ver _VpnWorker. Si ya hay
+        # uno corriendo (una consulta de estado o una acción de
+        # conectar/desconectar/eliminar), el resto de operaciones lo
+        # esperan en vez de lanzar un segundo hilo que hable con
+        # openvpn-gui.exe en paralelo.
+        self._vpn_worker: Optional[_VpnWorker] = None
 
         self.vpn_profile_combo = QComboBox()
         form_vpn.addRow("Perfil:", self.vpn_profile_combo)
@@ -130,6 +171,7 @@ class VpnDialog(QDialog):
         self._vpn_status_timer.timeout.connect(self._refresh_vpn_status)
         self._vpn_status_timer.start(_VPN_STATUS_POLL_MS)
         self.finished.connect(self._vpn_status_timer.stop)
+        self.finished.connect(self._wait_for_vpn_worker)
 
         self._add_close_button(root)
 
@@ -154,6 +196,45 @@ class VpnDialog(QDialog):
     def _current_vpn_tunnel(self) -> Optional[str]:
         return self.vpn_profile_combo.currentData()
 
+    def _wait_for_vpn_worker(self) -> None:
+        """Al cerrar el diálogo: si queda un _VpnWorker corriendo (p.ej.
+        el disconnect() de 8.6.4 todavía verificando que el proceso
+        murió), hay que esperarlo antes de dejar que Qt destruya este
+        QDialog -- destruir un QObject con un QThread hijo todavía en
+        marcha es un error de Qt (advertencia o crash, según
+        plataforma), no un simple "se cancela solo"."""
+        if self._vpn_worker is not None:
+            self._vpn_worker.wait()
+
+    def _run_vpn_worker(
+        self, func: Callable[[], object],
+        on_success: Callable[[object], None],
+        on_error: Optional[Callable[[str], None]] = None,
+    ) -> bool:
+        """Lanza `func` (una llamada a core.vpn_client) en un _VpnWorker.
+
+        Devuelve False sin hacer nada si ya hay un worker en curso -- no
+        se apilan hilos nuevos sobre uno que todavía está hablando con
+        openvpn-gui.exe. `on_success`/`on_error` se ejecutan ya en el
+        hilo de la UI (Qt convierte la señal entre hilos en una
+        QueuedConnection automáticamente), así que ahí sí es seguro
+        tocar widgets."""
+        if self._vpn_worker is not None and self._vpn_worker.isRunning():
+            return False
+        worker = _VpnWorker(func, self)
+        self._vpn_worker = worker
+
+        def _cleanup():
+            if self._vpn_worker is worker:
+                self._vpn_worker = None
+
+        worker.succeeded.connect(on_success)
+        if on_error is not None:
+            worker.failed.connect(on_error)
+        worker.finished.connect(_cleanup)
+        worker.start()
+        return True
+
     def _refresh_vpn_status(self) -> None:
         tunnel = self._current_vpn_tunnel()
         if not tunnel:
@@ -163,7 +244,20 @@ class VpnDialog(QDialog):
             self.vpn_toggle_btn.setEnabled(False)
             return
         self.vpn_toggle_btn.setEnabled(True)
-        connected = vpn_client.status(tunnel)
+        # status() puede lanzar un PowerShell (Get-CimInstance) para
+        # comprobar si el túnel sigue vivo -- ver el docstring de
+        # _VpnWorker. Si ya hay una consulta/acción en curso (p.ej. el
+        # tick anterior del timer todavía no ha vuelto, o el usuario
+        # acaba de pulsar Conectar/Desconectar), este tick se salta en
+        # vez de acumular hilos.
+        self._run_vpn_worker(
+            lambda: vpn_client.status(tunnel),
+            lambda connected: self._apply_vpn_status(tunnel, connected),
+        )
+
+    def _apply_vpn_status(self, tunnel: str, connected: bool) -> None:
+        if self._current_vpn_tunnel() != tunnel:
+            return  # el usuario cambió de perfil mientras la consulta corría
         self.vpn_status_label.setText("Conectado" if connected else "Desconectado")
         self.vpn_toggle_btn.setText("Desconectar" if connected else "Conectar")
         variant = "success" if connected else "secondary"
@@ -214,6 +308,12 @@ class VpnDialog(QDialog):
         self._reload_vpn_combo(select_name=nombre)
 
     def _on_vpn_delete(self):
+        """Antes, comprobar el estado y desconectar (si hacía falta) se
+        llamaba tal cual en el hilo de la UI -- disconnect() puede
+        tardar varios segundos verificando que el proceso murió de
+        verdad (ver core.vpn_client.disconnect y el docstring de
+        _VpnWorker), así que confirmar "Eliminar" podía congelar toda
+        la app durante ese rato antes de que se viera ningún cambio."""
         nombre = self.vpn_profile_combo.currentText()
         if not nombre:
             return
@@ -222,32 +322,56 @@ class VpnDialog(QDialog):
         ) != QMessageBox.Yes:
             return
         entry = vpn_profiles.get_profile(nombre)
-        if entry and vpn_client.status(entry["tunnel"]):
-            try:
+
+        def _disconnect_if_needed() -> None:
+            if entry and vpn_client.status(entry["tunnel"]):
                 vpn_client.disconnect(entry["tunnel"])
-            except vpn_client.VpnClientError as exc:
-                QMessageBox.warning(
-                    self, "Eliminar perfil VPN",
-                    f"No se pudo desconectar el túnel antes de borrarlo: {exc}",
-                )
-                return
-        vpn_profiles.delete_profile(nombre)
-        self._reload_vpn_combo()
+
+        def _finish_delete(_result: object) -> None:
+            vpn_profiles.delete_profile(nombre)
+            self._reload_vpn_combo()
+
+        def _on_disconnect_error(message: str) -> None:
+            QMessageBox.warning(
+                self, "Eliminar perfil VPN",
+                f"No se pudo desconectar el túnel antes de borrarlo: {message}",
+            )
+
+        started = self._run_vpn_worker(_disconnect_if_needed, _finish_delete, _on_disconnect_error)
+        if not started:
+            QMessageBox.information(
+                self, "Eliminar perfil VPN",
+                "Hay otra operación de VPN en curso; inténtalo de nuevo en unos segundos.",
+            )
 
     def _on_vpn_toggle(self):
         tunnel = self._current_vpn_tunnel()
         if not tunnel:
             return
         entry = vpn_profiles.get_profile(self.vpn_profile_combo.currentText())
-        connected = vpn_client.status(tunnel)
-        self.vpn_toggle_btn.setEnabled(False)
-        try:
+
+        def _toggle() -> bool:
+            """Se recalcula connected DENTRO del worker (no se reutiliza
+            el último status() ya pintado en la etiqueta) para decidir
+            conectar/desconectar contra el estado real en el momento
+            de ejecutar, no contra uno que pudo quedarse desactualizado
+            mientras el usuario miraba el diálogo."""
+            connected = vpn_client.status(tunnel)
             if connected:
                 vpn_client.disconnect(tunnel)
             elif entry:
                 vpn_client.connect(Path(entry["conf_path"]), tunnel)
-        except vpn_client.VpnClientError as exc:
-            QMessageBox.warning(self, "VPN", str(exc))
-        finally:
+            return connected
+
+        def _on_done(_connected: object) -> None:
             self.vpn_toggle_btn.setEnabled(True)
             self._refresh_vpn_status()
+
+        def _on_error(message: str) -> None:
+            QMessageBox.warning(self, "VPN", message)
+            _on_done(None)
+
+        self.vpn_toggle_btn.setEnabled(False)
+        started = self._run_vpn_worker(_toggle, _on_done, _on_error)
+        if not started:
+            self.vpn_toggle_btn.setEnabled(True)
