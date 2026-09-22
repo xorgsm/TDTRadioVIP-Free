@@ -2,6 +2,12 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.6] — 2026-09-22
+
+### Tests
+- Primera cobertura de `core/recorder.py` (grabación de streams con
+  ffmpeg), antes en 0% -- ahora 91%.
+
 ## [7.6.5.3] — 2026-09-12
 
 ### Added
