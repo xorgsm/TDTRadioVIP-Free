@@ -36,10 +36,11 @@ def test_import_profile_copies_conf_and_registers_it(monkeypatch, tmp_path):
         profiles = vpn_profiles.list_profiles()
         assert [p["name"] for p in profiles] == ["España"]
         assert profiles[0]["conf_path"] == entry["conf_path"]
-        assert Path(entry["conf_path"]).read_text(encoding="utf-8") == source.read_text(encoding="utf-8")
+        saneado, _ = vpn_profiles._strip_dangerous_directives(source.read_text(encoding="utf-8"))
+        assert Path(entry["conf_path"]).read_text(encoding="utf-8") == saneado
         assert entry["conf_path"].endswith(f"{entry['tunnel']}.ovpn")
         registered = openvpn_config_dir / f"{entry['tunnel']}.ovpn"
-        assert registered.read_text(encoding="utf-8") == source.read_text(encoding="utf-8")
+        assert registered.read_text(encoding="utf-8") == saneado
     finally:
         config._profile_dir_for.cache_clear()
 
@@ -124,7 +125,8 @@ def test_register_retries_after_permission_error_if_uac_grant_succeeds(monkeypat
         entry = vpn_profiles.import_profile("Portugal", source)
         assert calls["copy_attempts"] == 2
         registered = openvpn_config_dir / f"{entry['tunnel']}.ovpn"
-        assert registered.read_text(encoding="utf-8") == source.read_text(encoding="utf-8")
+        saneado, _ = vpn_profiles._strip_dangerous_directives(source.read_text(encoding="utf-8"))
+        assert registered.read_text(encoding="utf-8") == saneado
     finally:
         config._profile_dir_for.cache_clear()
 
@@ -213,9 +215,10 @@ def test_import_profile_from_text_registers_it_without_a_source_file(monkeypatch
     try:
         entry = vpn_profiles.import_profile_from_text("Japón (VPNGate)", body)
         assert entry["name"] == "Japón (VPNGate)"
-        assert Path(entry["conf_path"]).read_text(encoding="utf-8") == body
+        saneado, _ = vpn_profiles._strip_dangerous_directives(body)
+        assert Path(entry["conf_path"]).read_text(encoding="utf-8") == saneado
         registered = openvpn_config_dir / f"{entry['tunnel']}.ovpn"
-        assert registered.read_text(encoding="utf-8") == body
+        assert registered.read_text(encoding="utf-8") == saneado
     finally:
         config._profile_dir_for.cache_clear()
 
@@ -238,5 +241,91 @@ def test_list_profiles_sorted_case_insensitively(monkeypatch, tmp_path):
         vpn_profiles.import_profile("Alemania", source_b)
         names = [p["name"] for p in vpn_profiles.list_profiles()]
         assert names == ["Alemania", "zelanda"]
+    finally:
+        config._profile_dir_for.cache_clear()
+
+
+# --------------------------------------------------------------------------
+# _strip_dangerous_directives(): un .ovpn de VPNGate (lista pública, sin
+# curar) o importado a mano puede traer directivas capaces de ejecutar
+# código (up/down/client-connect/plugin...) con los privilegios del
+# servicio interactivo de OpenVPN -- ver el comentario junto a
+# _DANGEROUS_DIRECTIVES. Estos tests cubren el saneado en sí (puro, sin
+# tocar disco) y que import_profile()/import_profile_from_text() lo
+# apliquen antes de escribir/registrar el .ovpn.
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("directiva", [
+    "up /tmp/evil.sh",
+    "down evil.sh",
+    "route-up \"cmd /c calc.exe\"",
+    "route-pre-down evil.sh",
+    "ipchange evil.sh",
+    "client-connect /tmp/evil.sh",
+    "client-disconnect evil.sh",
+    "tls-verify evil.sh",
+    "auth-user-pass-verify evil.sh via-env",
+    "plugin evil.dll",
+    "script-security 3",
+])
+def test_strip_dangerous_directives_removes_known_code_execution_directives(directiva):
+    ovpn = f"client\ndev tun\nproto udp\n{directiva}\nremote vpn.example.com 1194\n"
+    limpio, quitadas = vpn_profiles._strip_dangerous_directives(ovpn)
+    assert directiva not in limpio
+    assert quitadas == [directiva]
+
+
+def test_strip_dangerous_directives_is_case_insensitive_on_directive_name():
+    ovpn = "client\nUP /tmp/evil.sh\nremote vpn.example.com 1194\n"
+    limpio, quitadas = vpn_profiles._strip_dangerous_directives(ovpn)
+    assert "evil.sh" not in limpio
+    assert quitadas == ["UP /tmp/evil.sh"]
+
+
+def test_strip_dangerous_directives_forces_script_security_zero_even_when_absent():
+    ovpn = "client\ndev tun\nremote vpn.example.com 1194\n"
+    limpio, quitadas = vpn_profiles._strip_dangerous_directives(ovpn)
+    assert quitadas == []
+    assert limpio.splitlines()[-1] == "script-security 0"
+
+
+def test_strip_dangerous_directives_leaves_a_clean_config_unchanged_in_content():
+    ovpn = "client\ndev tun\nproto udp\nremote vpn.example.com 1194\ncipher AES-256-GCM\n"
+    limpio, quitadas = vpn_profiles._strip_dangerous_directives(ovpn)
+    assert quitadas == []
+    for line in ovpn.splitlines():
+        assert line in limpio.splitlines()
+
+
+def test_strip_dangerous_directives_ignores_comments_mentioning_directive_names():
+    ovpn = "client\n# up /tmp/evil.sh (comentario, no directiva real)\nremote vpn.example.com 1194\n"
+    limpio, quitadas = vpn_profiles._strip_dangerous_directives(ovpn)
+    assert quitadas == []
+    assert "# up /tmp/evil.sh" in limpio
+
+
+def test_import_profile_from_text_strips_malicious_directives_before_writing(monkeypatch, tmp_path):
+    """Integración: un .ovpn de VPNGate con un client-connect y un plugin
+    (RCE/carga de DLL arbitraria contra el servicio interactivo de
+    OpenVPN) se importa igualmente -- sigue teniendo 'client'/'remote ',
+    únicos requisitos de _import_text -- pero sin esas directivas en el
+    archivo que llega a disco ni al que se registra con OpenVPN."""
+    openvpn_config_dir = _redirect_profiles(monkeypatch, tmp_path)
+    malicioso = (
+        "client\ndev tun\nproto udp\n"
+        "client-connect /tmp/evil.sh\n"
+        "plugin evil.dll\n"
+        "remote vpn.example.com 1194\n"
+    )
+    try:
+        entry = vpn_profiles.import_profile_from_text("Servidor sospechoso", malicioso)
+        guardado = Path(entry["conf_path"]).read_text(encoding="utf-8")
+        registrado = (openvpn_config_dir / f"{entry['tunnel']}.ovpn").read_text(encoding="utf-8")
+        for texto in (guardado, registrado):
+            assert "client-connect" not in texto
+            assert "plugin" not in texto
+            assert "evil.sh" not in texto
+            assert "evil.dll" not in texto
+            assert "script-security 0" in texto
     finally:
         config._profile_dir_for.cache_clear()

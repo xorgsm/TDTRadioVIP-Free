@@ -26,11 +26,14 @@ Coder By X@R
 import re
 import shutil
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Tuple
 
 from core import vpn_client
 from core.config import get_profile_data_dir
 from core.json_store import read_json, write_json_atomic
+from core.logger import get_logger
+
+log = get_logger(__name__)
 
 VPN_DIR_NAME = "vpn"
 INDEX_FILE = "vpn_profiles.json"
@@ -38,6 +41,47 @@ INDEX_FILE = "vpn_profiles.json"
 # perfil, pero se mantiene corto y saneado como con WireGuard antes --
 # es también el nombre del archivo .ovpn en la carpeta de configs.
 _MAX_TUNNEL_LEN = 32
+
+# Directivas de OpenVPN capaces de ejecutar código o cargar una DLL
+# arbitraria (client-connect, plugin...) o de subir el nivel de
+# script-security que las habilita. Un .ovpn es, ante todo, texto que
+# llega de fuera: los que trae VPNGate (lista pública sin ningún tipo de
+# curación de contenido, cualquiera puede anunciar un relay) pasan por
+# aquí igual que uno importado a mano. Sin este filtro, un perfil
+# malicioso ejecutaría lo que traiga en "up"/"client-connect"/"plugin"
+# con los privilegios del servicio interactivo de OpenVPN (ver el
+# docstring de _register_with_openvpn) en cuanto el usuario pulsara
+# "Conectar" -- la misma clase de fallo que CVEs conocidos en otros
+# clientes VPN de consumo.
+_DANGEROUS_DIRECTIVES = {
+    "up", "down", "up-restart", "route-up", "route-pre-down", "ipchange",
+    "client-connect", "client-disconnect", "client-crresponse",
+    "tls-verify", "auth-user-pass-verify", "plugin", "script-security",
+}
+
+
+def _strip_dangerous_directives(text: str) -> Tuple[str, List[str]]:
+    """Quita del .ovpn cualquier directiva de _DANGEROUS_DIRECTIVES y
+    fuerza "script-security 0" al final -- así, aunque algún filtro de
+    arriba pase por alto una variante no contemplada, OpenVPN no
+    ejecutará ningún script/plugin de todos modos (script-security 0 lo
+    desactiva por completo, y es la última ocurrencia de la directiva la
+    que OpenVPN respeta). Devuelve (texto_limpio, directivas_quitadas)
+    para poder avisar si el .ovpn traía algo peligroso."""
+    kept_lines = []
+    removed = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith(("#", ";")):
+            kept_lines.append(line)
+            continue
+        directive = stripped.split(None, 1)[0].lower()
+        if directive in _DANGEROUS_DIRECTIVES:
+            removed.append(stripped)
+            continue
+        kept_lines.append(line)
+    kept_lines.append("script-security 0")
+    return "\n".join(kept_lines) + "\n", removed
 
 
 class VpnProfileError(Exception):
@@ -157,6 +201,14 @@ def _import_text(
         raise VpnProfileError(
             f"«{source_label}» no parece un archivo de configuración de OpenVPN "
             "válido (faltan las directivas 'client' o 'remote')."
+        )
+
+    text, removed_directives = _strip_dangerous_directives(text)
+    if removed_directives:
+        log.warning(
+            "Perfil VPN «%s» (%s): se quitaron directivas potencialmente "
+            "peligrosas del .ovpn antes de guardarlo: %s",
+            display_name, source_label, ", ".join(removed_directives),
         )
 
     taken = {entry.get("tunnel") for entry in index.values() if isinstance(entry, dict)}
