@@ -34,9 +34,12 @@ from PySide6.QtWidgets import (
 )
 
 from core import vpn_client, vpn_profiles
+from core.logger import get_logger
 from ui.dialogs._common import _header, _panel
 from ui.dialogs.vpngate_picker import VpnGatePickerDialog
 from ui.visual import set_surface, set_variant
+
+log = get_logger(__name__)
 
 # Cada cuánto se relee el estado de la VPN mientras el diálogo está
 # abierto -- así se ve "Conectado" en verde sin tener que cerrar y
@@ -74,6 +77,19 @@ class _VpnWorker(QThread):
             result = self._func()
         except vpn_client.VpnClientError as exc:
             self.failed.emit(str(exc))
+        except Exception as exc:
+            # A propósito un "except Exception" amplio, con log -- ver el
+            # comentario de ui.app_lifecycle.disconnect_vpn_profiles sobre
+            # el mismo problema: subprocess.run() puede lanzar cosas que
+            # no son VpnClientError (p.ej. TimeoutExpired, o un
+            # UnicodeDecodeError si el nombre de usuario/ruta de Windows
+            # trae caracteres no ASCII). Sin este catch-all, ese fallo
+            # escapaba de _func() sin emitir succeeded ni failed, dejando
+            # el botón de conectar/desconectar deshabilitado para
+            # siempre (se deshabilita antes de lanzar el worker) sin
+            # ningún aviso ni rastro en el log.
+            log.exception("Fallo inesperado en una operación VPN en segundo plano")
+            self.failed.emit(str(exc) or "Error inesperado al comunicarse con OpenVPN.")
         else:
             self.succeeded.emit(result)
 

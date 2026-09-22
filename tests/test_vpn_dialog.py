@@ -134,6 +134,33 @@ def test_toggle_shows_a_warning_and_reenables_button_on_vpn_client_error(monkeyp
     assert dialog.vpn_toggle_btn.isEnabled() is True
 
 
+def test_toggle_shows_a_generic_warning_and_reenables_button_on_unexpected_exception(monkeypatch, app):
+    """_VpnWorker.run() debe atrapar cualquier excepción, no solo
+    VpnClientError -- ver su propio comentario: subprocess.run() puede
+    lanzar cosas como TimeoutExpired o UnicodeDecodeError que no son
+    VpnClientError. Antes de este fix, esto dejaba el botón deshabilitado
+    para siempre sin ningún aviso."""
+    monkeypatch.setattr(vpn_client, "status", lambda tunnel: False)
+
+    def _raise(*_a, **_k):
+        raise TimeoutError("openvpn-gui.exe no respondió a tiempo")
+
+    monkeypatch.setattr(vpn_client, "connect", _raise)
+    warnings = []
+    monkeypatch.setattr(
+        QMessageBox, "warning",
+        staticmethod(lambda *args, **kwargs: warnings.append(args[-1])),
+    )
+    dialog = _make_dialog(monkeypatch, app, profiles=[_PROFILE])
+    _wait_worker(dialog, app)
+
+    dialog._on_vpn_toggle()
+    _wait_worker(dialog, app)
+
+    assert warnings == ["openvpn-gui.exe no respondió a tiempo"]
+    assert dialog.vpn_toggle_btn.isEnabled() is True
+
+
 def test_delete_disconnects_off_thread_before_removing_the_profile(monkeypatch, app):
     monkeypatch.setattr(vpn_client, "status", lambda tunnel: True)
     disconnect_calls = []

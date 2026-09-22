@@ -9,7 +9,7 @@ este diálogo no toca vpn_profiles ni hace red aparte de list_servers().
 """
 from typing import Callable, List, Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QThread, Qt, Signal
 from PySide6.QtWidgets import (
     QDialog, QDialogButtonBox, QLabel, QLineEdit, QListWidget, QListWidgetItem, QVBoxLayout,
 )
@@ -25,6 +25,36 @@ def _format_entry(server: dict) -> str:
     return f"{pais}  —  {ping} ms  —  {speed_mbps:.1f} Mbps  —  {server.get('hostname', '')}"
 
 
+class _FetchWorker(QThread):
+    """Descarga la lista de servidores VPNGate en un hilo aparte.
+
+    fetch_servers() es una petición HTTP (hasta 10s de timeout, ver
+    core/vpngate.py) contra un tercero que puede no responder -- llamarla
+    tal cual desde __init__ (como antes) bloqueaba toda la ventana
+    mientras se esperaba, sin que ni siquiera llegara a verse el diálogo
+    abierto. Mismo patrón que ui.dialogs.vpn_dialog._VpnWorker, ya usado
+    para connect()/disconnect()/status() desde 8.6.5."""
+
+    succeeded = Signal(list)
+    failed = Signal(str)
+
+    def __init__(self, fetch_servers: Callable[[], List[dict]], parent=None):
+        super().__init__(parent)
+        self._fetch_servers = fetch_servers
+
+    def run(self) -> None:
+        from core.vpngate import VpnGateError
+
+        try:
+            servers = self._fetch_servers()
+        except VpnGateError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:
+            self.failed.emit(str(exc) or "Error inesperado al descargar la lista de servidores.")
+        else:
+            self.succeeded.emit(servers)
+
+
 class VpnGatePickerDialog(QDialog):
     """Lista de servidores VPNGate ya ordenada por puntuación (mejor
     primero, según el propio VPNGate). `fetch_servers` es inyectable
@@ -37,6 +67,8 @@ class VpnGatePickerDialog(QDialog):
         self._fetch_servers = fetch_servers or _vpngate.fetch_servers
         self._servers: List[dict] = []
         self.selected_server: Optional[dict] = None
+        self._fetch_worker: Optional[_FetchWorker] = None
+        self.finished.connect(self._wait_for_fetch_worker)
 
         set_surface(self, "dialog")
         self.setWindowTitle("Servidores gratuitos (VPNGate)")
@@ -79,18 +111,34 @@ class VpnGatePickerDialog(QDialog):
         self._load_servers()
 
     def _load_servers(self) -> None:
-        from core.vpngate import VpnGateError
+        worker = _FetchWorker(self._fetch_servers, self)
+        self._fetch_worker = worker
+        worker.succeeded.connect(self._on_fetch_succeeded)
+        worker.failed.connect(self._on_fetch_failed)
+        worker.finished.connect(self._on_fetch_worker_finished)
+        worker.start()
 
-        try:
-            self._servers = self._fetch_servers()
-        except VpnGateError as exc:
-            self.status_label.setText(f"No se pudo cargar la lista: {exc}")
-            return
+    def _on_fetch_worker_finished(self) -> None:
+        self._fetch_worker = None
+
+    def _on_fetch_succeeded(self, servers: List[dict]) -> None:
+        self._servers = servers
         if not self._servers:
             self.status_label.setText("VPNGate no tiene servidores disponibles ahora mismo.")
             return
         self.status_label.setText(f"{len(self._servers)} servidores disponibles.")
         self._apply_filter()
+
+    def _on_fetch_failed(self, message: str) -> None:
+        self.status_label.setText(f"No se pudo cargar la lista: {message}")
+
+    def _wait_for_fetch_worker(self) -> None:
+        """Igual que ui.dialogs.vpn_dialog.VpnDialog._wait_for_vpn_worker:
+        si el diálogo se cierra con la descarga todavía en marcha, hay
+        que esperar a que el QThread termine antes de dejar que Qt
+        destruya este QDialog."""
+        if self._fetch_worker is not None:
+            self._fetch_worker.wait()
 
     def _apply_filter(self) -> None:
         needle = self.filter_input.text().strip().casefold()
