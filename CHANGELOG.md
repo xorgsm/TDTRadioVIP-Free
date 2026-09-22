@@ -2,6 +2,35 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.7] — 2026-09-22
+
+### Security
+- **ALTO — un perfil VPN copiado a la carpeta de configuración
+  compartida de OpenVPN quedaba legible por cualquier otra cuenta de
+  Windows del grupo "OpenVPN Administrators" en el mismo PC**
+  (`core/vpn_client.py`, `core/vpn_profiles.py`): por diseño del
+  servicio interactivo de OpenVPN, cada `.ovpn` registrado se copia a
+  una carpeta de configuración única para toda la máquina
+  (`find_config_dir()`), cuya ACL concede acceso a todo el grupo local
+  "OpenVPN Administrators", no solo a quien copió cada archivo. En un
+  PC compartido, eso exponía las credenciales que trajera el `.ovpn`
+  (a veces claves privadas o un `auth-user-pass` de un proveedor de
+  pago, en el flujo de "Importar perfil (.ovpn)…") a cualquier otra
+  cuenta de ese grupo. Ahora `restrict_config_file_to_current_user()`
+  restringe la ACL de cada archivo recién copiado (`icacls
+  /inheritance:r`) al usuario de Windows actual más el servicio
+  interactivo (SYSTEM) -- sin pedir elevación, best-effort. Queda
+  documentado (README.md, docstring de `vpn_profiles.py`) el límite que
+  no puede resolver una ACL por archivo: los distintos "perfiles" de la
+  propia app bajo la MISMA cuenta de Windows siguen compartiendo esa
+  carpeta del sistema.
+
+### Tests
+- Cobertura nueva para `restrict_config_file_to_current_user()`
+  (`tests/test_vpn_client.py`) y para que `_register_with_openvpn()` la
+  invoque tras copiar cada perfil (`tests/test_vpn_profiles.py`).
+- 740 → 747 tests.
+
 ## [8.6.6] — 2026-09-22
 
 ### Security
