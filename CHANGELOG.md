@@ -2,6 +2,71 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.6] — 2026-09-22
+
+### Security
+- **CRÍTICO — un perfil VPN de VPNGate (o importado a mano) podía ejecutar
+  código arbitrario con los privilegios del servicio interactivo de
+  OpenVPN** (`core/vpn_profiles.py`, `_import_text()`): la única
+  validación de un `.ovpn` antes de escribirlo y registrarlo era
+  comprobar que contuviera las palabras "client" y "remote " -- nada
+  impedía que trajera directivas como `up`/`down`/`client-connect`/
+  `client-disconnect`/`tls-verify`/`auth-user-pass-verify` (ejecutan un
+  script externo) o `plugin` (carga una DLL arbitraria en el proceso de
+  OpenVPN), ni que subiera `script-security` para habilitarlas. VPNGate
+  es una lista pública de relays voluntarios sin ninguna curación del
+  contenido del `.ovpn` que reparten -- cualquiera puede anunciar un
+  servidor "rápido y bien puntuado" cuyo perfil, en cuanto el usuario lo
+  elige en el selector y pulsa "Conectar", ejecutaría lo que traiga esa
+  directiva con permisos elevados (el servicio interactivo de OpenVPN
+  corre así por diseño, ver el docstring de `_register_with_openvpn()`).
+  Misma familia de fallo que CVEs conocidos en otros clientes VPN de
+  consumo. Ahora `_strip_dangerous_directives()` quita esas directivas
+  de cualquier `.ovpn` (VPNGate o importado) antes de escribirlo a disco
+  y registrarlo con OpenVPN, y fuerza `script-security 0` al final del
+  archivo como cinturón de seguridad adicional -- así, aunque una
+  variante no contemplada se cuele, OpenVPN no ejecutará ningún
+  script/plugin de todos modos. Si un perfil traía alguna directiva
+  peligrosa, se avisa en el log (no se bloquea la importación: el
+  servidor puede seguir siendo perfectamente válido para conectar, solo
+  se le quita la parte capaz de ejecutar código).
+
+### Fixed
+- `ui/dialogs/vpn_dialog.py` (`_VpnWorker.run()`): solo atrapaba
+  `VpnClientError`, no cualquier excepción -- mismo bug ya encontrado y
+  arreglado antes en `ui/app_lifecycle.py::disconnect_vpn_profiles`
+  (`subprocess.run()` puede lanzar `TimeoutExpired` o
+  `UnicodeDecodeError`, entre otras, que no son `VpnClientError`) pero
+  no replicado en el `_VpnWorker` nuevo de la 8.6.5. Si eso ocurría, el
+  botón de conectar/desconectar quedaba deshabilitado para siempre (se
+  deshabilita antes de lanzar el worker) sin ningún aviso ni rastro en
+  el log. Ahora `run()` atrapa cualquier excepción, la registra y emite
+  `failed` igualmente para que la UI siempre se recupere.
+- **El selector de servidores VPNGate (`ui/dialogs/vpngate_picker.py`)
+  descargaba la lista de servidores de forma síncrona en el hilo de la
+  UI**, dentro de su propio `__init__` -- el mismo patrón de congelación
+  que las cuatro versiones anteriores (8.6.2-8.6.5) ya corrigieron para
+  `connect()`/`disconnect()`/`status()`, pero que se quedó sin aplicar
+  en este diálogo más nuevo: si VPNGate tardaba o no respondía, toda la
+  ventana se quedaba congelada hasta 10s sin que ni siquiera llegara a
+  verse el diálogo. Ahora la descarga corre en un `_FetchWorker`
+  (`QThread`), igual que `_VpnWorker` en `vpn_dialog.py`.
+
+### Tests
+- `tests/test_recorder.py`: primera cobertura de `core/recorder.py`
+  (grabación de streams con ffmpeg), antes en 0% -- ahora 91%. Cubre la
+  validación del esquema de la URL (protección contra selectores de
+  protocolo/demuxer de ffmpeg como `concat:`/`pipe:`/`subfile:` vía una
+  URL M3U maliciosa), el saneado del nombre de archivo, las ramas de
+  radio/TV y marca de agua, y la máquina de estados completa de
+  `stop()` (cierre agraciado → `terminate()` → `kill()`) con un
+  `FakeProcess`/`FakeClock` en vez de ffmpeg y tiempos de espera reales.
+- Cobertura nueva para `_strip_dangerous_directives()`
+  (`tests/test_vpn_profiles.py`) y para los dos fixes de arriba
+  (`tests/test_vpn_dialog.py`, `tests/test_vpngate_picker.py` --
+  este último no tenía ningún test hasta ahora).
+- 686 → 740 tests.
+
 ## [8.6.5] — 2026-09-18
 
 ### Fixed
