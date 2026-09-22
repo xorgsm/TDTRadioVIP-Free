@@ -13,6 +13,11 @@ def _redirect_profiles(monkeypatch, tmp_path):
     openvpn_config_dir = tmp_path / "openvpn_config"
     monkeypatch.setattr(vpn_client, "find_config_dir", lambda: openvpn_config_dir)
     monkeypatch.setattr(vpn_client, "rescan", lambda: None)
+    # Sin esto, cada test que importa un perfil lanzaría un icacls.exe
+    # real contra un archivo de tmp_path -- lento e innecesario aquí; el
+    # propio endurecimiento de la ACL se cubre aparte (ver
+    # test_register_with_openvpn_restricts_the_copied_file_to_the_current_user).
+    monkeypatch.setattr(vpn_client, "restrict_config_file_to_current_user", lambda path: True)
     return openvpn_config_dir
 
 
@@ -302,6 +307,24 @@ def test_strip_dangerous_directives_ignores_comments_mentioning_directive_names(
     limpio, quitadas = vpn_profiles._strip_dangerous_directives(ovpn)
     assert quitadas == []
     assert "# up /tmp/evil.sh" in limpio
+
+
+def test_register_with_openvpn_restricts_the_copied_file_to_the_current_user(monkeypatch, tmp_path):
+    """_register_with_openvpn() debe endurecer la ACL del .ovpn recién
+    copiado a la carpeta compartida de OpenVPN -- ver el docstring de
+    vpn_client.restrict_config_file_to_current_user()."""
+    openvpn_config_dir = _redirect_profiles(monkeypatch, tmp_path)
+    calls = []
+    monkeypatch.setattr(
+        vpn_profiles.vpn_client, "restrict_config_file_to_current_user",
+        lambda path: calls.append(path) or True,
+    )
+    source = _write_conf(tmp_path / "src")
+    try:
+        entry = vpn_profiles.import_profile("Suecia", source)
+        assert calls == [openvpn_config_dir / f"{entry['tunnel']}.ovpn"]
+    finally:
+        config._profile_dir_for.cache_clear()
 
 
 def test_import_profile_from_text_strips_malicious_directives_before_writing(monkeypatch, tmp_path):

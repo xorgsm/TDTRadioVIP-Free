@@ -2,17 +2,23 @@
 Perfiles VPN (OpenVPN) del perfil activo de la app.
 
 Cada perfil VPN es un .ovpn de OpenVPN de un servidor gratuito de VPNGate
-(core/vpngate.py) -- la app no opera servidores VPN propios ni admite
-traer una suscripción propia (bring-your-own, retirado tras 8.4.0), solo
-guarda el archivo y pide a openvpn-gui.exe que conecte/desconecte el
-túnel correspondiente (ver core/vpn_client.py). Sirve para acceder a
-listas públicas de TV/radio con restricción geográfica, conectando a un
-servidor del país de la lista.
+(core/vpngate.py) o importado a mano de otro proveedor gratuito
+(bring-your-own, reactivado en 8.6.0 junto a VPNGate) -- la app no opera
+servidores VPN propios, solo guarda el archivo y pide a openvpn-gui.exe
+que conecte/desconecte el túnel correspondiente (ver core/vpn_client.py).
+Sirve para acceder a listas públicas de TV/radio con restricción
+geográfica, conectando a un servidor del país de la lista.
 
 Igual que core/soulseek_account.py: JSON plano en la carpeta de datos del
 PERFIL activo (get_profile_data_dir()), mismo nivel de protección que el
 resto de datos de perfil ya existentes en el proyecto -- no es una
-regresión guardar aquí las credenciales que traiga el .ovpn.
+regresión guardar aquí las credenciales que traiga el .ovpn. Ojo: esto
+aplica a la copia que vive en la carpeta del perfil; la copia que se
+registra con OpenVPN (_register_with_openvpn(), más abajo) vive
+necesariamente en una carpeta compartida por toda la máquina, y no
+"por perfil" -- ver su propio docstring y el de
+vpn_client.restrict_config_file_to_current_user() para el límite real
+que queda ahí.
 
 A diferencia de la versión anterior con WireGuard, este módulo ya no es
 CRUD puro: OpenVPN conecta los túneles por NOMBRE desde una carpeta que
@@ -158,7 +164,15 @@ def _register_with_openvpn(dest: Path, tunnel: str) -> None:
     vpn_client.grant_config_dir_access() y se reintenta la copia una
     vez; si el usuario cancela el UAC o sigue fallando, se propaga el
     error y quien llama lo traduce en un VpnProfileError con
-    instrucciones."""
+    instrucciones.
+
+    Tras copiar, restringe la ACL del archivo (no de la carpeta entera,
+    que sigue compartida por diseño del servicio interactivo) para que
+    solo el usuario de Windows actual pueda leerlo -- ver el docstring
+    de vpn_client.restrict_config_file_to_current_user(). Best-effort:
+    un fallo ahí no debe impedir que el perfil quede registrado y
+    utilizable, solo deja la ACL heredada de la carpeta en vez de la
+    restringida."""
     config_dir = vpn_client.find_config_dir()
     config_dir.mkdir(parents=True, exist_ok=True)
     dest_in_config = config_dir / f"{tunnel}.ovpn"
@@ -168,6 +182,7 @@ def _register_with_openvpn(dest: Path, tunnel: str) -> None:
         if not vpn_client.grant_config_dir_access():
             raise
         shutil.copy2(dest, dest_in_config)
+    vpn_client.restrict_config_file_to_current_user(dest_in_config)
     vpn_client.rescan()
 
 

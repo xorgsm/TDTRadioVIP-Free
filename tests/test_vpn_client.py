@@ -420,3 +420,98 @@ def test_grant_config_dir_access_false_when_uac_cancelled(monkeypatch, tmp_path)
     monkeypatch.setattr(vpn_client, "find_config_dir", lambda: tmp_path / "config")
     monkeypatch.setattr(vpn_client, "_run_elevated", lambda file, parameters: None)
     assert vpn_client.grant_config_dir_access() is False
+
+
+# --------------------------------------------------------------------------
+# restrict_config_file_to_current_user(): un .ovpn copiado a
+# find_config_dir() (carpeta compartida por toda la máquina) debía quedar
+# legible por cualquier cuenta de Windows del grupo "OpenVPN
+# Administrators" -- estos tests cubren que se restrinja al usuario
+# actual + SYSTEM, sin elevación, y que un fallo de icacls no se propague
+# (best-effort, ver el docstring de la función).
+# --------------------------------------------------------------------------
+
+class _FakeCompletedProcess:
+    def __init__(self, returncode=0, stdout=b""):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = b""
+
+
+def test_restrict_config_file_grants_current_user_and_system(monkeypatch, tmp_path):
+    monkeypatch.setenv("USERNAME", "ana")
+    monkeypatch.setenv("USERDOMAIN", "EQUIPO")
+    calls = []
+
+    def _fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        return _FakeCompletedProcess(returncode=0)
+
+    monkeypatch.setattr(vpn_client.subprocess, "run", _fake_run)
+    target = tmp_path / "japon.ovpn"
+
+    assert vpn_client.restrict_config_file_to_current_user(target) is True
+    [cmd] = calls
+    assert cmd[0] == "icacls.exe"
+    assert str(target) in cmd
+    assert "/inheritance:r" in cmd
+    assert "EQUIPO\\ana:(R)" in cmd
+    assert "SYSTEM:(F)" in cmd
+
+
+def test_restrict_config_file_uses_bare_username_without_domain(monkeypatch, tmp_path):
+    monkeypatch.setenv("USERNAME", "ana")
+    monkeypatch.delenv("USERDOMAIN", raising=False)
+    calls = []
+    monkeypatch.setattr(
+        vpn_client.subprocess, "run",
+        lambda cmd, **kwargs: (calls.append(cmd), _FakeCompletedProcess(returncode=0))[1],
+    )
+
+    assert vpn_client.restrict_config_file_to_current_user(tmp_path / "x.ovpn") is True
+    assert "ana:(R)" in calls[0]
+
+
+def test_restrict_config_file_returns_false_without_raising_on_icacls_failure(monkeypatch, tmp_path):
+    monkeypatch.setenv("USERNAME", "ana")
+    monkeypatch.setattr(
+        vpn_client.subprocess, "run",
+        lambda cmd, **kwargs: _FakeCompletedProcess(returncode=5, stdout=b"Acceso denegado"),
+    )
+
+    assert vpn_client.restrict_config_file_to_current_user(tmp_path / "x.ovpn") is False
+
+
+def test_restrict_config_file_returns_false_when_username_is_missing(monkeypatch, tmp_path):
+    monkeypatch.delenv("USERNAME", raising=False)
+
+    def _boom(cmd, **kwargs):
+        raise AssertionError("no debería llamar a icacls sin saber el usuario actual")
+
+    monkeypatch.setattr(vpn_client.subprocess, "run", _boom)
+
+    assert vpn_client.restrict_config_file_to_current_user(tmp_path / "x.ovpn") is False
+
+
+def test_restrict_config_file_returns_false_on_subprocess_error(monkeypatch, tmp_path):
+    monkeypatch.setenv("USERNAME", "ana")
+
+    def _raise(cmd, **kwargs):
+        raise OSError("icacls.exe no encontrado")
+
+    monkeypatch.setattr(vpn_client.subprocess, "run", _raise)
+
+    assert vpn_client.restrict_config_file_to_current_user(tmp_path / "x.ovpn") is False
+
+
+def test_restrict_config_file_does_not_raise_on_timeout(monkeypatch, tmp_path):
+    import subprocess as subprocess_module
+
+    monkeypatch.setenv("USERNAME", "ana")
+
+    def _timeout(cmd, **kwargs):
+        raise subprocess_module.TimeoutExpired(cmd="icacls.exe", timeout=10)
+
+    monkeypatch.setattr(vpn_client.subprocess, "run", _timeout)
+
+    assert vpn_client.restrict_config_file_to_current_user(tmp_path / "x.ovpn") is False

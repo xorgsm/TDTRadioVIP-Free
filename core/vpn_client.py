@@ -189,6 +189,64 @@ def grant_config_dir_access() -> bool:
     return exit_code == 0
 
 
+def restrict_config_file_to_current_user(path: Path) -> bool:
+    """Bloquea el .ovpn recién copiado a find_config_dir() (carpeta
+    compartida por TODA la máquina, ver grant_config_dir_access()) para
+    que solo el usuario de Windows actual y el servicio interactivo
+    (corre como SYSTEM, ver el docstring del módulo) puedan leerlo.
+
+    Sin esto, cualquier OTRA cuenta de Windows que perteneciera al grupo
+    "OpenVPN Administrators" en el mismo PC podía leer el .ovpn -- y las
+    credenciales que traiga (a veces claves privadas o un
+    auth-user-pass de un proveedor de pago, en el flujo de "Importar
+    perfil (.ovpn)…"), porque la ACL de la carpeta entera concede acceso
+    a todo el grupo, no solo a quien copió cada archivo. Esto es
+    ortogonal a (y no sustituye a) el resto de datos de perfil de la
+    app, que nunca salen de la carpeta del perfil activo -- ver el
+    docstring de core/vpn_profiles.py.
+
+    No hace falta elevación (UAC): quien acaba de copiar el archivo ya
+    es su propietario, y el propietario siempre puede tocar la ACL de lo
+    suyo. Best-effort a propósito -- si icacls falla (versión de Windows
+    rara, política de grupo restrictiva...) el perfil sigue funcionando
+    igual que antes de este endurecimiento, solo que con la ACL heredada
+    de la carpeta compartida en vez de la restringida; no debe romper la
+    importación del perfil por esto."""
+    username = os.environ.get("USERNAME")
+    if not username:
+        return False
+    domain = os.environ.get("USERDOMAIN")
+    account = f"{domain}\\{username}" if domain else username
+    try:
+        result = subprocess.run(
+            [
+                "icacls.exe", str(path),
+                "/inheritance:r",
+                "/grant:r", f"{account}:(R)", "SYSTEM:(F)",
+            ],
+            creationflags=_CREATE_NO_WINDOW,
+            timeout=10,
+            check=False,
+            capture_output=True,
+            # Bytes, no text=True: decodificar con la codificación del
+            # sistema puede lanzar UnicodeDecodeError si icacls escribe
+            # algo fuera de ASCII (nombre de cuenta con acentos...), y
+            # eso NO es un OSError/SubprocessError -- se escaparía del
+            # except de abajo sin convertir a un simple "no se pudo
+            # restringir" (mismo problema ya visto en
+            # _openvpn_process_command_lines). Se decodifica a mano con
+            # errors="replace", que nunca lanza.
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("No se pudo restringir el acceso al .ovpn registrado en %s: %s", path, exc)
+        return False
+    if result.returncode != 0:
+        salida = (result.stdout or result.stderr or b"").decode("utf-8", errors="replace").strip()
+        log.warning("icacls no pudo restringir el acceso al .ovpn registrado en %s: %s", path, salida)
+        return False
+    return True
+
+
 def _run(exe: Path, *args: str) -> None:
     """Lanza `exe args` sin elevar.
 
