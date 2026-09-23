@@ -2,6 +2,13 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.7] — 2026-09-23
+
+### Chore
+- Bump de versión a 8.6.7 para mantener el número alineado con la edición
+  completa (el fix de ACL en la carpeta compartida de OpenVPN de esta
+  versión no aplica: la edición Free no incluye VPN).
+
 ## [8.6.6] — 2026-09-22
 
 ### Tests
