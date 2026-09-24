@@ -2,6 +2,34 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [Unreleased]
+
+Sin cambios de comportamiento para el usuario final todavía -- solo
+cobertura de tests. Se documenta aquí para no perder el rastro; esta
+sección se renombrará a la próxima versión (y se fusionará con el
+changelog del fix/feature real que la acompañe) cuando toque publicar,
+siguiendo la misma convención que agrupó la cobertura de
+`core/recorder.py` dentro de la entrada 8.6.6.
+
+### Tests
+- Cobertura nueva para `core/caster.py` (`tests/test_caster.py`):
+  `guess_stream_content_type()`, `pychromecast_available()`,
+  `_local_lan_ip()`, el servidor HTTP `LocalFileServer`/
+  `_SingleFileHandler` probado contra un servidor real en `127.0.0.1`
+  (token HMAC, rangos 206/416, HEAD, 404 si el archivo desaparece,
+  reinicio del servidor), `CastDiscoveryWorker` (con `pychromecast`
+  simulado vía `sys.modules`) y `CastSession`. 0% → 99% de cobertura del
+  módulo (quedan 3 líneas sin cubrir: manejo de `BrokenPipeError`/corte
+  de red a mitad de un streaming, difícil de reproducir de forma fiable).
+- Se investigó `core/license.py` (marcaba 0% en el reporte de
+  cobertura): es un falso positivo -- el módulo se distribuye compilado
+  a `.pyd` (Cython, ver `setup_license.py`) y Python prefiere ese
+  binario sobre el `.py` fuente al importar, así que `coverage.py` no
+  puede instrumentar las líneas que lee. `tests/test_license.py` ya
+  existe y es exhaustivo (27 tests contra el `.pyd` real); no hacía
+  falta ningún test nuevo ahí.
+- 747 → 792 tests.
+
 ## [8.6.7] — 2026-09-22
 
 ### Security
