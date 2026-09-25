@@ -2,6 +2,36 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.12] — 2026-09-25
+
+### Fixed
+- **Cambiar la URL de la guía EPG en Configuración no surtía efecto
+  durante horas** (`core/epg.py`): la caché de la guía (válida 6 h) no
+  guardaba de qué URL venía, así que al guardar una URL nueva se seguía
+  mostrando la guía de la anterior hasta que caducaba -- y si fallaba la
+  red, también se mostraba la de otra URL. Ahora la caché recuerda su
+  URL de origen y solo se reutiliza para esa misma URL. La caché de
+  versiones anteriores se descarta una vez y se descarga de nuevo.
+- **Una sola entrada dañada en la lista de canales personalizados podía
+  hacer perderla entera** (`core/channels.py`): si una entrada no
+  encajaba, la lista completa se leía como vacía, y al añadir después un
+  canal nuevo se guardaba encima solo ese canal, perdiendo todos los
+  demás. Ahora solo se descartan las entradas dañadas. Lo mismo para la
+  caché de la lista pública, los canales ocultos y el contador de fallos
+  por canal, que además ya no fallan con archivos que no son texto UTF-8
+  válido ni con contadores guardados de tipo incorrecto.
+
+### Tests
+- Cobertura nueva de `core/epg.py` (`tests/test_epg_fetch.py`):
+  normalización de identificadores de canal, parseo XMLTV con alias de
+  `display-name`, caché por URL (fresca, caducada, de otra URL, formato
+  antiguo, corrupta) y "ahora/siguiente".
+- Cobertura nueva de `core/channels.py` (`tests/test_channels_storage.py`):
+  parseo M3U con URLs alternativas, descarga con caché por URL, lista
+  personalizada, ocultos y contador de fallos, con archivos corruptos.
+- `core/epg.py` 53% → 92%, `core/channels.py` 60% → 89%.
+- 915 → 972 tests.
+
 ## [8.6.11] — 2026-09-25
 
 ### Fixed
