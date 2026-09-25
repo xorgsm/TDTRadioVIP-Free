@@ -2,7 +2,6 @@
 Editor de listas M3U: carga una lista, permite renombrar, reordenar,
 eliminar y comprobar la validez de las entradas, y guarda el resultado.
 """
-from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
@@ -142,12 +141,7 @@ class M3UEditorDialog(QDialog):
     def _fetch_and_parse_source(source: str):
         """Lee y parsea una lista fuera del hilo de interfaz."""
         try:
-            if source.lower().startswith(("http://", "https://")):
-                response = requests.get(source, timeout=15)
-                response.raise_for_status()
-                text = response.text
-            else:
-                text = Path(source).read_text(encoding="utf-8", errors="ignore")
+            text = tv_channels.read_playlist_source(source)
         except (OSError, requests.RequestException, ValueError):
             return None
         return tv_channels.parse_m3u(text, deduplicate=False)
