@@ -51,6 +51,15 @@ class DLNADevice:
 _MAX_DESCRIPTION_BYTES = 512 * 1024
 
 
+def _url_points_to(url: str, expected_ip: str) -> bool:
+    """True si `url` es http(s) y su host es exactamente `expected_ip`."""
+    try:
+        partes = urlsplit(url)
+    except ValueError:
+        return False
+    return partes.scheme in ("http", "https") and partes.hostname == expected_ip
+
+
 def _ssdp_search(timeout: float = 4.0) -> list:
     """Manda un M-SEARCH SSDP y devuelve pares (LOCATION, ip_que_respondió)."""
     msg = (
@@ -100,12 +109,13 @@ def _describe_device(location: str, expected_ip: str):
     anunciar un LOCATION apuntando a una dirección interna arbitraria y la
     app enviaría después peticiones GET/SOAP a esa URL en cuanto el
     usuario intentara castear (SSRF vía descubrimiento de dispositivos).
+
+    La misma comprobación se aplica al controlURL que trae el XML: si
+    viniera absoluto (o relativo al esquema, "//otro-host/..."), urljoin()
+    lo devolvería tal cual y las peticiones SOAP irían a ese otro host,
+    saltándose el filtro de LOCATION.
     """
-    try:
-        host = urlsplit(location).hostname
-    except ValueError:
-        host = None
-    if not host or host != expected_ip:
+    if not _url_points_to(location, expected_ip):
         log.debug(
             "LOCATION %s no coincide con la IP %s que respondió al SSDP; se descarta",
             location, expected_ip,
@@ -135,10 +145,16 @@ def _describe_device(location: str, expected_ip: str):
         if "AVTransport" in service_type:
             control_path = service.findtext(f"{ns}controlURL")
             if control_path:
-                control_url = urljoin(location, control_path)
+                control_url = urljoin(location, control_path.strip())
             break
 
     if not control_url:
+        return None
+    if not _url_points_to(control_url, expected_ip):
+        log.debug(
+            "controlURL %s de %s no apunta a la IP %s del dispositivo; se descarta",
+            control_url, location, expected_ip,
+        )
         return None
     return DLNADevice(name=friendly, location=location, control_url=control_url)
 
