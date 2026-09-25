@@ -166,8 +166,16 @@ class Mp3TagWriteWorker(QThread):
         # nombre de archivo, y con .tmp falla con "Unable to find a suitable
         # output format". mkstemp también evita colisión si dos guardados
         # del mismo archivo llegaran a solaparse.
-        fd, output_tmp = tempfile.mkstemp(prefix="tdtvip_tag_", suffix=ext or ".mp3", dir=dest_dir)
-        os.close(fd)
+        # MP3 en una carpeta sin permiso de escritura (USB protegido,
+        # carpeta de sistema...): sin este except, el OSError mataría el
+        # hilo sin emitir failed y "Guardar" quedaría desactivado para siempre.
+        try:
+            fd, output_tmp = tempfile.mkstemp(prefix="tdtvip_tag_", suffix=ext or ".mp3", dir=dest_dir)
+            os.close(fd)
+        except OSError as exc:
+            log.warning("No se pudo crear el temporal en %s", dest_dir, exc_info=True)
+            self.failed.emit(f"No se puede escribir en la carpeta del archivo: {exc}")
+            return
 
         cmd = build_write_tags_command(ffmpeg, self.path, output_tmp, self.tags)
         try:

@@ -216,8 +216,16 @@ class AudioEditWorker(QThread):
             self.failed.emit(f"No se pudo crear la carpeta de destino: {exc}")
             return
 
-        fd, output_tmp = tempfile.mkstemp(prefix="tdtvip_edit_", suffix=".mp3", dir=dest_dir)
-        os.close(fd)
+        # makedirs no falla si la carpeta ya existe aunque sea de solo
+        # lectura -- sin este except, el OSError de mkstemp mataría el hilo
+        # sin emitir failed y la UI se quedaría esperando para siempre.
+        try:
+            fd, output_tmp = tempfile.mkstemp(prefix="tdtvip_edit_", suffix=".mp3", dir=dest_dir)
+            os.close(fd)
+        except OSError as exc:
+            log.warning("No se pudo crear el temporal en %s", dest_dir, exc_info=True)
+            self.failed.emit(f"No se puede escribir en la carpeta de destino: {exc}")
+            return
         cmd = build_join_command(self.segments, self.fade_seconds, output_tmp, ffmpeg)
 
         # stderr a un archivo, no a un segundo PIPE: leyendo stdout (progreso)

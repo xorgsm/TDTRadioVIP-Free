@@ -117,10 +117,19 @@ class AudioConvertWorker(QThread):
 
     def _convert_one(self, ffmpeg: str, input_path: str):
         output_path = build_output_path(input_path, self.dest_dir)
-        fd, output_tmp = tempfile.mkstemp(
-            prefix="tdtvip_conv_", suffix=".mp3", dir=self.dest_dir
-        )
-        os.close(fd)
+        # La carpeta puede existir (makedirs no falla) y aun así no admitir
+        # archivos nuevos -- USB protegido, carpeta de sistema... Sin este
+        # except, el OSError mataría el hilo sin emitir file_failed ni
+        # finished_all, y el panel se quedaría esperando para siempre.
+        try:
+            fd, output_tmp = tempfile.mkstemp(
+                prefix="tdtvip_conv_", suffix=".mp3", dir=self.dest_dir
+            )
+            os.close(fd)
+        except OSError as exc:
+            log.warning("No se pudo crear el temporal en %s", self.dest_dir, exc_info=True)
+            self.file_failed.emit(input_path, f"No se puede escribir en la carpeta de destino: {exc}")
+            return
 
         cmd = _build_command(ffmpeg, input_path, output_tmp)
         try:
