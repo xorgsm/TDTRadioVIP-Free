@@ -8,7 +8,7 @@ tolerancia hacia atrás, por si la app estaba cerrada justo en ese momento).
 
 Coder By X@R
 """
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass, fields
 from datetime import datetime, timedelta
 from typing import List
 
@@ -52,9 +52,14 @@ def load_reminders() -> List[Reminder]:
         if not isinstance(item, dict):
             continue
         try:
-            resultado.append(Reminder(**item))
+            aviso = Reminder(**item)
         except TypeError:
             continue  # entrada con campos que no encajan; se descarta sola
+        # Todos los campos deben ser str: una hora numérica o nula (archivo
+        # editado a mano o dañado) haría que parse_xmltv_time() lanzara
+        # AttributeError en cada tick del timer de ui/tray_controller.py.
+        if all(type(getattr(aviso, f.name)) is str for f in fields(aviso)):
+            resultado.append(aviso)
     return resultado
 
 

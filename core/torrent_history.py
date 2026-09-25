@@ -8,12 +8,11 @@ que core/history.py (canales/radio), pero para descargas de torrents.
 
 Coder By X@R
 """
-import json
 from datetime import datetime
 from typing import List
 
 from core.config import get_profile_data_dir
-from core.json_store import write_json_atomic
+from core.json_store import read_json, write_json_atomic
 
 TORRENT_HISTORY_FILE = "torrent_history.json"
 MAX_ENTRIES = 200
@@ -25,19 +24,24 @@ def _path():
 
 def load_history() -> List[dict]:
     """Devuelve el historial guardado, del más reciente al más antiguo."""
-    path = _path()
-    if not path.exists():
-        return []
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return []
+    # read_json (y no json.loads a mano, como antes) para cubrir también un
+    # archivo que ni siquiera es UTF-8 válido: UnicodeDecodeError no es
+    # JSONDecodeError ni OSError, y reventaba la construcción del panel.
+    data = read_json(_path(), [])
     if not isinstance(data, list):
         return []
-    return [
-        e for e in data
-        if isinstance(e, dict) and e.get("name") and e.get("path")
-    ]
+    return [e for e in data if _is_valid_entry(e)]
+
+
+def _is_valid_entry(e) -> bool:
+    """name/path str no vacíos y size entero -- ui/torrent_panel.py los
+    muestra y los usa como ruta directamente, sin más comprobaciones."""
+    return (
+        isinstance(e, dict)
+        and isinstance(e.get("name"), str) and bool(e["name"])
+        and isinstance(e.get("path"), str) and bool(e["path"])
+        and type(e.get("size", 0)) is int
+    )
 
 
 def _save(history: List[dict]) -> None:

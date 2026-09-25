@@ -31,6 +31,8 @@ def load_account() -> Optional[dict]:
         return None
     username = data.get("username")
     password = data.get("password")
+    if not isinstance(username, str) or not isinstance(password, str):
+        return None
     if not username or not password:
         return None
     return {"username": username, "password": password}
