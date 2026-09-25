@@ -2,16 +2,31 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
-## [Unreleased]
+## [8.6.8] — 2026-09-25
 
-Sin cambios de comportamiento para el usuario final todavía -- solo
-cobertura de tests. Se documenta aquí para no perder el rastro; esta
-sección se renombrará a la próxima versión (y se fusionará con el
-changelog del fix/feature real que la acompañe) cuando toque publicar,
-siguiendo la misma convención que agrupó la cobertura de
-`core/recorder.py` dentro de la entrada 8.6.6.
+### Security
+- **MEDIO — un dispositivo DLNA hostil en la red local podía redirigir
+  las peticiones SOAP de "Enviar a TV" a cualquier otro host**
+  (`core/dlna_caster.py`, `_describe_device()`): el filtro anti-SSRF
+  comprobaba que el `LOCATION` del anuncio SSDP apuntara a la IP que
+  respondió, pero el `controlURL` que venía dentro del XML de
+  descripción se combinaba con `urljoin()` sin validar -- si era
+  absoluto (`http://192.168.1.1/...`) o relativo al esquema
+  (`//otro-host/...`), `urljoin()` lo devolvía tal cual, y al castear la
+  app enviaba los POST `SetAVTransportURI`/`Play`/`Stop` a ese otro host
+  (el router, un servicio en `127.0.0.1`, etc.). Ahora `LOCATION` y
+  `controlURL` pasan la misma comprobación (`_url_points_to()`): esquema
+  `http`/`https` y host idéntico a la IP que respondió al SSDP; si no, el
+  dispositivo se descarta.
 
 ### Tests
+- Cobertura nueva para `core/dlna_caster.py` (`tests/test_dlna_caster.py`):
+  validación de `LOCATION` y `controlURL` frente a hosts/esquemas
+  hostiles, tamaño máximo y XML inválido de la descripción,
+  `discover_dlna_devices()`, `DLNADiscoveryWorker` y el control SOAP de
+  `DLNASession` (escapado de URL/título, traducción de errores, `Stop` al
+  desconectar). 0% → 81% de cobertura del módulo (lo que queda sin cubrir
+  es el socket multicast de `_ssdp_search()`).
 - Cobertura nueva para `core/caster.py` (`tests/test_caster.py`):
   `guess_stream_content_type()`, `pychromecast_available()`,
   `_local_lan_ip()`, el servidor HTTP `LocalFileServer`/
@@ -28,7 +43,7 @@ siguiendo la misma convención que agrupó la cobertura de
   puede instrumentar las líneas que lee. `tests/test_license.py` ya
   existe y es exhaustivo (27 tests contra el `.pyd` real); no hacía
   falta ningún test nuevo ahí.
-- 747 → 792 tests.
+- 747 → 812 tests.
 
 ## [8.6.7] — 2026-09-22
 
