@@ -93,11 +93,20 @@ class AudioPreviewPlayer(QObject):
         # ctypes/libVLC no pueden procesar propagaba la excepción sin
         # control en vez de convertirse en error_occurred, como sí hace el
         # resto de este archivo.
+        media = None
         try:
             media = self.instance.media_new(path)
             self.media_player.set_media(media)
         except Exception:
             log.warning("No se pudo cargar %r para la vista previa de audio", path, exc_info=True)
+            # Si media_new() funcionó pero set_media() no, ese Media nuevo
+            # no lo tiene nadie más: sin liberarlo, cada intento fallido
+            # dejaría un objeto nativo huérfano en libVLC.
+            if media is not None:
+                try:
+                    media.release()
+                except Exception:
+                    pass
             self.error_occurred.emit("No se pudo cargar el archivo para la vista previa.")
             return False
         if self._media_actual is not None:
@@ -145,8 +154,22 @@ class AudioPreviewPlayer(QObject):
                 log.warning("No se pudo liberar el Media de la vista previa al cerrar", exc_info=True)
             self._media_actual = None
         if self.media_player is not None:
+            # Desenganchar antes de liberar (mismo motivo que en
+            # VLCPlayer.release()): este QObject muere con el panel del
+            # editor, y un callback tardío de libVLC no puede llegar ya a él.
+            try:
+                events = self.media_player.event_manager()
+                events.event_detach(vlc.EventType.MediaPlayerEncounteredError)
+                events.event_detach(vlc.EventType.MediaPlayerEndReached)
+            except Exception:
+                log.warning("No se pudieron desenganchar los eventos de la vista previa", exc_info=True)
+            # stop() y release() por separado: si stop() falla, el
+            # media_player tiene que liberarse igualmente.
             try:
                 self.media_player.stop()
+            except Exception:
+                log.warning("No se pudo parar la vista previa al cerrar", exc_info=True)
+            try:
                 self.media_player.release()
             except Exception:
                 log.warning("No se pudo liberar el media_player de la vista previa al cerrar", exc_info=True)
