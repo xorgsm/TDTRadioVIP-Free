@@ -2,6 +2,33 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.11] — 2026-09-25
+
+### Fixed
+- **Un archivo de avisos EPG dañado dejaba de mostrar todos los avisos
+  "Empieza ahora"** (`core/epg_reminders.py`): una hora numérica o vacía
+  (archivo editado a mano o dañado) provocaba un error en cada
+  comprobación periódica. Ahora esas entradas se descartan al cargar,
+  igual que las grabaciones programadas desde 8.6.10.
+- **Un historial de torrents dañado impedía abrir el panel de
+  Torrents** (`core/torrent_history.py`): si el archivo ni siquiera era
+  texto UTF-8 válido, el error no se capturaba. Ahora se lee con el
+  mismo lector tolerante que el resto de datos de perfil, y se descartan
+  entradas con nombre, ruta o tamaño de tipo incorrecto.
+- **Cuenta de Soulseek con datos de tipo incorrecto**
+  (`core/soulseek_account.py`): usuario o contraseña que no sean texto
+  se tratan como "sin cuenta guardada" en vez de pasarse al cliente.
+
+### Tests
+- Cobertura nueva para `core/epg_reminders.py`,
+  `core/torrent_history.py` y `core/soulseek_account.py`
+  (`tests/test_epg_reminders.py`, `tests/test_torrent_history.py`,
+  `tests/test_soulseek_account.py`): persistencia, duplicados, límite
+  del historial, disparo único de avisos con margen de tolerancia, y
+  archivos corruptos o con tipos incorrectos. 30% / 0% / 0% → 97% / 95%
+  / 100%.
+- 889 → 915 tests.
+
 ## [8.6.10] — 2026-09-25
 
 ### Fixed
