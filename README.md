@@ -1,4 +1,7 @@
-# TDT & Radio VIP 8.1
+# TDT & Radio VIP
+
+Versión actual: la de `APP_VERSION` en `core/config.py` (historial completo
+en `CHANGELOG.md`; cómo publicar una versión nueva, en `RELEASE.md`).
 
 Aplicación de escritorio para Windows construida con Python, PySide6 y VLC.
 Reúne televisión, radio, EPG, podcasts, grabaciones y herramientas multimedia.

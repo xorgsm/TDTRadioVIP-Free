@@ -107,9 +107,12 @@ En **cada** checkout (este repo y el de Free) hay que tocar:
 Requiere: Python con `PySide6`, `pyinstaller`, `python-vlc`, `requests`
 instalados; VLC de 64 bits instalado en
 `C:\Program Files\VideoLAN\VLC\libvlc.dll` (o la ruta x86); Inno Setup 6
-— en esta máquina vive en
+— según el equipo vive en sitios distintos: en el PC original,
 `C:\Users\xor\AppData\Local\Programs\Inno Setup 6\ISCC.exe` (**no** en
-`Program Files`, por eso cuesta encontrarlo con búsquedas típicas).
+`Program Files`, por eso cuesta encontrarlo con búsquedas típicas); en el
+PC de trabajo actual (desde la 8.6.14),
+`C:\Program Files (x86)\Inno Setup 6\ISCC.exe`. Comprueba las tres rutas
+(`%LOCALAPPDATA%\Programs`, `Program Files (x86)`, `Program Files`).
 
 ```bash
 rm -rf build dist
@@ -213,10 +216,19 @@ corta + el SHA-256 del instalador en el cuerpo del texto + apartado de
   todo el changelog de VIP ahí; entradas VIP-only (p. ej. sobre
   `core/license.py`, hardware ID) no aplican a la edición Free y
   confundirían.
-- Inno Setup en esta máquina está instalado en
-  `%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe`, **no** en
-  `C:\Program Files`, así que una búsqueda ingenua en las rutas típicas
-  falla aunque sí esté instalado.
+- Inno Setup no está siempre en el mismo sitio: en el PC original, en
+  `%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe`; en el actual, en
+  `C:\Program Files (x86)\Inno Setup 6\ISCC.exe`. Una búsqueda en una
+  sola ruta típica puede fallar aunque sí esté instalado.
+- Carpetas por versión: cada versión publicada se trabaja en una copia
+  propia del proyecto (`D:\clauder proyectos\TDTRadioVIP_vX.Y.Z`),
+  copiada de la anterior con su `.git` y sus archivos no versionados
+  (p. ej. el `.pyd` de licencia), sin `build/`, `dist/` ni
+  `installer_output/`, que se regeneran al compilar.
+- Arreglos publicados en la edición completa sin release propia
+  (8.6.8–8.6.13) se llevan juntos a `TDTRadioVIP-Free` en la siguiente
+  versión que sí se publica (8.6.14), con una sola entrada de CHANGELOG
+  en Free que los resume.
 - El instalador combinado (`TDTRadioVIP_Setup.iss`) necesita
   `dist\TDTRadioVIP\` **y** `dist\TDTRadioVIP_Free\` presentes a la vez
   en la raíz del proyecto — compila los dos `.spec` antes de lanzar
