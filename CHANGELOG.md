@@ -2,6 +2,33 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.10] — 2026-09-25
+
+### Fixed
+- **Borrar o desactivar una grabación recurrente no cancelaba la de
+  hoy si ya estaba programada** (`core/recurring_recordings.py`): la
+  grabación concreta de cada día se crea en cuanto la app comprueba las
+  reglas (cada 30 s), así que al borrar o desactivar la regla más tarde
+  esa grabación seguía pendiente y arrancaba igualmente a su hora. Ahora
+  se cancela junto con la regla (si ya estaba grabando, se deja terminar
+  a su hora), y reactivar la regla el mismo día la vuelve a programar.
+- **Un archivo de grabaciones programadas con datos de tipo incorrecto
+  bloqueaba todas las grabaciones programadas**
+  (`core/recording_schedule.py`): una hora numérica o vacía (archivo
+  editado a mano o dañado) provocaba un error en cada comprobación
+  periódica, que dejaba de arrancar y parar cualquier grabación. Ahora
+  esas entradas se descartan al cargar, igual que ya se hacía con las
+  reglas recurrentes.
+
+### Tests
+- Cobertura nueva para `core/recording_schedule.py` y
+  `core/recurring_recordings.py` (`tests/test_recording_schedule.py`,
+  `tests/test_recurring_recordings.py`): persistencia, entradas
+  inválidas, ciclo `pending → recording → done/error` con márgenes de
+  inicio, validación de reglas, sincronización diaria (incluido cruce de
+  medianoche) y cancelación al borrar/desactivar. 40% / 37% → 98% / 96%.
+- 858 → 889 tests.
+
 ## [8.6.9] — 2026-09-25
 
 ### Fixed
