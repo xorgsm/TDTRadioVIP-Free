@@ -2,6 +2,24 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.14] — 2026-09-25
+
+### Fixed
+- **La vista previa de audio del editor de MP3 perdía memoria al fallar
+  la carga de un archivo, y su cierre no era robusto**
+  (`player/audio_preview.py`): si libVLC rechazaba un archivo después de
+  abrirlo, ese objeto nunca se liberaba. Al cerrar el panel, un fallo al
+  parar la reproducción impedía liberar el reproductor, y los eventos de
+  libVLC no se desenganchaban antes de liberarlo. Mismo arreglo que el
+  reproductor principal en 8.6.13.
+
+### Tests
+- Cobertura nueva para `player/audio_preview.py`
+  (`tests/test_audio_preview.py`): carga, reproducción, posición,
+  señales desde libVLC y cierre. 0% → 84%. El libVLC simulado se
+  comparte ahora en `tests/vlc_fakes.py`.
+- 992 → 1004 tests.
+
 ## [8.6.13] — 2026-09-25
 
 ### Fixed
