@@ -2,6 +2,28 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.13] — 2026-09-25
+
+### Fixed
+- **Un fallo al parar VLC durante el cierre podía dejar la app colgada
+  al salir** (`player/vlc_player.py`, `VLCPlayer.release()`): todo el
+  cierre del reproductor iba en un único bloque, así que si fallaba el
+  primer paso (parar la reproducción) se saltaban los demás, incluida la
+  liberación de la instancia de libVLC, cuyos hilos internos pueden
+  retrasar o colgar el cierre del proceso. Ahora cada paso se intenta por
+  separado. Además, antes de liberar el reproductor se desenganchan sus
+  eventos, igual que ya se hacía al cambiar de canal.
+
+### Tests
+- Cobertura nueva para `player/vlc_player.py` (`tests/test_vlc_player.py`)
+  con un libVLC simulado -- no hace falta VLC instalado: arranque con y
+  sin libVLC, zapeo (reproductor nuevo en cada canal, liberación del
+  medio anterior, volumen y silencio conservados), señales desde los
+  callbacks de libVLC, recorrido y liberación de la lista de pistas,
+  modo solo audio, avance/retroceso, información técnica y cierre.
+  19% → 79%.
+- 972 → 992 tests.
+
 ## [8.6.12] — 2026-09-25
 
 ### Fixed
