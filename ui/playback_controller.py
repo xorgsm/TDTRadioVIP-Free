@@ -71,8 +71,7 @@ class PlaybackController:
         alternate_urls=None,
     ):
         win = self.win
-        if win.recorder.is_recording:
-            self.toggle_recording()
+        self._stop_manual_recording()
 
         win._playback_token += 1
         win.player.stop()
@@ -388,8 +387,7 @@ class PlaybackController:
 
     def stop_playback(self):
         win = self.win
-        if win.recorder.is_recording:
-            self.toggle_recording()
+        self._stop_manual_recording()
         win.player.stop()
         win.equalizer.stop()
         self._set_play_button_state(paused=False)
@@ -475,6 +473,18 @@ class PlaybackController:
             win.equalizer.stop()
 
     # ---------- Grabación ----------
+
+    def _stop_manual_recording(self):
+        """Para la grabación en curso al cambiar de canal o parar, pero solo
+        si es MANUAL (graba "lo que estás viendo"). Una grabación
+        programada arrancó sola, con su propio canal y hora de fin (ver
+        ui.tray_controller): antes, zapear o pulsar "parar" la cortaba y la
+        daba por terminada aunque no tuviera nada que ver con lo que se
+        estaba viendo. Para cortarla a mano sigue estando el botón de
+        grabar (toggle_recording)."""
+        win = self.win
+        if win.recorder.is_recording and win._scheduled_recording_active is None:
+            self.toggle_recording()
 
     def toggle_recording(self):
         win = self.win

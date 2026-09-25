@@ -2,6 +2,20 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.15] — 2026-09-25
+
+### Fixed
+- **Cambiar de canal o pulsar "parar" cortaba una grabación programada
+  en curso** (`ui/playback_controller.py`): ahora solo se para la
+  grabación manual; la programada (desde la guía EPG o una regla
+  recurrente) sigue hasta su hora de fin, y se puede cortar a mano con
+  el botón de grabar.
+
+### Tests
+- Primera cobertura de la interfaz: `ui/tray_controller.py` (grabaciones
+  programadas y avisos EPG) y la lógica de `ui/playback_controller.py`.
+- 298 → 334 tests.
+
 ## [8.6.14] — 2026-09-25
 
 ### Fixed
