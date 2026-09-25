@@ -121,9 +121,27 @@ def add_rule(channel_name: str, channel_url: str, days: List[int], start_time: s
     return rule
 
 
+def _tvg_id(rule_id: str) -> str:
+    return f"recurring:{rule_id}"
+
+
+def _cancel_pending_instance(rule_id: str) -> None:
+    """Quita la grabación concreta de hoy que sync_into_schedule() ya
+    hubiera creado para esta regla y que aún no ha arrancado -- sin esto,
+    borrar o desactivar la regla no evitaba que esa grabación arrancara
+    igualmente a su hora. Si se quitó, se olvida también que la regla ya
+    se sincronizó hoy, para que reactivarla el mismo día la vuelva a
+    programar. Una grabación ya en curso no se toca: termina a su hora."""
+    if recording_schedule.remove_pending_by_tvg_id(_tvg_id(rule_id)):
+        estado = _load_sync_state()
+        if estado.pop(rule_id, None) is not None:
+            _save_sync_state(estado)
+
+
 def remove_rule(rule_id: str) -> List[RecurringRule]:
     rules = [r for r in load_rules() if r.id != rule_id]
     _save_rules(rules)
+    _cancel_pending_instance(rule_id)
     return rules
 
 
@@ -135,6 +153,8 @@ def set_rule_enabled(rule_id: str, enabled: bool) -> List[RecurringRule]:
         if r.id == rule_id:
             r.enabled = enabled
     _save_rules(rules)
+    if not enabled:
+        _cancel_pending_instance(rule_id)
     return rules
 
 
@@ -217,7 +237,7 @@ def sync_into_schedule(now: Optional[datetime] = None) -> None:
             continue  # una regla inválida no impide procesar las siguientes
 
         recording_schedule.add_scheduled(recording_schedule.ScheduledRecording(
-            tvg_id=f"recurring:{rule.id}",
+            tvg_id=_tvg_id(rule.id),
             channel_name=rule.channel_name,
             channel_url=rule.channel_url,
             title=f"Grabación recurrente: {rule.channel_name}",
