@@ -12,7 +12,6 @@ con cómo se construye o pinta la ventana.
 Coder By X@R
 """
 import json
-from pathlib import Path
 
 import requests
 from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox
@@ -363,12 +362,7 @@ class LibraryController:
         problema en llamarla desde este hilo.
         """
         try:
-            if source.lower().startswith(("http://", "https://")):
-                resp = requests.get(source, timeout=15)
-                resp.raise_for_status()
-                text = resp.text
-            else:
-                text = Path(source).read_text(encoding="utf-8", errors="ignore")
+            text = tv_channels.read_playlist_source(source)
         except (requests.RequestException, OSError):
             return None
         return tv_channels.parse_m3u(text)

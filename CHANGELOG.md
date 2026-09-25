@@ -2,6 +2,22 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.16] — 2026-09-25
+
+### Fixed
+- **Importar una lista M3U perdía o estropeaba los acentos**
+  (`core/channels.py`, `ui/library_controller.py`): una lista guardada en
+  "ANSI" de Windows perdía las letras acentuadas ("Canción" → "Cancin"),
+  y una lista UTF-8 de un servidor que no indicaba la codificación salía
+  con caracteres raros ("CanciÃ³n"). Ahora se detecta la codificación
+  (UTF-8 con o sin BOM, o Windows-1252).
+- **Una lista M3U con BOM y sin cabecera `#EXTM3U` perdía su primer
+  canal** (`core/channels.py`).
+
+### Tests
+- Cobertura nueva de `ui/library_controller.py` y de las codificaciones
+  de listas M3U. 334 → 354 tests.
+
 ## [8.6.15] — 2026-09-25
 
 ### Fixed

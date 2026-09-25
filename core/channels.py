@@ -7,6 +7,7 @@ la comunidad: https://github.com/iptv-org/iptv — una por país.
 import hashlib
 import re
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import List, Optional
 
 import requests
@@ -115,7 +116,38 @@ def dedupe_channels(channels: List[Channel]) -> List[Channel]:
     return resultado
 
 
+def decode_playlist(data: bytes) -> str:
+    """Texto de una lista M3U a partir de sus bytes: UTF-8 (con o sin BOM)
+    y, si no lo es, Windows-1252 -- el "ANSI" con el que el Bloc de notas
+    y muchas herramientas de Windows guardan las listas en español.
+
+    Antes se leía con errors="ignore" (un archivo en ANSI perdía en
+    silencio todas las letras acentuadas: "Canción" -> "Cancin"), o con
+    resp.text de requests, que para un text/* sin charset supone
+    ISO-8859-1 y convertía una lista UTF-8 en mojibake ("CanciÃ³n").
+    """
+    try:
+        return data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return data.decode("cp1252", errors="replace")
+
+
+def read_playlist_source(source: str, timeout: float = 15) -> str:
+    """Texto de una lista M3U desde una URL http(s) o una ruta local,
+    decodificado con decode_playlist(). Lanza requests.RequestException u
+    OSError si no se puede leer -- quien llama decide cómo avisar."""
+    if source.lower().startswith(("http://", "https://")):
+        resp = requests.get(source, timeout=timeout)
+        resp.raise_for_status()
+        return decode_playlist(resp.content)
+    return decode_playlist(Path(source).read_bytes())
+
+
 def parse_m3u(text: str, *, deduplicate: bool = True) -> List[Channel]:
+    # Un BOM que llegue hasta aquí (texto ya decodificado por otra vía)
+    # haría que la primera línea no empezara por "#EXTINF" y se perdiera
+    # el primer canal de una lista sin cabecera #EXTM3U.
+    text = text.lstrip("﻿")
     lines = [raw.strip() for raw in text.splitlines() if raw.strip()]
     channels: List[Channel] = []
     pending: Channel | None = None
@@ -155,7 +187,7 @@ def fetch_tv_channels(playlist_url: str, force_refresh: bool = False) -> List[Ch
     try:
         resp = requests.get(playlist_url, timeout=12)
         resp.raise_for_status()
-        channels = parse_m3u(resp.text)
+        channels = parse_m3u(decode_playlist(resp.content))
         if channels:
             try:
                 write_json_atomic(cache_path, [asdict(c) for c in channels])

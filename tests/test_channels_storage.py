@@ -43,7 +43,7 @@ def _mock_get(monkeypatch, text=M3U, error=None):
     if error is not None:
         get = Mock(side_effect=error)
     else:
-        get = Mock(return_value=Mock(text=text, raise_for_status=Mock()))
+        get = Mock(return_value=Mock(content=text.encode("utf-8"), raise_for_status=Mock()))
     monkeypatch.setattr(channels.requests, "get", get)
     return get
 
@@ -269,3 +269,40 @@ def test_record_failure_ignores_non_numeric_stored_count(dirs):
     assert channels.record_channel_failure("A") == 1
     assert channels.record_channel_failure("B") == 3
     assert channels.record_channel_failure("C") == 1
+
+
+# --------------------------------------------------------------------------
+# Codificación de listas M3U
+# --------------------------------------------------------------------------
+
+M3U_ES = '#EXTM3U\n#EXTINF:-1 group-title="Música",Canción España\nhttps://stream.test/es\n'
+
+
+@pytest.mark.parametrize("datos", [
+    M3U_ES.encode("utf-8"),
+    M3U_ES.encode("utf-8-sig"),   # UTF-8 con BOM
+    M3U_ES.encode("cp1252"),      # "ANSI" de Windows
+])
+def test_decode_playlist_keeps_accents_in_every_common_encoding(datos):
+    lista = channels.parse_m3u(channels.decode_playlist(datos))
+
+    assert [(c.name, c.group) for c in lista] == [("Canción España", "Música")]
+
+
+def test_parse_m3u_ignores_bom_before_first_entry_without_header():
+    lista = channels.parse_m3u("﻿#EXTINF:-1,Uno\nhttps://a\n#EXTINF:-1,Dos\nhttps://b\n")
+
+    assert [c.name for c in lista] == ["Uno", "Dos"]
+
+
+def test_fetch_decodes_utf8_even_when_server_omits_charset(dirs, monkeypatch):
+    """requests asume ISO-8859-1 para text/* sin charset: resp.text daría
+    "CanciÃ³n". La lista se decodifica desde los bytes."""
+    respuesta = requests.models.Response()
+    respuesta._content = M3U_ES.encode("utf-8")
+    respuesta.status_code = 200
+    respuesta.headers["content-type"] = "text/plain"
+    respuesta.encoding = "ISO-8859-1"
+    monkeypatch.setattr(channels.requests, "get", Mock(return_value=respuesta))
+
+    assert channels.fetch_tv_channels(URL)[0].name == "Canción España"
