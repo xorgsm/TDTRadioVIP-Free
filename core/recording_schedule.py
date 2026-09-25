@@ -18,7 +18,7 @@ Ciclo de vida de una ScheduledRecording:
 
 Coder By X@R
 """
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from datetime import datetime, timedelta
 from typing import List
 
@@ -34,6 +34,8 @@ SCHEDULE_FILE = "epg_recordings.json"
 # final. Mismo margen que epg_reminders.MARGEN_TOLERANCIA por consistencia.
 MARGEN_INICIO = timedelta(minutes=10)
 
+ESTADOS = ("pending", "recording", "error")
+
 
 @dataclass
 class ScheduledRecording:
@@ -44,6 +46,17 @@ class ScheduledRecording:
     start: str  # formato XMLTV: YYYYMMDDHHMMSS
     stop: str
     status: str = "pending"  # pending | recording | error
+
+
+def _is_valid(rec: "ScheduledRecording") -> bool:
+    """Todos los campos deben ser str y el estado uno conocido -- una hora
+    numérica o nula (archivo editado a mano o corrupto) haría que
+    parse_xmltv_time() lanzara AttributeError en cada tick del timer de
+    ui/tray_controller.py, bloqueando TODAS las grabaciones programadas."""
+    return (
+        all(type(getattr(rec, f.name)) is str for f in fields(rec))
+        and rec.status in ESTADOS
+    )
 
 
 def _path():
@@ -59,9 +72,11 @@ def load_scheduled() -> List[ScheduledRecording]:
         if not isinstance(item, dict):
             continue
         try:
-            resultado.append(ScheduledRecording(**item))
+            rec = ScheduledRecording(**item)
         except TypeError:
             continue  # entrada con campos que no encajan; se descarta sola
+        if _is_valid(rec):
+            resultado.append(rec)
     return resultado
 
 
@@ -131,6 +146,18 @@ def remove_scheduled(tvg_id: str, title: str, start: str) -> List[ScheduledRecor
     items = [r for r in load_scheduled() if not _es_la_misma(r, tvg_id, title, start)]
     _save(items)
     return items
+
+
+def remove_pending_by_tvg_id(tvg_id: str) -> bool:
+    """Quita las entradas "pending" con ese tvg_id (las que aún no han
+    arrancado). Las que ya están grabando o fallaron se dejan tal cual.
+    Devuelve True si quitó alguna."""
+    items = load_scheduled()
+    restantes = [r for r in items if not (r.tvg_id == tvg_id and r.status == "pending")]
+    if len(restantes) == len(items):
+        return False
+    _save(restantes)
+    return True
 
 
 def check_starts_due(parse_time_fn) -> List[ScheduledRecording]:

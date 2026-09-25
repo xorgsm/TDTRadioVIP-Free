@@ -2,6 +2,34 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.14] — 2026-09-25
+
+### Fixed
+- **Cambiar la URL de la guía EPG no surtía efecto durante horas**
+  (`core/epg.py`): la caché de la guía (6 h) no recordaba de qué URL
+  venía. Ahora solo se reutiliza para la misma URL.
+- **Una sola entrada dañada en la lista de canales personalizados podía
+  hacer perderla entera** (`core/channels.py`): ahora solo se descartan
+  las entradas dañadas. Lo mismo para la caché de la lista pública, los
+  canales ocultos y el contador de fallos por canal.
+- **Borrar o desactivar una grabación recurrente no cancelaba la de hoy
+  si ya estaba programada** (`core/recurring_recordings.py`).
+- **Archivos de grabaciones programadas o avisos EPG dañados bloqueaban
+  todas las grabaciones o avisos** (`core/recording_schedule.py`,
+  `core/epg_reminders.py`): las entradas con datos de tipo incorrecto
+  ahora se descartan al cargar.
+- **Un fallo al parar VLC durante el cierre podía dejar la app colgada
+  al salir** (`player/vlc_player.py`): cada paso del cierre se intenta
+  ahora por separado, y los eventos de libVLC se desenganchan antes.
+
+Las versiones 8.6.8–8.6.13 de la edición completa no se publicaron por
+separado para la edición Free; sus arreglos aplicables se incluyen aquí.
+
+### Tests
+- Cobertura nueva de EPG, avisos, grabaciones programadas y
+  recurrentes, canales y reproductor VLC (con libVLC simulado).
+- 176 → 298 tests.
+
 ## [8.6.7] — 2026-09-23
 
 ### Chore

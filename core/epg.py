@@ -18,19 +18,18 @@ ambos lados (tvg-id de la lista Y id/display-name del XMLTV) a una misma
 forma comparable para que el emparejamiento funcione entre fuentes
 distintas.
 """
-import json
 import re
 import time
 import unicodedata
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass, fields
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 import requests
 
 from core.config import get_app_data_dir
-from core.json_store import write_json_atomic
+from core.json_store import read_json, write_json_atomic
 
 CACHE_FILE = "epg_cache.json"
 CACHE_TTL_SECONDS = 6 * 3600
@@ -126,28 +125,54 @@ def _prepare_guide(guide: Dict[str, List[Programme]]) -> Dict[str, List[Programm
     return guide
 
 
+def _programme_from_cache(data) -> Optional[Programme]:
+    if not isinstance(data, dict):
+        return None
+    try:
+        programme = Programme(**data)
+    except TypeError:
+        return None
+    if not all(type(getattr(programme, f.name)) is str for f in fields(programme)):
+        return None
+    return programme
+
+
+def _read_cache(cache_path, epg_url: str) -> Dict[str, List[Programme]]:
+    """Guía cacheada, solo si se descargó de ``epg_url``.
+
+    El caché guarda la URL de origen: antes era solo la guía, y cambiar la
+    URL de la EPG en Configuración seguía mostrando la guía de la URL
+    anterior hasta que caducaba (CACHE_TTL_SECONDS), porque la recarga que
+    lanza guardar los ajustes no fuerza la descarga. Un caché del formato
+    anterior (sin URL) no se reutiliza: no hay forma de saber de qué guía
+    viene.
+    """
+    raw = read_json(cache_path, None)
+    if not isinstance(raw, dict) or raw.get("url") != epg_url:
+        return {}
+    raw_guide = raw.get("guide")
+    if not isinstance(raw_guide, dict):
+        return {}
+    guide = {}
+    for cid, progs in raw_guide.items():
+        if not isinstance(progs, list):
+            continue
+        programmes = [p for p in map(_programme_from_cache, progs) if p is not None]
+        if programmes:
+            guide[cid] = programmes
+    return _prepare_guide(guide)
+
+
 def fetch_epg(epg_url: str, force_refresh: bool = False) -> Dict[str, List[Programme]]:
     if not epg_url:
         return {}
 
     cache_path = get_app_data_dir() / "cache" / CACHE_FILE
 
-    def _read_cache():
-        if not cache_path.exists():
-            return {}
-        try:
-            raw = json.loads(cache_path.read_text(encoding="utf-8"))
-            if not isinstance(raw, dict):
-                return {}
-            guide = {cid: [Programme(**p) for p in progs] for cid, progs in raw.items()}
-            return _prepare_guide(guide)
-        except (json.JSONDecodeError, OSError, TypeError):
-            return {}
-
     if not force_refresh and cache_path.exists():
         age = time.time() - cache_path.stat().st_mtime
         if age < CACHE_TTL_SECONDS:
-            cached = _read_cache()
+            cached = _read_cache(cache_path, epg_url)
             if cached:
                 return cached
 
@@ -156,7 +181,7 @@ def fetch_epg(epg_url: str, force_refresh: bool = False) -> Dict[str, List[Progr
         resp.raise_for_status()
         root = ET.fromstring(resp.content)
     except (requests.RequestException, ET.ParseError):
-        return _read_cache()
+        return _read_cache(cache_path, epg_url)
 
     # Antes de leer los <programme>, se recogen las claves normalizadas de
     # cada <channel> -- su id Y todos sus <display-name> (algunas guías,
@@ -201,15 +226,15 @@ def fetch_epg(epg_url: str, force_refresh: bool = False) -> Dict[str, List[Progr
     if guide:
         _prepare_guide(guide)
         try:
-            write_json_atomic(
-                cache_path,
-                {cid: [asdict(p) for p in progs] for cid, progs in guide.items()},
-            )
+            write_json_atomic(cache_path, {
+                "url": epg_url,
+                "guide": {cid: [asdict(p) for p in progs] for cid, progs in guide.items()},
+            })
         except OSError:
             # Sin permisos o disco lleno: no es motivo para tirar la guía ya
             # descargada, simplemente esta vez no se cachea.
             pass
-    return guide or _read_cache()
+    return guide or _read_cache(cache_path, epg_url)
 
 
 def get_now_next(

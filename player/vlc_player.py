@@ -662,16 +662,28 @@ class VLCPlayer(QFrame):
         Libera reproductor e instancia al cerrar la aplicación. Sin esto,
         los hilos internos de libVLC pueden quedar vivos y retrasar o colgar
         el cierre del proceso.
+
+        Cada paso va por separado: antes, un único try hacía que un fallo al
+        parar el media_player (el primer paso) se saltara todo lo demás,
+        dejando justo la Instance -- la que tiene los hilos -- sin liberar.
         """
+        self._release_step("liberar el ecualizador", self._liberar_eq_object)
+        if self.media_player is not None:
+            # Igual que en _recrear_media_player(): sin desenganchar los
+            # eventos, un callback tardío de libVLC podría llegar a un
+            # reproductor ya liberado durante el cierre.
+            self._detach_events()
+            self._release_step("parar el reproductor", self.media_player.stop)
+            self._liberar_media_anterior()
+            self._release_step("liberar el reproductor", self.media_player.release)
+            self.media_player = None
+        if self.instance is not None:
+            self._release_step("liberar la instancia de libVLC", self.instance.release)
+            self.instance = None
+
+    @staticmethod
+    def _release_step(descripcion: str, accion) -> None:
         try:
-            self._liberar_eq_object()
-            if self.media_player is not None:
-                self.media_player.stop()
-                self._liberar_media_anterior()
-                self.media_player.release()
-                self.media_player = None
-            if self.instance is not None:
-                self.instance.release()
-                self.instance = None
+            accion()
         except Exception:
-            log.warning("Fallo liberando recursos de VLC al cerrar", exc_info=True)
+            log.warning("Fallo al %s durante el cierre", descripcion, exc_info=True)

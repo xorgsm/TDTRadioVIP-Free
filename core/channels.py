@@ -5,15 +5,14 @@ Fuente por defecto: listas públicas y gratuitas de iptv-org, mantenidas por
 la comunidad: https://github.com/iptv-org/iptv — una por país.
 """
 import hashlib
-import json
 import re
-from dataclasses import dataclass, field, asdict
-from typing import List
+from dataclasses import asdict, dataclass, field
+from typing import List, Optional
 
 import requests
 
 from core.config import get_app_data_dir, get_profile_data_dir
-from core.json_store import write_json_atomic
+from core.json_store import read_json, write_json_atomic
 
 CUSTOM_FILE = "tv_channels_custom.json"
 # Nombres de canales de la lista PÚBLICA (iptv-org/URL de país, no los
@@ -58,6 +57,37 @@ class Channel:
     group: str = ""
     tvg_id: str = ""
     alternate_urls: List[str] = field(default_factory=list)
+
+
+def _channel_from_dict(data) -> Optional[Channel]:
+    """Channel desde un dict leído de disco, o None si no encaja: campos
+    desconocidos o que faltan, textos que no son str, o alternate_urls que
+    no es una lista de str. La interfaz los usa tal cual (setText, VLC...)."""
+    if not isinstance(data, dict):
+        return None
+    try:
+        channel = Channel(**data)
+    except TypeError:
+        return None
+    textos = (channel.name, channel.url, channel.logo, channel.group, channel.tvg_id)
+    if not all(type(t) is str for t in textos) or not channel.name or not channel.url:
+        return None
+    alternativas = channel.alternate_urls
+    if type(alternativas) is not list or not all(type(u) is str for u in alternativas):
+        return None
+    return channel
+
+
+def _load_channel_list(path) -> List[Channel]:
+    """Lista de canales guardada en ``path``, descartando solo las entradas
+    inválidas. Antes, una sola entrada que no encajara (o un archivo que no
+    fuera UTF-8 válido, que ni se capturaba) invalidaba la lista ENTERA --
+    y en la personalizada, el siguiente add_custom_channel() guardaba
+    encima esa lista vacía más el canal nuevo, perdiendo todos los demás."""
+    data = read_json(path, [])
+    if not isinstance(data, list):
+        return []
+    return [c for c in map(_channel_from_dict, data) if c is not None]
 
 
 def dedupe_channels(channels: List[Channel]) -> List[Channel]:
@@ -117,13 +147,7 @@ def fetch_tv_channels(playlist_url: str, force_refresh: bool = False) -> List[Ch
     """Descarga la lista de canales; si falla, usa la caché local en disco."""
     cache_path = _cache_path_for(playlist_url)
 
-    cached: List[Channel] = []
-    if cache_path.exists():
-        try:
-            data = json.loads(cache_path.read_text(encoding="utf-8"))
-            cached = [Channel(**c) for c in data]
-        except (json.JSONDecodeError, OSError, TypeError):
-            cached = []
+    cached = _load_channel_list(cache_path)
 
     if not force_refresh and cached:
         return cached
@@ -154,14 +178,7 @@ def _save_custom(channels: List[Channel]) -> None:
 
 
 def load_custom_channels() -> List[Channel]:
-    path = get_profile_data_dir() / CUSTOM_FILE
-    if not path.exists():
-        return []
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        channels = [Channel(**c) for c in data]
-    except (json.JSONDecodeError, OSError, TypeError):
-        return []
+    channels = _load_channel_list(get_profile_data_dir() / CUSTOM_FILE)
 
     # Auto-reparación: si esta lista se guardó antes de que parse_m3u()
     # quitara duplicados (importar la misma lista dos veces, o importar una
@@ -241,14 +258,10 @@ def _hidden_path():
 
 
 def load_hidden_channel_names() -> set:
-    path = _hidden_path()
-    if not path.exists():
+    data = read_json(_hidden_path(), [])
+    if not isinstance(data, list):
         return set()
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return set(data) if isinstance(data, list) else set()
-    except (json.JSONDecodeError, OSError, TypeError):
-        return set()
+    return {nombre for nombre in data if isinstance(nombre, str)}
 
 
 def _save_hidden(names: set) -> None:
@@ -314,14 +327,13 @@ def _failcount_path():
 
 
 def _load_failcounts() -> dict:
-    path = _failcount_path()
-    if not path.exists():
+    data = read_json(_failcount_path(), {})
+    if not isinstance(data, dict):
         return {}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except (json.JSONDecodeError, OSError, TypeError):
-        return {}
+    # Solo contadores enteros de verdad (bool es subclase de int, fuera):
+    # un valor raro haría que record_channel_failure() lanzara TypeError
+    # desde el manejo de errores de reproducción.
+    return {nombre: n for nombre, n in data.items() if type(n) is int}
 
 
 def _save_failcounts(counts: dict) -> None:
