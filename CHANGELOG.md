@@ -2,6 +2,31 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.9] — 2026-09-25
+
+### Fixed
+- **Conversor de audio, editor de MP3 y editor de tags se quedaban
+  colgados si la carpeta de destino no admitía escritura**
+  (`core/audio_converter.py`, `core/audio_editor.py`,
+  `core/mp3_info.py`): los tres creaban el archivo temporal de salida con
+  `tempfile.mkstemp()` sin capturar el `OSError`. Con una carpeta que
+  existe pero es de solo lectura (USB protegido, carpeta de sistema…),
+  la excepción mataba el hilo sin emitir ninguna señal de fin y la UI se
+  quedaba esperando indefinidamente -- en el editor de tags, "Guardar"
+  quedaba desactivado hasta cerrar el panel. Ahora se muestra el error
+  ("No se puede escribir en la carpeta…") como cualquier otro fallo; en
+  el conversor, el lote continúa con el resto de archivos.
+
+### Tests
+- Cobertura nueva para `core/audio_converter.py`, `core/audio_editor.py`
+  y `core/mp3_info.py` (`tests/test_audio_converter.py`,
+  `tests/test_audio_editor.py`, `tests/test_mp3_info.py`), con ffmpeg
+  simulado (`tests/ffmpeg_fakes.py`) -- ningún test lanza el ffmpeg
+  real: comandos generados, recorte y crossfade, lectura de
+  duración/tags, progreso, cancelación, errores de arranque/renombrado
+  y limpieza de temporales. 0% → 91–93% de cobertura en los tres.
+- 812 → 858 tests.
+
 ## [8.6.8] — 2026-09-25
 
 ### Security
