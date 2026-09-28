@@ -2,6 +2,31 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.21] — 2026-09-28
+
+### Fixed
+- **Lo reproducido desde el historial salía sin logo, sin guía EPG y sin
+  fuentes de respaldo** (`core/history.py`, `ui/playback_controller.py`,
+  `ui/home_controller.py`, `ui/app_lifecycle.py`, `ui/library_sidebar.py`):
+  el historial solo guardaba nombre y enlace. La pestaña Historial y el
+  carrusel "Recientes" de Inicio salían sin logos, y al poner un canal
+  desde el historial, "Recientes" o "reanudar al abrir" la barra de
+  reproducción salía sin logo, la TV sin el "Ahora: …" de la guía, y un
+  corte no probaba las fuentes de respaldo. Ahora el historial guarda
+  también el logo, el identificador de la guía y los respaldos. Las
+  entradas antiguas se completan la próxima vez que se reproduce ese canal.
+- **La pestaña Historial no pedía sus logos al abrirse**
+  (`ui/channel_lists_controller.py`): solo al desplazar la lista, así que
+  con pocas entradas no se veían nunca.
+
+### Tests
+- `tests/test_play_from_history.py` (nuevo): Recientes de Inicio,
+  "reanudar al abrir" y Recientes de la barra lateral reproducen con todo
+  lo guardado; y en `test_history.py`, `test_playback_controller.py` y
+  `test_channel_lists_controller.py`, guardado de los campos nuevos y
+  logos de la pestaña Historial.
+- 1132 → 1143 tests.
+
 ## [8.6.20] — 2026-09-28
 
 ### Changed
