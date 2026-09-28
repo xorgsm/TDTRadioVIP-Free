@@ -2,6 +2,30 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.18] — 2026-09-28
+
+### Fixed
+- **Un canal puesto justo después de otro caído no se reintentaba**
+  (`ui/playback_controller.py`, `play()`): si el canal anterior había
+  agotado sus reintentos, el siguiente puesto desde la cola, la paleta de
+  comandos, la guía EPG, la portada, la barra lateral o "reanudar" no se
+  reintentaba ni una vez ante un corte pasajero. Se daba por caído, no
+  probaba sus fuentes de respaldo y se le sumaba un fallo para el aviso de
+  "este canal podría estar caído". Ahora cada reproducción nueva empieza
+  con sus propios reintentos.
+- **Los canales reproducidos desde la cola perdían sus fuentes de
+  respaldo** (`ui/queue_controller.py`, `play_next()`): si la URL
+  principal fallaba, nunca se probaban las alternativas conservadas del
+  catálogo, a diferencia de lo que pasa al ponerlo desde la lista.
+
+### Tests
+- Cobertura nueva de `ui/queue_controller.py`
+  (`tests/test_queue_controller.py`, 0% → 99%): añadir, reproducir el
+  siguiente con sus respaldos, vaciar, tooltip del botón, panel emergente
+  y reordenar por arrastre; y en `tests/test_playback_controller.py`, la
+  cuota de reintentos propia de cada reproducción nueva.
+- 1070 → 1085 tests.
+
 ## [8.6.17] — 2026-09-28
 
 ### Fixed
