@@ -3,9 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 from ui.catalog_load_controller import CatalogLoadController
-from ui.channel_lists_controller import ChannelListsController
 from ui.epg_controller import EpgController
-from ui.widgets import ROLE_DATA, ROLE_HEALTH
 
 
 def test_cancel_background_diagnostics_cancels_and_returns_the_running_worker():
@@ -27,36 +25,6 @@ def test_cancel_background_diagnostics_is_a_noop_when_nothing_ever_started():
     result = CatalogLoadController(window).cancel_background_diagnostics()
 
     assert result is None
-
-
-class FakeItem:
-    def __init__(self, url="", **extra_data):
-        self.values = {ROLE_DATA: {"url": url, **extra_data}}
-        self.tooltip = ""
-
-    def data(self, role):
-        return self.values.get(role)
-
-    def setData(self, role, value):
-        self.values[role] = value
-
-    def setToolTip(self, value):
-        self.tooltip = value
-
-
-class FakeList:
-    def __init__(self, *urls):
-        self.items = [FakeItem(url) for url in urls]
-        self.updates = []
-
-    def count(self):
-        return len(self.items)
-
-    def item(self, index):
-        return self.items[index]
-
-    def setUpdatesEnabled(self, enabled):
-        self.updates.append(enabled)
 
 
 def test_background_diagnostics_updates_health_without_repopulating(monkeypatch):
@@ -99,24 +67,6 @@ def test_no_call_site_bypasses_home_controller_for_home_refreshes():
         assert "win._refresh_home_health(" not in source, relative
 
 
-def test_health_update_changes_matching_items_in_place():
-    tv_list = FakeList("https://one.test", "https://two.test")
-    radio_list = FakeList("https://radio.test")
-    controller = ChannelListsController(Mock(tv_list=tv_list, radio_list=radio_list))
-
-    controller.update_stream_health([{
-        "kind": "tv", "url": "https://two.test", "status": "slow",
-        "checked_at": "2026-09-01T10:00:00+00:00", "latency_ms": 1800,
-    }])
-
-    assert tv_list.items[0].data(ROLE_HEALTH) is None
-    assert tv_list.items[1].data(ROLE_HEALTH) == "slow"
-    assert tv_list.items[1].data(ROLE_DATA)["health_checked_at"] == "2026-09-01T10:00:00+00:00"
-    assert "1800 ms" in tv_list.items[1].tooltip
-    assert tv_list.updates == [False, True]
-    assert radio_list.updates == [False, True]
-
-
 def test_epg_loaded_updates_subtitles_without_repopulating():
     """La guía EPG termina de cargar -- ver EpgController._on_loaded().
     Con catálogos grandes, repoblar la lista de TV entera solo para
@@ -132,19 +82,3 @@ def test_epg_loaded_updates_subtitles_without_repopulating():
 
     lists.update_epg_subtitles.assert_called_once_with()
     lists.populate_tv_list.assert_not_called()
-
-
-def test_update_epg_subtitles_changes_items_in_place():
-    tv_list = FakeList()
-    tv_list.items = [
-        FakeItem("https://one.test", tvg_id="uno", group="Generalistas", subtitle="Generalistas"),
-        FakeItem("https://two.test", tvg_id="dos", group="", subtitle=""),
-    ]
-    controller = ChannelListsController(Mock(tv_list=tv_list))
-    controller._epg_now_text = lambda tvg_id: "Ahora: Programa" if tvg_id == "uno" else ""
-
-    controller.update_epg_subtitles()
-
-    assert tv_list.items[0].data(ROLE_DATA)["subtitle"] == "Generalistas · Ahora: Programa"
-    assert tv_list.items[1].data(ROLE_DATA)["subtitle"] == ""
-    assert tv_list.updates == [False, True]

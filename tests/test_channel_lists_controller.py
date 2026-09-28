@@ -8,11 +8,6 @@ radio son ChannelListView sobre ChannelListModel reales, favoritos e
 historial son QListWidget reales -- igual que en producción (ver
 MainWindow._make_list). Lo que toca disco (canales personalizados,
 historial de diagnósticos, guardar favoritos) y la guía EPG se sustituyen.
-
-No se prueban las ramas QListWidget de populate_tv_list/populate_radio_list,
-sort_catalog, update_stream_health, update_epg_subtitles y
-filter_current_list para TV/radio: en la app esas dos listas son siempre
-ChannelListView, así que esas ramas no se ejecutan.
 """
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -695,26 +690,3 @@ def test_request_logo_without_url_does_nothing(ctrl, win):
     ctrl.request_logo("", Mock(), win.tv_list)
 
     win.logo_loader.load.assert_not_called()
-
-
-def test_queue_logo_batch_splits_work_and_skips_deleted_items(ctrl, win, monkeypatch):
-    programadas = []
-    monkeypatch.setattr(clm, "QTimer", Mock(singleShot=lambda ms, fn: programadas.append(fn)))
-    pedidos = []
-
-    def request_logo(url, item, _list):
-        if item == "borrado":
-            raise RuntimeError("C++ object already deleted")
-        pedidos.append(url)
-
-    monkeypatch.setattr(ctrl, "request_logo", request_logo)
-    pending = [("u1", "i1"), ("u2", "borrado"), ("u3", "i3")]
-
-    ctrl._queue_logo_batch(pending, win.tv_list, batch_size=2)
-    assert pedidos == ["u1"] and len(programadas) == 1
-
-    programadas.pop()()
-    assert pedidos == ["u1", "u3"] and programadas == []
-
-    ctrl._queue_logo_batch([], win.tv_list)
-    assert programadas == []

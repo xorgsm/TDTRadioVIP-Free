@@ -630,9 +630,8 @@ class PlaybackController:
         saltaba a otro cualquiera o no hacía nada. Por eso ahí se busca el
         canal en el momento de usarlo; -1 si ha quedado fuera del filtro (la
         siguiente fila es entonces el primer resultado visible). En los
-        QListWidget (favoritos, historial) filtrar solo oculta filas y
-        ChannelListsController.sort_catalog ya reajusta _active_row, así que
-        ahí vale la fila guardada.
+        QListWidget (favoritos, historial) filtrar solo oculta filas y no se
+        reordenan por ajuste, así que ahí vale la fila guardada.
         """
         win = self.win
         if isinstance(win._active_list, ChannelListView) and win._active_item is not None:
