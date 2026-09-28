@@ -207,49 +207,80 @@ class AppLifecycle:
             except Exception:
                 log.exception("Fallo al desconectar el perfil VPN %s al cerrar la app", tunnel)
 
-    def shutdown(self):
+    @staticmethod
+    def _run_shutdown_step(description: str, step) -> None:
+        """Ejecuta un paso del cierre sin dejar que su fallo corte los demás.
+
+        `except Exception` a propósito, con log: mismo motivo que en
+        disconnect_vpn_profiles() -- shutdown() corre dentro de
+        closeEvent() y una excepción aquí cortaba el cierre a medias. Antes
+        un fallo de libVLC en player.stop() se saltaba el cierre de
+        descargas (yt-dlp.exe seguía vivo), la espera de los hilos y
+        player.release(), justo el cuelgue al salir que 8.6.13 quería
+        evitar en VLCPlayer.release()."""
+        try:
+            step()
+        except Exception:
+            log.exception("Fallo al cerrar la app: %s", description)
+
+    def _stop_recording(self) -> None:
         win = self.win
-        win._is_closing = True
-        self.disconnect_vpn_profiles()
-        FetchWorker.begin_shutdown()
-        reminder_timer = getattr(win, "_reminder_timer", None)
+        if not win.recorder.is_recording:
+            return
+        # on_wait bombea eventos sin entrada de usuario: sin esto, cerrar la app
+        # con una grabación en curso bloqueaba el hilo de la interfaz
+        # mientras ffmpeg terminaba de cerrar el archivo -- Windows
+        # llegaba a marcar la ventana como "no responde" antes de que
+        # terminara. Ver core.recorder.Recorder.stop().
+        win.recorder.stop(on_wait=process_events_during_shutdown)
+        if win._scheduled_recording_active is not None:
+            rec = win._scheduled_recording_active
+            recording_schedule.mark_done(rec.tvg_id, rec.title, rec.start)
+            win._scheduled_recording_active = None
+
+    def _stop_reminder_timer(self) -> None:
+        reminder_timer = getattr(self.win, "_reminder_timer", None)
         if reminder_timer is not None:
             reminder_timer.stop()
-        win._tray_icon.hide()
-        win._media_keys.stop()
-        if win.recorder.is_recording:
-            # on_wait bombea eventos sin entrada de usuario: sin esto, cerrar la app
-            # con una grabación en curso bloqueaba el hilo de la interfaz
-            # mientras ffmpeg terminaba de cerrar el archivo -- Windows
-            # llegaba a marcar la ventana como "no responde" antes de que
-            # terminara. Ver core.recorder.Recorder.stop().
-            win.recorder.stop(on_wait=process_events_during_shutdown)
-            if win._scheduled_recording_active is not None:
-                rec = win._scheduled_recording_active
-                recording_schedule.mark_done(rec.tvg_id, rec.title, rec.start)
-                win._scheduled_recording_active = None
-        win.player.stop()
-        win.equalizer.stop()
-        if win._cast_session is not None:
-            win._cast_session.disconnect()
-            win._dlna_session.disconnect()
-        if win.download_panel is not None:
+
+    def _shutdown_download_panel(self) -> None:
+        if self.win.download_panel is not None:
             # on_wait: se reenvía por compatibilidad con la firma anterior
-            # (ver el comentario del recorder.stop() más arriba) -- con
-            # libtorrent embebido en el proceso ya no hay un aria2c.exe
-            # aparte que esperar a que se apague, así que en la práctica ya
-            # no bloquea nada.
-            win.download_panel.shutdown(on_wait=process_events_during_shutdown)
-        win._taskbar.cleanup()
+            # (ver el comentario de _stop_recording()) -- con libtorrent
+            # embebido en el proceso ya no hay un aria2c.exe aparte que
+            # esperar a que se apague, así que en la práctica ya no bloquea
+            # nada.
+            self.win.download_panel.shutdown(on_wait=process_events_during_shutdown)
+
+    def _wait_background_workers(self) -> None:
         # El diagnóstico automático de streams corre en un QThread propio
         # que no pasa por ActiveWorkerRegistry (StreamDiagnosticsWorker no
         # es un FetchWorker) -- sin cancelarlo y esperarlo aquí, cerrar la
         # app mientras seguía corriendo lo dejaba vivo destruyéndose la
         # ventana debajo, la misma clase de carrera que ya se corrigió para
         # Torrents/Soulseek (ver CHANGELOG).
-        diagnostics_worker = win.catalog.cancel_background_diagnostics()
+        diagnostics_worker = self.win.catalog.cancel_background_diagnostics()
         workers = FetchWorker.active_workers()
         if diagnostics_worker is not None:
             workers = (*workers, diagnostics_worker)
         shutdown_workers(workers)
-        win.player.release()
+
+    def shutdown(self):
+        win = self.win
+        win._is_closing = True
+        step = self._run_shutdown_step
+        step("desconectar VPN", self.disconnect_vpn_profiles)
+        step("bloquear hilos nuevos", FetchWorker.begin_shutdown)
+        step("parar avisos EPG", self._stop_reminder_timer)
+        step("ocultar icono de bandeja", win._tray_icon.hide)
+        step("soltar teclas multimedia", win._media_keys.stop)
+        step("parar grabación", self._stop_recording)
+        step("parar reproducción", win.player.stop)
+        step("parar ecualizador", win.equalizer.stop)
+        if win._cast_session is not None:
+            step("desconectar Chromecast", win._cast_session.disconnect)
+            step("desconectar DLNA", win._dlna_session.disconnect)
+        step("cerrar descargas", self._shutdown_download_panel)
+        step("limpiar barra de tareas", win._taskbar.cleanup)
+        step("esperar hilos en segundo plano", self._wait_background_workers)
+        step("liberar reproductor", win.player.release)
