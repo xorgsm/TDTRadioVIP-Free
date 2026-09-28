@@ -2,6 +2,36 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.19] — 2026-09-28
+
+### Fixed
+- **"Siguiente", "anterior" y el salto automático elegían el canal
+  equivocado tras ordenar o buscar en TV/radio**
+  (`ui/playback_controller.py`): al ordenar el catálogo A-Z, "siguiente"
+  volvía a poner el mismo canal, y si ese canal estaba caído el salto
+  automático lo reintentaba en vez de avanzar. Tras una búsqueda o un
+  filtro de grupo saltaba a un canal cualquiera de los resultados, o no
+  hacía nada. Ahora se recuerda el canal que suena, no su número de fila;
+  si ha quedado fuera de la búsqueda, "siguiente" pone el primer resultado.
+- **Los logos no se cargaban en listas cortas ni en la vista en
+  cuadrícula** (`ui/channel_lists_controller.py`, `load_visible_logos()`):
+  con menos filas de las que caben en pantalla (pocos favoritos, una
+  búsqueda con pocos resultados, un grupo pequeño) no se pedía ningún logo,
+  y sin barra de desplazamiento no había otra ocasión de pedirlos. En la
+  vista en cuadrícula de TV/radio pasaba lo mismo también con el catálogo
+  entero. Se sigue pidiendo solo lo que se ve en pantalla.
+
+### Tests
+- Cobertura nueva de `ui/channel_lists_controller.py`
+  (`tests/test_channel_lists_controller.py`, 22% → 82%): poblado de TV y
+  radio, diagnóstico y mini-EPG, orden del catálogo, favoritos e historial,
+  marcas de "sonando" y favorito, filtros de carpeta, categoría y salud,
+  búsqueda y carga de logos. Lo que falta son ramas antiguas para TV/radio
+  que la app ya no ejecuta.
+- En `tests/test_playback_controller.py`, siguiente/anterior y salto
+  automático tras ordenar y filtrar el catálogo.
+- 1085 → 1135 tests.
+
 ## [8.6.18] — 2026-09-28
 
 ### Fixed
