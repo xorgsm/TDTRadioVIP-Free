@@ -548,6 +548,8 @@ class ChannelListsController:
             item.setData(ROLE_CUSTOM, is_custom)
             win.hist_list.addItem(item)
 
+        self.load_visible_logos(win.hist_list)
+
         sidebar = getattr(win, "library_sidebar", None)
         if sidebar is not None:
             sidebar.refresh()

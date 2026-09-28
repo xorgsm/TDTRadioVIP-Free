@@ -682,6 +682,24 @@ def test_load_visible_logos_after_scrolling_to_the_middle(ctrl, win, grid):
     win.tv_list.hide()
 
 
+def test_history_tab_requests_its_logos(ctrl, win):
+    """La pestaña Historial no pedía sus logos al rellenarse (solo al
+    desplazar la lista), así que con pocas entradas nunca se veían."""
+    win.history = [
+        {"type": "tv", "name": "La 1", "url": "u1", "logo": "https://logo/la1"},
+        {"type": "radio", "name": "RNE", "url": "u2"},                 # entrada antigua sin logo
+    ]
+    win.hist_list.resize(300, 400)
+    win.hist_list.show()
+    QApplication.processEvents()
+
+    ctrl.refresh_history_tab()
+
+    pedidos = [c.args[0] for c in win.logo_loader.load.call_args_list]
+    assert pedidos == ["https://logo/la1"]
+    win.hist_list.hide()
+
+
 def test_load_visible_logos_skips_hidden_or_empty_lists(ctrl, win):
     ctrl.populate_tv_list([_channel("La 1", logo="https://logo/la1")])
 

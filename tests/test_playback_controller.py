@@ -89,6 +89,16 @@ def _playing(win, url="https://stream.test/la1", name="La 1", kind="tv"):
 # Grabación frente a zapeo / parar
 # --------------------------------------------------------------------------
 
+def test_play_saves_logo_epg_id_and_backups_in_history(ctrl, win):
+    ctrl.play("tv", "La 1", "https://stream.test/la1", "la1", "https://logo/la1",
+              ["https://respaldo/la1"])
+
+    pc_module.hist_store.add_entry.assert_called_once_with(
+        "tv", "La 1", "https://stream.test/la1", logo="https://logo/la1", tvg_id="la1",
+        alternate_urls=["https://respaldo/la1"],
+    )
+
+
 def test_zapping_stops_a_manual_recording(ctrl, win):
     win.recorder.is_recording = True
 

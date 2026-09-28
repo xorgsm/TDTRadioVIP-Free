@@ -1996,6 +1996,7 @@ class MainWindow(QMainWindow):
             self.playback.play(
                 entry["type"], entry.get("name", "Última emisión"), entry["url"],
                 entry.get("tvg_id", ""), entry.get("logo", ""),
+                entry.get("alternate_urls", []),
             )
 
     # check_for_update / on_update_check_done / _on_update_download_done

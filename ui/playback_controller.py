@@ -145,7 +145,10 @@ class PlaybackController:
         win.fav_btn.setChecked(fav_store.is_favorite(win.favorites, item_type, name))
         self._update_favorite_button_icon()
 
-        win.history = hist_store.add_entry(item_type, name, url)
+        win.history = hist_store.add_entry(
+            item_type, name, url, logo=logo, tvg_id=tvg_id,
+            alternate_urls=win._current_alternate_urls,
+        )
         win.lists.refresh_history_tab()
         win.lists.mark_playing_everywhere()
         win.home._refresh_home_now_playing()

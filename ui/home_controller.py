@@ -129,6 +129,7 @@ class HomeController:
         self.win.playback.play(
             entry.get("type", "tv"), entry.get("name", ""), entry.get("url", ""),
             entry.get("tvg_id", ""), entry.get("logo", ""),
+            entry.get("alternate_urls", []),
         )
 
     def _compute_recommendations(self, limit: int = 12) -> list:
