@@ -2,6 +2,20 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.20] — 2026-09-28
+
+### Changed
+- **Limpieza de `ui/channel_lists_controller.py`**: fuera el código antiguo
+  para las listas de TV y radio de antes del modelo de catálogo, que la app
+  ya no ejecutaba (poblado, orden, diagnóstico, guía EPG, filtro y carga de
+  logos por tandas). El archivo baja de unas 720 a 540 líneas. Sin cambios
+  de comportamiento.
+
+### Tests
+- Cobertura de `ui/channel_lists_controller.py`: 82% → 99%.
+- Fuera 3 tests que solo probaban el código eliminado (su comportamiento
+  ya lo cubren tests con el modelo real): 1135 → 1132 tests.
+
 ## [8.6.19] — 2026-09-28
 
 ### Fixed
