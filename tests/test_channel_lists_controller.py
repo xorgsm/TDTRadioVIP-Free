@@ -609,6 +609,79 @@ def test_load_visible_logos_requests_each_visible_logo_once(ctrl, win):
     win.tv_list.hide()
 
 
+@pytest.mark.parametrize("lista", ["tv", "fav"])
+def test_load_visible_logos_on_a_list_shorter_than_the_screen(ctrl, win, lista):
+    """Con menos filas de las que caben (pocos favoritos, una búsqueda con
+    pocos resultados, un grupo pequeño) la esquina inferior no cae sobre
+    ninguna fila: antes no se pedía ningún logo, y sin barra de
+    desplazamiento no había otra ocasión de pedirlos."""
+    if lista == "tv":
+        ctrl.populate_tv_list([
+            _channel("La 1", logo="https://logo/la1"), _channel("Cuatro", logo="https://logo/c4"),
+        ])
+        widget = win.tv_list
+    else:
+        win.favorites = [
+            {"type": "tv", "name": "La 1", "logo": "https://logo/la1"},
+            {"type": "tv", "name": "Cuatro", "logo": "https://logo/c4"},
+        ]
+        ctrl.refresh_favorites_tab()
+        widget = win.fav_list
+    widget.resize(300, 400)
+    widget.show()
+    QApplication.processEvents()
+
+    ctrl.load_visible_logos(widget)
+
+    pedidos = [c.args[0] for c in win.logo_loader.load.call_args_list]
+    assert pedidos == ["https://logo/la1", "https://logo/c4"]
+    widget.hide()
+
+
+def test_load_visible_logos_in_grid_mode_requests_only_visible_cards(ctrl, win):
+    """En cuadrícula la esquina inferior derecha suele caer en el margen que
+    sobra tras la última columna, también en mitad de un catálogo largo:
+    no puede ni quedarse sin logos ni pedir los de todo el catálogo."""
+    from PySide6.QtCore import QSize
+
+    ctrl.populate_tv_list([_channel(f"C{i}", logo=f"https://logo/{i}") for i in range(300)])
+    win.tv_list.setViewMode(ChannelListView.IconMode)
+    win.tv_list.setGridSize(QSize(100, 100))
+    win.tv_list.resize(350, 400)                  # 3 columnas y ~48 px de margen
+    win.tv_list.show()
+    QApplication.processEvents()
+
+    ctrl.load_visible_logos(win.tv_list)
+
+    pedidos = [c.args[0] for c in win.logo_loader.load.call_args_list]
+    assert pedidos[:3] == ["https://logo/0", "https://logo/1", "https://logo/2"]
+    assert 9 <= len(pedidos) <= 18                # 3-4 filas visibles de 3 tarjetas (+ parcial)
+    win.tv_list.hide()
+
+
+@pytest.mark.parametrize("grid", [False, True])
+def test_load_visible_logos_after_scrolling_to_the_middle(ctrl, win, grid):
+    from PySide6.QtCore import QSize
+
+    ctrl.populate_tv_list([_channel(f"C{i}", logo=f"https://logo/{i}") for i in range(600)])
+    if grid:
+        win.tv_list.setViewMode(ChannelListView.IconMode)
+        win.tv_list.setGridSize(QSize(100, 100))
+    win.tv_list.resize(350, 400)
+    win.tv_list.show()
+    QApplication.processEvents()
+    win.tv_list.scrollTo(win.tv_model.index(300, 0), ChannelListView.PositionAtTop)
+    QApplication.processEvents()
+
+    ctrl.load_visible_logos(win.tv_list)
+
+    filas = sorted(int(c.args[0].rsplit("/", 1)[1]) for c in win.logo_loader.load.call_args_list)
+    assert filas[0] == 300                                  # la fila llevada arriba
+    assert filas == list(range(filas[0], filas[-1] + 1))   # un bloque seguido
+    assert len(filas) <= 60                                 # solo lo que cabe en pantalla
+    win.tv_list.hide()
+
+
 def test_load_visible_logos_skips_hidden_or_empty_lists(ctrl, win):
     ctrl.populate_tv_list([_channel("La 1", logo="https://logo/la1")])
 

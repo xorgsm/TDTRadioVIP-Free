@@ -57,18 +57,13 @@ class ChannelListsController:
         if not list_widget.isVisible() or not list_widget.count():
             return
 
-        top = list_widget.indexAt(QPoint(0, 0))
-        bottom = list_widget.indexAt(
-            QPoint(
-                max(0, list_widget.viewport().width() - 1),
-                max(0, list_widget.viewport().height() - 1),
-            )
-        )
-        if not top.isValid() or not bottom.isValid():
+        if isinstance(list_widget, ChannelListView):
+            visible = self._visible_row_range(list_widget)
+        else:
+            visible = self._visible_row_range_by_corners(list_widget)
+        if visible is None:
             return
-
-        first = max(0, top.row())
-        last = min(list_widget.count() - 1, bottom.row())
+        first, last = visible
         for row in range(first, last + 1):
             item = list_widget.item(row)
             data = item.data(ROLE_DATA) or {}
@@ -77,6 +72,61 @@ class ChannelListsController:
                 continue
             item.setData(ROLE_LOGO_REQUESTED, True)
             self.request_logo(url, item, list_widget)
+
+    @staticmethod
+    def _visible_row_range(view: ChannelListView) -> tuple[int, int] | None:
+        """Primera y última fila que se ven en un catálogo de TV/radio.
+
+        No se miran las esquinas con indexAt(): en cuadrícula caen en el
+        margen entre tarjetas o tras la última columna, y en una lista más
+        corta que la pantalla la esquina inferior cae en el hueco tras la
+        última fila -- en esos casos no se pedía ningún logo. Las filas de
+        ChannelListView van en orden de arriba abajo en ambos modos (y el
+        modelo no tiene filas ocultas: las filtradas ni existen), así que
+        basta una búsqueda binaria sobre su rectángulo en pantalla.
+        """
+        model = view.model()
+        count = view.count()
+        height = view.viewport().height()
+
+        def rect(row):
+            return view.visualRect(model.index(row, 0))
+
+        lo, hi = 0, count               # primera fila cuyo borde inferior asoma
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if rect(mid).bottom() < 0:
+                lo = mid + 1
+            else:
+                hi = mid
+        first = lo
+        lo, hi = first, count           # primera fila que empieza por debajo
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if rect(mid).top() < height:
+                lo = mid + 1
+            else:
+                hi = mid
+        last = lo - 1
+        return (first, last) if first <= last else None
+
+    @staticmethod
+    def _visible_row_range_by_corners(list_widget: QListWidget) -> tuple[int, int] | None:
+        """Lo mismo para favoritos/historial (QListWidget, siempre en modo
+        lista, con filas ocultas por el filtro): las esquinas bastan, salvo
+        que la inferior caiga en el hueco tras la última fila (lista más
+        corta que la pantalla) -- entonces la última visible es la última."""
+        top = list_widget.indexAt(QPoint(0, 0))
+        if not top.isValid():
+            return None
+        bottom = list_widget.indexAt(
+            QPoint(
+                max(0, list_widget.viewport().width() - 1),
+                max(0, list_widget.viewport().height() - 1),
+            )
+        )
+        last = bottom.row() if bottom.isValid() else list_widget.count() - 1
+        return max(0, top.row()), min(list_widget.count() - 1, last)
 
     def _epg_now_text(self, tvg_id: str) -> str:
         """
