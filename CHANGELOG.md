@@ -2,6 +2,29 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.17] — 2026-09-28
+
+### Fixed
+- **Un fallo en un paso del cierre de la app se saltaba el resto del
+  cierre** (`ui/app_lifecycle.py`, `AppLifecycle.shutdown()`): los pasos
+  del cierre iban seguidos sin protección, así que si uno fallaba no se
+  ejecutaban los siguientes. Por ejemplo, un fallo de VLC al parar la
+  reproducción dejaba sin cerrar las descargas (`yt-dlp.exe` seguía vivo
+  en segundo plano), sin esperar a los hilos en segundo plano y sin
+  liberar el reproductor -- el mismo cuelgue al salir que se quería
+  evitar en 8.6.13. Además, los intentos posteriores de cerrar la ventana
+  se ignoraban. Ahora cada paso se intenta por separado y un fallo queda
+  registrado en el log sin cortar el resto.
+
+### Tests
+- Cobertura nueva del cierre de `ui/app_lifecycle.py`
+  (`tests/test_app_lifecycle.py`, 0% → 50%; lo que falta es el arranque
+  diferido): fallos al parar la reproducción, la grabación, el envío a la
+  TV, las descargas, la VPN y al liberar el reproductor; orden del
+  cierre, grabación programada cerrada al salir y espera del diagnóstico
+  de canales en segundo plano.
+- 1061 → 1070 tests.
+
 ## [8.6.16] — 2026-09-25
 
 ### Fixed
