@@ -171,6 +171,7 @@ class MainWindow(QMainWindow):
         self._playback_token = 0
         self._active_list = None
         self._active_row = -1
+        self._active_item = None
         self._auto_skip_count = 0
         self._fade_anim = None
         self._current_nav_id = NAV_HOME

@@ -58,6 +58,7 @@ def win():
     w._playback_failed = False
     w._auto_skip_count = 0
     w._active_list = None
+    w._active_item = None
     w._audio_only_tv = False
     w._current_alternate_urls = []
     w.current_url = None
@@ -246,6 +247,118 @@ def test_exhausted_retries_auto_skip_to_next_visible_item(ctrl, win, timers):
 
     assert win.current_name == "Cuatro"
     assert win._active_row == 2
+
+
+@pytest.fixture
+def catalog(win):
+    """Lista de TV real (ChannelListModel + ChannelListView) con cinco
+    canales en orden de fuente; "Cuatro" está sonando (activado desde la
+    lista). Ordenar o filtrar el modelo renumera sus filas visibles."""
+    from PySide6.QtWidgets import QApplication
+
+    from ui.channel_model import ChannelListModel, ChannelListView
+    from ui.widgets import ROLE_DATA
+
+    QApplication.instance() or QApplication([])
+    model = ChannelListModel()
+    view = ChannelListView()
+    view.setModel(model)
+    names = ["Cuatro", "Antena 3", "La 1", "Telecinco", "La 2"]
+    model.set_entries([
+        {ROLE_DATA: {"type": "tv", "name": n, "url": f"https://stream.test/{i}"}}
+        for i, n in enumerate(names)
+    ])
+    view._model_ref = model  # que el modelo viva lo mismo que la vista
+    return view
+
+
+def _activate(ctrl, view, name):
+    from ui.widgets import ROLE_DATA
+
+    for row in range(view.count()):
+        item = view.item(row)
+        if item.data(ROLE_DATA)["name"] == name:
+            ctrl.activate_item(item, view)
+            return
+    raise AssertionError(name)
+
+
+def _sort_by_name(view):
+    from ui.widgets import ROLE_DATA
+
+    view.model().sort_entries(lambda e: e[ROLE_DATA]["name"].casefold())
+
+
+def _filter_names(view, *names):
+    from ui.widgets import ROLE_DATA
+
+    view.model().set_filter(lambda e: e[ROLE_DATA]["name"] in names)
+
+
+def test_next_after_sorting_catalog_plays_the_following_channel(ctrl, win, catalog):
+    """Al ordenar A-Z el modelo renumera sus filas: "siguiente" volvía a
+    poner el mismo canal porque la fila guardada ya apuntaba a otro."""
+    _activate(ctrl, catalog, "Cuatro")
+    _sort_by_name(catalog)          # Antena 3, Cuatro, La 1, La 2, Telecinco
+
+    ctrl.play_next()
+
+    assert win.current_name == "La 1"
+
+
+def test_prev_after_sorting_catalog_plays_the_previous_channel(ctrl, win, catalog):
+    _activate(ctrl, catalog, "Telecinco")
+    _sort_by_name(catalog)          # Antena 3, Cuatro, La 1, La 2, Telecinco
+
+    ctrl.play_prev()
+
+    assert win.current_name == "La 2"
+
+
+def test_next_after_filtering_catalog_follows_the_visible_results(ctrl, win, catalog):
+    """Buscar reduce las filas visibles: la fila guardada señalaba otro
+    canal de los resultados, o quedaba fuera de rango y "siguiente" no
+    hacía nada."""
+    _activate(ctrl, catalog, "Telecinco")
+    _filter_names(catalog, "La 1", "Telecinco", "La 2")
+
+    ctrl.play_next()
+
+    assert win.current_name == "La 2"
+
+
+def test_next_when_active_channel_is_filtered_out_plays_first_result(ctrl, win, catalog):
+    _activate(ctrl, catalog, "Telecinco")
+    _filter_names(catalog, "La 1", "La 2")
+    win.player.play.reset_mock()
+
+    ctrl.play_prev()
+    win.player.play.assert_not_called()
+
+    ctrl.play_next()
+    assert win.current_name == "La 1"
+
+
+def test_auto_skip_after_sorting_does_not_retry_the_failed_channel(ctrl, win, timers, catalog):
+    _activate(ctrl, catalog, "Cuatro")
+    _sort_by_name(catalog)
+    timers.clear()
+    ctrl._recovery_attempts = ctrl.MAX_STREAM_RETRIES
+
+    ctrl.on_player_error("caída")
+    timers.pop()()
+
+    assert win.current_name == "La 1"
+
+
+def test_stop_forgets_the_active_channel(ctrl, win, catalog):
+    _activate(ctrl, catalog, "Cuatro")
+    assert win._active_item is not None
+
+    ctrl.stop_playback()
+
+    assert win._active_list is None
+    assert win._active_item is None
 
 
 def test_auto_skip_stops_after_max_attempts(ctrl, win, timers):

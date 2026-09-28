@@ -42,6 +42,7 @@ from core import recorder as rec_module
 from core import recording_schedule
 from ui import icons as app_icons
 from ui import palette
+from ui.channel_model import ChannelListView
 from ui.toast import show_toast
 from ui.widgets import ROLE_DATA, dominant_color
 
@@ -407,6 +408,7 @@ class PlaybackController:
         win._playback_failed = False
         win._playback_token += 1
         win._active_list = None
+        win._active_item = None
         self._update_seek_buttons_enabled(False)
         win._auto_skip_count = 0
         win.now_logo.clear()
@@ -586,7 +588,7 @@ class PlaybackController:
         if token != win._playback_token or win._active_list is None:
             return
         lst = win._active_list
-        row = win._active_row + 1
+        row = self._active_row_now() + 1
         while row < lst.count() and lst.item(row).isHidden():
             row += 1
         if row >= lst.count():
@@ -607,6 +609,7 @@ class PlaybackController:
                 QMessageBox.warning(win, "Sin enlace", "Este elemento no tiene un enlace de reproducción válido.")
             return
         win._active_list = list_widget
+        win._active_item = item
         win._active_row = list_widget.row(item)
         if not is_auto:
             win._auto_skip_count = 0
@@ -616,11 +619,30 @@ class PlaybackController:
             data.get("logo", ""), data.get("alternate_urls", []),
         )
 
+    def _active_row_now(self) -> int:
+        """Fila visible actual del canal activo en su lista.
+
+        En los catálogos de TV/radio (ChannelListView sobre
+        ChannelListModel) filtrar u ordenar renumera las filas visibles, así
+        que la fila guardada al activar el canal deja de señalarlo: "siguiente"
+        volvía a poner el mismo canal tras ordenar A-Z, y tras una búsqueda
+        saltaba a otro cualquiera o no hacía nada. Por eso ahí se busca el
+        canal en el momento de usarlo; -1 si ha quedado fuera del filtro (la
+        siguiente fila es entonces el primer resultado visible). En los
+        QListWidget (favoritos, historial) filtrar solo oculta filas y
+        ChannelListsController.sort_catalog ya reajusta _active_row, así que
+        ahí vale la fila guardada.
+        """
+        win = self.win
+        if isinstance(win._active_list, ChannelListView) and win._active_item is not None:
+            return win._active_list.row(win._active_item)
+        return win._active_row
+
     def play_prev(self):
         win = self.win
         if win._active_list is None:
             return
-        row = win._active_row - 1
+        row = self._active_row_now() - 1
         while row >= 0 and win._active_list.item(row).isHidden():
             row -= 1
         if row >= 0:
@@ -638,7 +660,7 @@ class PlaybackController:
             return
         if win._active_list is None:
             return
-        row = win._active_row + 1
+        row = self._active_row_now() + 1
         while row < win._active_list.count() and win._active_list.item(row).isHidden():
             row += 1
         if row < win._active_list.count():
