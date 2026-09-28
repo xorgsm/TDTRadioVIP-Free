@@ -83,6 +83,46 @@ def test_add_entry_adds_new_entry_at_the_front_with_play_count_one(monkeypatch, 
     assert entry["timestamp"]  # se ha rellenado con algo
 
 
+def test_add_entry_keeps_logo_epg_id_and_backup_urls(monkeypatch, tmp_path):
+    """Sin logo, tvg_id ni respaldos, lo que se reproducía desde el
+    historial (pestaña, Recientes, reanudar) salía sin logo, sin la guía
+    EPG y sin fuentes de respaldo."""
+    _redirect(monkeypatch, tmp_path)
+    history.add_entry(
+        "tv", "La 1", url="http://x", logo="http://logo/la1", tvg_id="la1",
+        alternate_urls=["http://respaldo"],
+    )
+
+    entry = history.load_history()[0]
+
+    assert entry["logo"] == "http://logo/la1"
+    assert entry["tvg_id"] == "la1"
+    assert entry["alternate_urls"] == ["http://respaldo"]
+
+
+def test_add_entry_without_extras_keeps_the_ones_already_saved(monkeypatch, tmp_path):
+    """Una reproducción que llega sin logo (p. ej. una URL abierta a mano)
+    no puede borrar el logo bueno que ya tenía la entrada."""
+    _redirect(monkeypatch, tmp_path)
+    history.add_entry("tv", "La 1", url="http://x", logo="http://logo/la1", tvg_id="la1",
+                      alternate_urls=["http://respaldo"])
+
+    entry = history.add_entry("tv", "La 1", url="http://y")[0]
+
+    assert entry["url"] == "http://y"
+    assert entry["logo"] == "http://logo/la1"
+    assert entry["tvg_id"] == "la1"
+    assert entry["alternate_urls"] == ["http://respaldo"]
+
+
+def test_add_entry_without_extras_saves_empty_defaults(monkeypatch, tmp_path):
+    _redirect(monkeypatch, tmp_path)
+
+    entry = history.add_entry("radio", "RNE", url="http://x")[0]
+
+    assert entry["logo"] == "" and entry["tvg_id"] == "" and entry["alternate_urls"] == []
+
+
 def test_add_entry_moves_existing_entry_to_the_front(monkeypatch, tmp_path):
     _redirect(monkeypatch, tmp_path)
     history.add_entry("tv", "La 1")

@@ -110,6 +110,7 @@ class LibrarySidebar(QWidget):
             return
         self.win.playback.play(
             entry.get("type", "tv"), entry.get("name", ""), entry.get("url", ""),
+            entry.get("tvg_id", ""), entry.get("logo", ""), entry.get("alternate_urls", []),
         )
 
     def _activate_playlist(self, item: QListWidgetItem):

@@ -2,13 +2,16 @@
 Historial de lo último reproducido.
 
 Cada entrada es un diccionario con: type ('tv' o 'radio'), name, url,
-timestamp (texto ya formateado, que la interfaz muestra como subtítulo) y
-play_count (veces que se ha reproducido ese canal/emisora -- ver
-top_played(), usado por ui/stats_dialog.py).
+logo, tvg_id y alternate_urls (lo necesario para volver a reproducirlo
+con su logo, su guía EPG y sus fuentes de respaldo desde el historial,
+Recientes o "reanudar"; las entradas guardadas antes de 8.6.21 no los
+traen), timestamp (texto ya formateado, que la interfaz muestra como
+subtítulo) y play_count (veces que se ha reproducido ese canal/emisora --
+ver top_played(), usado por ui/stats_dialog.py).
 """
 import json
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from core.config import get_profile_data_dir
 from core.json_store import write_json_atomic
@@ -45,13 +48,20 @@ def _save(history: List[dict]) -> None:
         pass
 
 
-def add_entry(item_type: str, name: str, url: str = "") -> List[dict]:
+def add_entry(
+    item_type: str, name: str, url: str = "", logo: str = "", tvg_id: str = "",
+    alternate_urls: Optional[List[str]] = None,
+) -> List[dict]:
     """
     Registra una reproducción al principio del historial y devuelve la lista
     actualizada. Si ese canal ya estaba, se mueve arriba en vez de duplicarse,
     y se conserva (incrementado) su play_count en vez de reiniciarlo -- así
     top_played() puede saber qué se reproduce más, no solo qué se reprodujo
     la última vez.
+
+    Si esta reproducción llega sin logo, tvg_id o respaldos (p. ej. una URL
+    abierta a mano), se conservan los que ya tenía la entrada en vez de
+    borrarlos.
     """
     history = load_history()
     if not item_type or not name:
@@ -62,6 +72,7 @@ def add_entry(item_type: str, name: str, url: str = "") -> List[dict]:
         None,
     )
     play_count = (previo.get("play_count", 1) if previo else 0) + 1
+    previo = previo or {}
 
     history = [
         e for e in history
@@ -71,6 +82,9 @@ def add_entry(item_type: str, name: str, url: str = "") -> List[dict]:
         "type": item_type,
         "name": name,
         "url": url or "",
+        "logo": logo or previo.get("logo", ""),
+        "tvg_id": tvg_id or previo.get("tvg_id", ""),
+        "alternate_urls": list(alternate_urls or previo.get("alternate_urls") or []),
         "timestamp": datetime.now().strftime("%d/%m/%Y %H:%M"),
         "play_count": play_count,
     })

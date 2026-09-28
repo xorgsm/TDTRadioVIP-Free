@@ -366,7 +366,7 @@ def test_home_can_return_to_last_station(app):
     entry = {"type": "radio", "name": "Radio", "url": "https://example.test/live"}
     window = SimpleNamespace(current_url=None, history=[entry], playback=Mock())
     HomeController(window).home_resume_or_search()
-    window.playback.play.assert_called_once_with("radio", "Radio", entry["url"], "", "")
+    window.playback.play.assert_called_once_with("radio", "Radio", entry["url"], "", "", [])
 
 
 def test_refresh_home_page_populates_all_four_carousels(app):

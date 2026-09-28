@@ -176,6 +176,7 @@ class AppLifecycle:
             win.playback.play(
                 entry["type"], entry.get("name", "Última emisión"), entry["url"],
                 entry.get("tvg_id", ""), entry.get("logo", ""),
+                entry.get("alternate_urls", []),
             )
 
     def disconnect_vpn_profiles(self) -> None:
