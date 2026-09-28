@@ -210,6 +210,22 @@ def test_stale_retry_after_channel_change_does_nothing(ctrl, win, timers):
     win.player.play.assert_not_called()
 
 
+def test_new_playback_gets_its_own_retry_budget(ctrl, win, timers, stores):
+    """Un canal que agotó sus reintentos no puede dejar sin ellos al
+    siguiente que se ponga por una vía distinta de la lista (cola, paleta,
+    EPG, portada...): un corte pasajero del nuevo canal se daba por caída
+    definitiva y le sumaba un fallo de auto-ocultar."""
+    _playing(win)
+    ctrl._recovery_attempts = ctrl.MAX_STREAM_RETRIES   # el canal anterior agotó
+
+    ctrl.play("tv", "Antena 3", "https://stream.test/a3")
+    timers.clear()                                      # _confirm_playback_ok
+    ctrl.on_player_error("caída")
+
+    assert len(timers) == 1                             # reintento programado
+    stores.tv.record_channel_failure.assert_not_called()
+
+
 def test_exhausted_retries_auto_skip_to_next_visible_item(ctrl, win, timers):
     _playing(win)
     ctrl._recovery_attempts = ctrl.MAX_STREAM_RETRIES

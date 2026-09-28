@@ -72,6 +72,14 @@ class PlaybackController:
     ):
         win = self.win
         self._stop_manual_recording()
+        # Cada reproducción nueva empieza con su propia cuota de reintentos.
+        # Sin esto, si el canal anterior había agotado los suyos, el nuevo
+        # (puesto desde la cola, la paleta, la EPG, la portada...) no se
+        # reintentaba ni una vez ante un corte pasajero, se saltaba sus
+        # fuentes de respaldo y se le sumaba un fallo de auto-ocultar.
+        # _retry_current_stream no pasa por aquí, así que no reinicia la
+        # cuota de la emisión que se está recuperando.
+        self._recovery_attempts = 0
 
         win._playback_token += 1
         win.player.stop()

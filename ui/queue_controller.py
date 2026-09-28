@@ -62,6 +62,7 @@ class QueueController:
         self.win.playback.play(
             data["type"], data["name"], data["url"],
             data.get("tvg_id", ""), data.get("logo", ""),
+            data.get("alternate_urls", []),
         )
         self._refresh_button_badge()
         if self._list_widget is not None:
