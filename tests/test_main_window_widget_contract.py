@@ -31,7 +31,7 @@ QT_INHERITED_ALLOWLIST = {
 # decisión consciente en el mismo commit que añade/renombra/quita un
 # atributo de MainWindow -- no un efecto secundario silencioso de mover código.
 FROZEN_EXPECTED_ATTRS = {
-    "_active_list", "_active_row",
+    "_active_item", "_active_list", "_active_row",
     "_apply_saved_equalizer", "_audio_only_tv",
     "_auto_skip_count", "_background_diagnostics_started",
     "_background_health_results",
