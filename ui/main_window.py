@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 
 from ui import icons as app_icons
 from core import config as cfg
-from core.logger import log_file_path
+from core.logger import get_logger, log_file_path
 from core import channels as tv_channels
 from core import favorites as fav_store
 from core import history as hist_store
@@ -71,7 +71,23 @@ from ui.taskbar_controls import (
 from ui.radio_hero import RadioHeroWidget
 from ui.widgets import ChannelDelegate, ChannelGridDelegate, LogoLoader
 
+log = get_logger(__name__)
+
 NAV_HOME, NAV_TV, NAV_RADIO, NAV_FAV, NAV_HIST = range(5)
+
+
+def _run_shutdown_step(description: str, step) -> None:
+    """Ejecuta un paso del cierre sin dejar que su fallo corte los demás.
+
+    `except Exception` a propósito, con log: esto corre dentro de
+    closeEvent() y una excepción aquí cortaba el cierre a medias. Antes un
+    fallo de libVLC en player.stop() se saltaba la limpieza de la barra de
+    tareas, la espera de los hilos y player.release(), justo el cuelgue al
+    salir que 8.6.13 quería evitar en VLCPlayer.release()."""
+    try:
+        step()
+    except Exception:
+        log.exception("Fallo al cerrar la app: %s", description)
 # Ancho del riel lateral (ver _build_nav_rail). Se comparte con
 # _build_title_bar para que el menu (Archivo/Configuracion/Ayuda) arranque
 # alineado con el panel de contenido -- antes quedaba pegado al nombre de
@@ -2147,26 +2163,37 @@ class MainWindow(QMainWindow):
             event.ignore()
             return
         self._is_closing = True
-        FetchWorker.begin_shutdown()
+        # MainWindow._x(self) en vez de self._x: los tests llaman a
+        # closeEvent con una ventana simulada (tests/test_main_window_close.py).
+        step = _run_shutdown_step
+        step("bloquear hilos nuevos", FetchWorker.begin_shutdown)
+        step("parar avisos EPG", lambda: MainWindow._stop_reminder_timer(self))
+        step("ocultar icono de bandeja", self._tray_icon.hide)
+        step("soltar teclas multimedia", self._media_keys.stop)
+        step("parar grabación", lambda: MainWindow._stop_recording_on_close(self))
+        step("parar reproducción", self.player.stop)
+        step("parar ecualizador", self.equalizer.stop)
+        step("limpiar barra de tareas", self._taskbar.cleanup)
+        step("esperar hilos en segundo plano",
+             lambda: shutdown_workers(FetchWorker.active_workers()))
+        step("liberar reproductor", self.player.release)
+        event.accept()
+
+    def _stop_reminder_timer(self):
         reminder_timer = getattr(self, "_reminder_timer", None)
         if reminder_timer is not None:
             reminder_timer.stop()
-        self._tray_icon.hide()
-        self._media_keys.stop()
-        if self.recorder.is_recording:
-            # on_wait bombea eventos sin entrada de usuario: sin esto, cerrar la app
-            # con una grabación en curso bloqueaba el hilo de la interfaz
-            # mientras ffmpeg terminaba de cerrar el archivo -- Windows
-            # llegaba a marcar la ventana como "no responde" antes de que
-            # terminara. Ver core.recorder.Recorder.stop().
-            self.recorder.stop(on_wait=process_events_during_shutdown)
-            if self._scheduled_recording_active is not None:
-                rec = self._scheduled_recording_active
-                recording_schedule.mark_done(rec.tvg_id, rec.title, rec.start)
-                self._scheduled_recording_active = None
-        self.player.stop()
-        self.equalizer.stop()
-        self._taskbar.cleanup()
-        shutdown_workers(FetchWorker.active_workers())
-        self.player.release()
-        event.accept()
+
+    def _stop_recording_on_close(self):
+        if not self.recorder.is_recording:
+            return
+        # on_wait bombea eventos sin entrada de usuario: sin esto, cerrar la app
+        # con una grabación en curso bloqueaba el hilo de la interfaz
+        # mientras ffmpeg terminaba de cerrar el archivo -- Windows
+        # llegaba a marcar la ventana como "no responde" antes de que
+        # terminara. Ver core.recorder.Recorder.stop().
+        self.recorder.stop(on_wait=process_events_during_shutdown)
+        if self._scheduled_recording_active is not None:
+            rec = self._scheduled_recording_active
+            recording_schedule.mark_done(rec.tvg_id, rec.title, rec.start)
+            self._scheduled_recording_active = None
