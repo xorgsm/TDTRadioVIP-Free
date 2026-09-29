@@ -2,6 +2,34 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.21] — 2026-09-29
+
+Reúne los arreglos de las versiones 8.6.17 a 8.6.21 de la edición completa
+que afectan a la edición Free.
+
+### Fixed
+- **Un fallo en un paso del cierre de la app se saltaba el resto del
+  cierre** (`ui/main_window.py`): por ejemplo, un fallo de VLC al parar
+  dejaba sin liberar el reproductor. Ahora cada paso se ejecuta por
+  separado y un fallo queda en el log.
+- **Un canal puesto tras otro caído no se reintentaba, y la cola perdía
+  las URLs de respaldo** (`ui/playback_controller.py`,
+  `ui/queue_controller.py`).
+- **Siguiente/anterior y el auto-salto elegían el canal equivocado tras
+  ordenar o buscar** en las listas de TV y radio
+  (`ui/playback_controller.py`).
+- **Los logos no se cargaban en listas cortas ni en la vista en
+  cuadrícula** (`ui/channel_lists_controller.py`).
+- **Lo reproducido desde el historial salía sin logo, sin guía EPG y sin
+  fuentes de respaldo** (`core/history.py` y los accesos desde Historial,
+  "Recientes" y "reanudar al abrir"). Las entradas antiguas se completan
+  la próxima vez que se reproduce el canal.
+
+### Tests
+- Cobertura nueva del cierre de la ventana, de la cola, de
+  `ui/channel_lists_controller.py` y de la reproducción desde el
+  historial. 354 → 438 tests.
+
 ## [8.6.16] — 2026-09-25
 
 ### Fixed
