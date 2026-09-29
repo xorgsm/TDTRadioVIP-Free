@@ -145,7 +145,7 @@ class DialogActionsController:
         if win.current_url:
             reanudar = (
                 win.current_type, win.current_name, win.current_url,
-                win.current_tvg_id, win.current_logo,
+                win.current_tvg_id, win.current_logo, list(win._current_alternate_urls),
             )
             win.player.stop()
             win.equalizer.stop()

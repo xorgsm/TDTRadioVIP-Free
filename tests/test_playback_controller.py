@@ -99,6 +99,40 @@ def test_play_saves_logo_epg_id_and_backups_in_history(ctrl, win):
     )
 
 
+def test_play_completes_a_favorite_with_epg_id_and_backups(ctrl, win):
+    pc_module.fav_store.is_favorite.return_value = True
+    pc_module.fav_store.complete_favorite.return_value = ["favs actualizados"]
+
+    ctrl.play("tv", "La 1", "https://stream.test/la1", "la1", "https://logo/la1",
+              ["https://respaldo/la1"])
+
+    pc_module.fav_store.complete_favorite.assert_called_once_with(
+        "tv", "La 1", logo="https://logo/la1", tvg_id="la1",
+        alternate_urls=["https://respaldo/la1"],
+    )
+    assert win.favorites == ["favs actualizados"]
+    win.lists.refresh_favorites_tab.assert_called()
+
+
+def test_play_of_a_non_favorite_does_not_touch_favorites(ctrl, win):
+    ctrl.play("tv", "La 1", "https://stream.test/la1", "la1")
+
+    pc_module.fav_store.complete_favorite.assert_not_called()
+
+
+def test_star_button_saves_epg_id_and_backups_in_favorites(ctrl, win):
+    _playing(win)
+    win.current_logo, win.current_tvg_id = "https://logo/la1", "la1"
+    win._current_alternate_urls = ["https://respaldo/la1"]
+
+    ctrl.toggle_favorite_current()
+
+    pc_module.fav_store.toggle_favorite.assert_called_once_with(
+        "tv", "La 1", "https://stream.test/la1", "https://logo/la1",
+        tvg_id="la1", alternate_urls=["https://respaldo/la1"],
+    )
+
+
 def test_zapping_stops_a_manual_recording(ctrl, win):
     win.recorder.is_recording = True
 
