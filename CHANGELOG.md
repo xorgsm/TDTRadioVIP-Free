@@ -2,6 +2,27 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.22] — 2026-09-29
+
+### Fixed
+- **Lo puesto desde Favoritos salía sin guía EPG y sin fuentes de
+  respaldo** (`core/favorites.py`, `ui/playback_controller.py`,
+  `ui/channel_menu_controller.py`): los favoritos solo guardaban nombre,
+  enlace, logo y carpeta. Al poner un canal desde la pestaña Favoritos, la
+  barra lateral o Inicio, la TV salía sin el "Ahora: …" de la guía, y un
+  corte no probaba las fuentes de respaldo. Ahora los favoritos guardan
+  también el identificador de la guía y los respaldos. Los favoritos
+  antiguos se completan la próxima vez que se reproduce ese canal.
+- **La búsqueda Ctrl+K y la vuelta al canal al cerrar la Multivista no
+  pasaban las fuentes de respaldo** (`ui/command_palette.py`,
+  `ui/dialog_actions.py`).
+
+### Tests
+- `tests/test_play_with_backups.py` (nuevo): menú contextual, Ctrl+K y
+  Multivista; y en `test_favorites.py` y `test_playback_controller.py`,
+  guardado y completado de los campos nuevos.
+- 1143 → 1157 tests.
+
 ## [8.6.21] — 2026-09-28
 
 ### Fixed
