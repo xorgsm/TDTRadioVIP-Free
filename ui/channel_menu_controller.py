@@ -180,7 +180,8 @@ class ChannelMenuController:
     def _toggle_favorite_for(self, data: dict):
         win = self.win
         win.favorites = fav_store.toggle_favorite(
-            data.get("type"), data.get("name"), data.get("url", ""), data.get("logo", "")
+            data.get("type"), data.get("name"), data.get("url", ""), data.get("logo", ""),
+            tvg_id=data.get("tvg_id", ""), alternate_urls=data.get("alternate_urls", []),
         )
         win.lists.refresh_favorites_tab()
         win.lists.mark_favorites_everywhere()

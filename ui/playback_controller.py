@@ -142,8 +142,19 @@ class PlaybackController:
         # no hace nada durante ese margen en directo.
         self._update_seek_buttons_enabled(False)
 
-        win.fav_btn.setChecked(fav_store.is_favorite(win.favorites, item_type, name))
+        es_favorito = fav_store.is_favorite(win.favorites, item_type, name)
+        win.fav_btn.setChecked(es_favorito)
         self._update_favorite_button_icon()
+        if es_favorito:
+            # Los favoritos guardados antes de 8.6.22 no traen tvg_id ni
+            # respaldos: se completan con los de esta reproducción.
+            favoritos = fav_store.complete_favorite(
+                item_type, name, logo=logo, tvg_id=tvg_id,
+                alternate_urls=win._current_alternate_urls,
+            )
+            if favoritos != win.favorites:
+                win.favorites = favoritos
+                win.lists.refresh_favorites_tab()
 
         win.history = hist_store.add_entry(
             item_type, name, url, logo=logo, tvg_id=tvg_id,
@@ -766,7 +777,8 @@ class PlaybackController:
             win.fav_btn.setChecked(False)
             return
         win.favorites = fav_store.toggle_favorite(
-            win.current_type, win.current_name, win.current_url or "", win.current_logo or ""
+            win.current_type, win.current_name, win.current_url or "", win.current_logo or "",
+            tvg_id=win.current_tvg_id or "", alternate_urls=win._current_alternate_urls,
         )
         self._update_favorite_button_icon()
         win.lists.refresh_favorites_tab()

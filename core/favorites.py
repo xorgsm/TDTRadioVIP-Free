@@ -2,8 +2,11 @@
 Gestión de canales y emisoras marcados como favoritos.
 
 Se guardan en un JSON dentro de la carpeta de datos de la aplicación.
-Cada favorito es un diccionario con: type ('tv' o 'radio'), name, url, logo
-y folder (carpeta del usuario, vacío = sin carpeta / "General").
+Cada favorito es un diccionario con: type ('tv' o 'radio'), name, url, logo,
+folder (carpeta del usuario, vacío = sin carpeta / "General"), tvg_id y
+alternate_urls (lo necesario para reproducirlo con su guía EPG y sus fuentes
+de respaldo; los favoritos guardados antes de 8.6.22 no los traen hasta que
+se vuelve a reproducir el canal, ver complete_favorite()).
 """
 import json
 from typing import List, Optional
@@ -49,7 +52,10 @@ def is_favorite(favorites: List[dict], item_type: str, name: str) -> bool:
     return any(f.get("type") == item_type and f.get("name") == name for f in favorites)
 
 
-def toggle_favorite(item_type: str, name: str, url: str = "", logo: str = "", folder: str = "") -> List[dict]:
+def toggle_favorite(
+    item_type: str, name: str, url: str = "", logo: str = "", folder: str = "",
+    tvg_id: str = "", alternate_urls: Optional[List[str]] = None,
+) -> List[dict]:
     """
     Añade el elemento a favoritos si no estaba, o lo quita si ya estaba.
     Devuelve SIEMPRE la lista actualizada y la deja guardada en disco.
@@ -75,7 +81,39 @@ def toggle_favorite(item_type: str, name: str, url: str = "", logo: str = "", fo
         "url": url or "",
         "logo": logo or "",
         "folder": folder or "",
+        "tvg_id": tvg_id or "",
+        "alternate_urls": list(alternate_urls or []),
     })
+    _save(favorites)
+    return favorites
+
+
+def complete_favorite(
+    item_type: str, name: str, logo: str = "", tvg_id: str = "",
+    alternate_urls: Optional[List[str]] = None,
+) -> List[dict]:
+    """
+    Pone al día el logo, el tvg_id y los respaldos de un favorito que ya
+    existe con los de la reproducción en curso -- así los guardados antes
+    de 8.6.22 se completan solos la próxima vez que se reproducen. Lo que
+    llegue vacío no borra lo que ya tenía. No añade favoritos nuevos ni
+    toca el disco si no cambia nada. Devuelve la lista actualizada.
+    """
+    favorites = load_favorites()
+    fav = next(
+        (f for f in favorites if f.get("type") == item_type and f.get("name") == name),
+        None,
+    )
+    if fav is None:
+        return favorites
+    nuevos = {
+        "logo": logo or fav.get("logo", ""),
+        "tvg_id": tvg_id or fav.get("tvg_id", ""),
+        "alternate_urls": list(alternate_urls or fav.get("alternate_urls") or []),
+    }
+    if all(fav.get(clave) == valor for clave, valor in nuevos.items()):
+        return favorites
+    fav.update(nuevos)
     _save(favorites)
     return favorites
 

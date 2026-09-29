@@ -108,17 +108,21 @@ class CommandPalette(QDialog):
             self.close()
             payload()
             return
-        url = payload.get("url", "") if isinstance(payload, dict) else payload.url
-        name = payload.get("name", "") if isinstance(payload, dict) else payload.name
+        es_dict = isinstance(payload, dict)
+        url = payload.get("url", "") if es_dict else payload.url
+        name = payload.get("name", "") if es_dict else payload.name
+        # Sin los respaldos, un corte del canal puesto desde aquí no probaba
+        # sus otras fuentes (el catálogo, favoritos e historial los traen).
+        alternate_urls = payload.get("alternate_urls", []) if es_dict else payload.alternate_urls
         if kind == "tv" and url:
             self.close()
-            tvg_id = payload.get("tvg_id", "") if isinstance(payload, dict) else payload.tvg_id
-            logo = payload.get("logo", "") if isinstance(payload, dict) else payload.logo
-            self.win.playback.play(kind, name, url, tvg_id, logo)
+            tvg_id = payload.get("tvg_id", "") if es_dict else payload.tvg_id
+            logo = payload.get("logo", "") if es_dict else payload.logo
+            self.win.playback.play(kind, name, url, tvg_id, logo, alternate_urls)
         elif kind == "radio" and url:
             self.close()
-            logo = payload.get("logo", "") if isinstance(payload, dict) else payload.favicon
-            self.win.playback.play(kind, name, url, "", logo)
+            logo = payload.get("logo", "") if es_dict else payload.favicon
+            self.win.playback.play(kind, name, url, "", logo, alternate_urls)
 
     # ---------- Navegación por teclado ----------
 

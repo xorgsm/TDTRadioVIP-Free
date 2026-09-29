@@ -80,7 +80,20 @@ def test_toggle_favorite_adds_new_entry_at_the_front(monkeypatch, tmp_path):
     result = favorites.toggle_favorite("radio", "Los 40")
 
     assert [f["name"] for f in result] == ["Los 40", "La 1"]
-    assert result[1] == {"type": "tv", "name": "La 1", "url": "http://x", "logo": "l.png", "folder": ""}
+    assert result[1] == {"type": "tv", "name": "La 1", "url": "http://x", "logo": "l.png",
+                         "folder": "", "tvg_id": "", "alternate_urls": []}
+
+
+def test_toggle_favorite_saves_epg_id_and_backups(monkeypatch, tmp_path):
+    """Sin tvg_id la TV puesta desde Favoritos salía sin "Ahora: ..." de la
+    guía, y sin respaldos un corte no probaba otras fuentes."""
+    _redirect(monkeypatch, tmp_path)
+    favorites.toggle_favorite("tv", "La 1", url="http://x", tvg_id="la1",
+                              alternate_urls=["http://respaldo"])
+
+    fav = favorites.load_favorites()[0]
+    assert fav["tvg_id"] == "la1"
+    assert fav["alternate_urls"] == ["http://respaldo"]
 
 
 def test_toggle_favorite_removes_entry_when_already_present(monkeypatch, tmp_path):
@@ -109,7 +122,8 @@ def test_toggle_favorite_persists_across_reload(monkeypatch, tmp_path):
     favorites.toggle_favorite("tv", "La 1", url="http://x")
 
     reloaded = favorites.load_favorites()
-    assert reloaded == [{"type": "tv", "name": "La 1", "url": "http://x", "logo": "", "folder": ""}]
+    assert reloaded == [{"type": "tv", "name": "La 1", "url": "http://x", "logo": "", "folder": "",
+                         "tvg_id": "", "alternate_urls": []}]
 
 
 def test_is_favorite_true_when_present_false_otherwise(monkeypatch, tmp_path):
@@ -267,3 +281,59 @@ def test_toggle_favorite_does_not_raise_when_disk_write_fails(monkeypatch, tmp_p
 
     result = favorites.toggle_favorite("tv", "La 1")
     assert [f["name"] for f in result] == ["La 1"]
+
+
+# --------------------------------------------------------------------------
+# complete_favorite
+# --------------------------------------------------------------------------
+
+def _stored(tmp_path, entries):
+    (tmp_path / "favorites.json").write_text(json.dumps(entries), encoding="utf-8")
+
+
+def test_complete_favorite_fills_an_old_entry(monkeypatch, tmp_path):
+    """Un favorito guardado antes de 8.6.22 no trae tvg_id ni respaldos: se
+    completan la próxima vez que se reproduce ese canal."""
+    _redirect(monkeypatch, tmp_path)
+    favorites.reorder([{"type": "tv", "name": "La 1", "url": "http://x", "logo": "",
+                        "folder": "Noticias"}])
+
+    result = favorites.complete_favorite("tv", "La 1", logo="l.png", tvg_id="la1",
+                                         alternate_urls=["http://respaldo"])
+
+    assert result[0] == {"type": "tv", "name": "La 1", "url": "http://x", "logo": "l.png",
+                         "folder": "Noticias", "tvg_id": "la1",
+                         "alternate_urls": ["http://respaldo"]}
+    assert favorites.load_favorites() == result
+
+
+def test_complete_favorite_keeps_saved_values_when_playback_has_none(monkeypatch, tmp_path):
+    _redirect(monkeypatch, tmp_path)
+    favorites.toggle_favorite("tv", "La 1", logo="l.png", tvg_id="la1",
+                              alternate_urls=["http://respaldo"])
+
+    result = favorites.complete_favorite("tv", "La 1")
+
+    assert result[0]["logo"] == "l.png"
+    assert result[0]["tvg_id"] == "la1"
+    assert result[0]["alternate_urls"] == ["http://respaldo"]
+
+
+def test_complete_favorite_does_not_add_a_channel_that_is_not_favorite(monkeypatch, tmp_path):
+    _redirect(monkeypatch, tmp_path)
+    favorites.toggle_favorite("tv", "La 1")
+
+    result = favorites.complete_favorite("tv", "Antena 3", tvg_id="a3")
+
+    assert [f["name"] for f in result] == ["La 1"]
+
+
+def test_complete_favorite_does_not_rewrite_the_file_when_nothing_changes(monkeypatch, tmp_path):
+    _redirect(monkeypatch, tmp_path)
+    favorites.toggle_favorite("tv", "La 1", tvg_id="la1")
+    saves = []
+    monkeypatch.setattr(favorites, "_save", saves.append)
+
+    favorites.complete_favorite("tv", "La 1", tvg_id="la1")
+
+    assert saves == []
