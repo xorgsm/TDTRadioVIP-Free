@@ -44,7 +44,7 @@ class UpdateCheckController:
             )
             return
         win.statusBar().showMessage("Comprobando actualizaciones…", 4000)
-        worker = FetchWorker(updater.check_for_update, url, cfg.APP_VERSION)
+        worker = FetchWorker(updater.check_update_status, url, cfg.APP_VERSION)
         worker.done.connect(self.on_update_check_done)
         win._update_check_worker = worker
         worker.start()
@@ -53,16 +53,26 @@ class UpdateCheckController:
         """
         Muestra el diálogo de "hay una versión nueva" y, si el usuario
         acepta, la descarga/verificación/ejecución -- llamado tanto tras la
-        comprobación manual como, con el mismo resultado de
-        core.updater.check_for_update(), desde el aviso de la comprobación
-        automática al arrancar (ver ui/main_window.py).
+        comprobación manual (con el resultado de
+        core.updater.check_update_status()) como desde el aviso de la
+        comprobación automática al arrancar, que solo llega aquí con un
+        manifiesto (ver ui/main_window.py).
         """
         win = self.win
         if win._is_closing:
             return
-        if not resultado:
+        if resultado == updater.UP_TO_DATE:
             QMessageBox.information(
                 win, "Buscar actualizaciones", "Ya tienes la versión más reciente."
+            )
+            return
+        if not resultado:
+            # Sin red, servidor caído o manifiesto inválido: antes esto
+            # también decía "Ya tienes la versión más reciente".
+            QMessageBox.warning(
+                win, "Buscar actualizaciones",
+                "No se pudo comprobar si hay actualizaciones. Revisa la "
+                "conexión a internet e inténtalo de nuevo.",
             )
             return
         version = resultado.get("version", "?")

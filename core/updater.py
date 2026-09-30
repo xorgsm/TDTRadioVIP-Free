@@ -50,14 +50,25 @@ def _is_https_url(url: object) -> bool:
         return False
 
 
-def check_for_update(update_check_url: str, current_version: str = APP_VERSION) -> Optional[dict]:
+# Resultado de check_update_status() cuando la versión remota no es más
+# nueva que la instalada (None queda para "no se pudo comprobar").
+UP_TO_DATE = "up_to_date"
+
+
+def check_update_status(
+    update_check_url: str, current_version: str = APP_VERSION,
+) -> "dict | str | None":
     """
-    Devuelve el JSON remoto ({"version": ..., "url": ...}) si describe una
-    versión más nueva que la actual, o None si la URL está vacía (función
-    desactivada), si no hay red, si el JSON es inválido, o si ya se tiene
-    la última versión. Nunca lanza -- se llama desde un hilo de fondo (ver
-    ui/fetch_worker.FetchWorker) y un fallo de red no debe ser más que
-    "no hay actualización que mostrar".
+    Consulta el manifiesto remoto y distingue los tres casos que necesita
+    la comprobación manual (Ayuda > Buscar actualizaciones):
+      - el JSON remoto (dict) si describe una versión más nueva;
+      - UP_TO_DATE si la remota no es más nueva que la instalada;
+      - None si no se pudo comprobar: URL vacía o no HTTPS, sin red, error
+        del servidor, o un manifiesto inválido o con una URL no segura.
+    Antes todo lo que no era "hay versión nueva" salía como None, y la
+    comprobación manual decía "Ya tienes la versión más reciente" también
+    sin conexión. Nunca lanza -- se llama desde un hilo de fondo (ver
+    ui/fetch_worker.FetchWorker).
     """
     if not update_check_url:
         return None
@@ -74,8 +85,9 @@ def check_for_update(update_check_url: str, current_version: str = APP_VERSION) 
 
     if not isinstance(data, dict):
         return None
-    version_remota = data.get("version", "")
-    if not version_remota:
+    version_remota = _version_tuple(data.get("version", ""))
+    if version_remota == (0,):
+        # Sin versión o con una que no se puede leer (ver _version_tuple).
         return None
 
     release_url = data.get("download_url") or data.get("url")
@@ -83,9 +95,22 @@ def check_for_update(update_check_url: str, current_version: str = APP_VERSION) 
         log.warning("El manifiesto de actualización contiene una URL no segura")
         return None
 
-    if _version_tuple(version_remota) > _version_tuple(current_version):
+    if version_remota > _version_tuple(current_version):
         return data
-    return None
+    return UP_TO_DATE
+
+
+def check_for_update(update_check_url: str, current_version: str = APP_VERSION) -> Optional[dict]:
+    """
+    Devuelve el JSON remoto ({"version": ..., "url": ...}) si describe una
+    versión más nueva que la actual, o None en cualquier otro caso: URL
+    vacía (función desactivada), sin red, JSON inválido o ya se tiene la
+    última versión. Es lo que usa la comprobación automática al arrancar,
+    que solo avisa si hay algo nuevo; la manual usa check_update_status()
+    para poder decir si no pudo comprobarlo. Nunca lanza.
+    """
+    resultado = check_update_status(update_check_url, current_version)
+    return resultado if isinstance(resultado, dict) else None
 
 
 def check_for_update_if_due(
