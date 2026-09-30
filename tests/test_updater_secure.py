@@ -6,6 +6,7 @@ import pytest
 
 from core import updater
 from core.updater import (
+    UP_TO_DATE,
     check_for_update,
     check_for_update_if_due,
     cleanup_obsolete_updates,
@@ -163,6 +164,57 @@ def test_update_check_does_not_crash_on_giant_version(monkeypatch):
         ),
     )
     assert check_for_update("https://updates.test/manifest.json", "7.6.1") is None
+
+
+# --------------------------------------------------------------------------
+# check_update_status: distinguir "al día" de "no se pudo comprobar"
+# --------------------------------------------------------------------------
+
+MANIFEST_URL = "https://updates.test/manifest.json"
+NEWER = {"version": "8.7.0", "download_url": "https://updates.test/setup_v8.7.0.exe"}
+
+
+def _serve(monkeypatch, data):
+    monkeypatch.setattr(updater.requests, "get", lambda *a, **k: _ManifestResponse(data))
+
+
+def test_update_status_returns_manifest_when_there_is_a_newer_version(monkeypatch):
+    _serve(monkeypatch, NEWER)
+    assert updater.check_update_status(MANIFEST_URL, "8.6.23") == NEWER
+
+
+@pytest.mark.parametrize("remote", ["8.6.23", "8.6.1"])
+def test_update_status_says_up_to_date_when_remote_is_not_newer(monkeypatch, remote):
+    _serve(monkeypatch, {**NEWER, "version": remote})
+    assert updater.check_update_status(MANIFEST_URL, "8.6.23") == UP_TO_DATE
+
+
+def test_update_status_is_none_when_there_is_no_connection(monkeypatch):
+    """Antes Buscar actualizaciones decía "Ya tienes la versión más reciente"
+    sin conexión: check_for_update() devolvía None en los dos casos."""
+    def offline(*args, **kwargs):
+        raise updater.requests.ConnectionError("sin red")
+
+    monkeypatch.setattr(updater.requests, "get", offline)
+    assert updater.check_update_status(MANIFEST_URL, "8.6.23") is None
+
+
+@pytest.mark.parametrize("data", [
+    ["no", "es", "un", "dict"],
+    {"download_url": "https://updates.test/x.exe"},
+    {"version": "8.7.0", "url": "file:///C:/Windows/System32/calc.exe"},
+    {"version": "9" * 10_000, "url": "https://updates.test/download"},
+])
+def test_update_status_is_none_when_manifest_is_unusable(monkeypatch, data):
+    _serve(monkeypatch, data)
+    assert updater.check_update_status(MANIFEST_URL, "8.6.23") is None
+
+
+def test_check_for_update_still_returns_none_when_up_to_date(monkeypatch):
+    """La comprobación automática sigue sin distinguir: solo avisa si hay
+    versión nueva."""
+    _serve(monkeypatch, {**NEWER, "version": "8.6.23"})
+    assert check_for_update(MANIFEST_URL, "8.6.23") is None
 
 
 def test_check_for_update_if_due_runs_on_first_call(tmp_path, monkeypatch):
