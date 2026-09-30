@@ -2,6 +2,23 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.24] — 2026-09-30
+
+### Fixed
+- **"Buscar actualizaciones" decía "Ya tienes la versión más reciente"
+  aunque no se pudiera comprobar** (`core/updater.py`,
+  `ui/update_check_controller.py`): sin conexión, con el servidor caído o
+  con un manifiesto inválido, la comprobación manual devolvía lo mismo que
+  cuando la app estaba al día. Ahora `check_update_status()` distingue la
+  versión nueva, "al día" y "no se pudo comprobar", y este último caso
+  muestra un aviso propio. La comprobación automática al arrancar no
+  cambia: sigue avisando solo si hay versión nueva.
+
+### Tests
+- `tests/test_update_check_controller.py` (nuevo) y casos nuevos en
+  `test_updater_secure.py`.
+- 1157 → 1176 tests.
+
 ## [8.6.22] — 2026-09-29
 
 ### Fixed
