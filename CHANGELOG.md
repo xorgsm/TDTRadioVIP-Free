@@ -2,6 +2,24 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.24] — 2026-09-30
+
+Reúne los arreglos de las versiones 8.6.22 a 8.6.24 de la edición completa
+que afectan a la edición Free.
+
+### Fixed
+- **"Buscar actualizaciones" decía "Ya tienes la versión más reciente"
+  aunque no se pudiera comprobar** (`core/updater.py`,
+  `ui/update_check_controller.py`): sin conexión, con el servidor caído o
+  con un manifiesto inválido salía el mismo aviso que cuando la app estaba
+  al día. Ahora distingue "al día" de "no se pudo comprobar".
+- **Lo puesto desde Favoritos o con la búsqueda Ctrl+K salía sin guía EPG
+  y sin fuentes de respaldo** (`core/favorites.py`,
+  `ui/playback_controller.py`, `ui/channel_menu_controller.py`,
+  `ui/command_palette.py`): los favoritos guardan ahora también el
+  identificador de la guía y los respaldos. Los favoritos antiguos se
+  completan la próxima vez que se reproduce ese canal.
+
 ## [8.6.21] — 2026-09-29
 
 Reúne los arreglos de las versiones 8.6.17 a 8.6.21 de la edición completa
