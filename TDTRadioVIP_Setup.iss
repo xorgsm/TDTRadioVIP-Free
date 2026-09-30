@@ -18,7 +18,7 @@
 ; ============================================================
 
 #define MyAppName "TDT & Radio VIP"
-#define MyAppVersion "8.6.23"
+#define MyAppVersion "8.6.24"
 #define MyAppPublisher "Coder By X@R"
 #define MyAppInstallName "TDT & Radio VIP 7.6.0"
 ; Fijos, SIN la versión incrustada (antes "TDTRadioVIP_v6.3.0.exe" etc.,
