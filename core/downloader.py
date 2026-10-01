@@ -11,6 +11,7 @@ import hashlib
 import hmac
 import json
 import os
+import pathlib
 import subprocess
 import tempfile
 import threading
@@ -229,7 +230,25 @@ def self_update_yt_dlp(exe_path: str, timeout: int = 25, cancel_check=None) -> b
                 pass
             return False
         time.sleep(0.2)
-    return proceso.returncode == 0
+    if proceso.returncode != 0:
+        return False
+    _refresh_local_hash(exe_path)
+    return True
+
+
+def _refresh_local_hash(exe_path: str) -> None:
+    """Reescribe el .sha256 junto al exe tras 'yt-dlp -U'.
+
+    yt-dlp se sustituye a sí mismo; sin esto, ensure_yt_dlp() vería un hash
+    distinto en el siguiente arranque, borraría el exe y lo volvería a
+    descargar, deshaciendo la autoactualización.
+    """
+    exe = pathlib.Path(exe_path)
+    try:
+        digest = hashlib.sha256(exe.read_bytes()).hexdigest()
+        exe.with_suffix(".exe.sha256").write_text(digest, encoding="ascii")
+    except OSError:
+        log.warning("No se pudo refrescar el hash local de %s", exe_path, exc_info=True)
 
 
 # --------------------------------------------------------------------------

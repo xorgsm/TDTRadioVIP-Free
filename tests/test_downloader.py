@@ -309,6 +309,42 @@ def test_self_update_returns_true_on_success(monkeypatch):
     assert self_update_yt_dlp("yt-dlp.exe") is True
 
 
+def test_self_update_refreshes_local_hash_so_ensure_does_not_redownload(tmp_path, monkeypatch):
+    """yt-dlp -U sustituye el .exe; si el .sha256 guardado no se refresca,
+    el siguiente ensure_yt_dlp() lo ve distinto, lo borra y lo vuelve a
+    descargar, deshaciendo la autoactualizacion."""
+    monkeypatch.setattr(downloader, "_tools_dir", lambda: tmp_path)
+    exe_path = tmp_path / "yt-dlp.exe"
+    exe_path.write_bytes(b"version vieja")
+    hash_path = tmp_path / "yt-dlp.exe.sha256"
+    hash_path.write_text(hashlib.sha256(b"version vieja").hexdigest())
+
+    class _ProcesoQueActualiza(_FakeProcess):
+        def poll(self):
+            exe_path.write_bytes(b"version nueva")  # yt-dlp se sustituye a si mismo
+            return self.returncode
+
+    monkeypatch.setattr(downloader.subprocess, "Popen", lambda *a, **k: _ProcesoQueActualiza(0))
+
+    assert self_update_yt_dlp(str(exe_path)) is True
+
+    assert hash_path.read_text().strip() == hashlib.sha256(b"version nueva").hexdigest()
+    assert ensure_yt_dlp() == str(exe_path)  # sin red: no intenta descargar
+
+
+def test_self_update_failure_keeps_stored_hash(tmp_path, monkeypatch):
+    monkeypatch.setattr(downloader, "_tools_dir", lambda: tmp_path)
+    exe_path = tmp_path / "yt-dlp.exe"
+    exe_path.write_bytes(b"version vieja")
+    hash_path = tmp_path / "yt-dlp.exe.sha256"
+    original = hashlib.sha256(b"version vieja").hexdigest()
+    hash_path.write_text(original)
+    monkeypatch.setattr(downloader.subprocess, "Popen", lambda *a, **k: _FakeProcess(returncode=1))
+
+    assert self_update_yt_dlp(str(exe_path)) is False
+    assert hash_path.read_text().strip() == original
+
+
 def test_self_update_returns_false_on_nonzero_exit(monkeypatch):
     proceso = _FakeProcess(returncode=1)
     monkeypatch.setattr(downloader.subprocess, "Popen", lambda *a, **k: proceso)
