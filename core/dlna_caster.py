@@ -21,12 +21,12 @@ import re
 import socket
 import time
 from urllib.parse import urljoin, urlsplit
-from xml.etree import ElementTree as ET
 
 import requests
 from PySide6.QtCore import QThread, Signal
 
 from core.logger import get_logger
+from core.safe_xml import parse_xml_safely
 
 log = get_logger(__name__)
 
@@ -131,7 +131,7 @@ def _describe_device(location: str, expected_ip: str):
                 if len(contenido) > _MAX_DESCRIPTION_BYTES:
                     log.debug("Descripción de dispositivo en %s supera el tamaño máximo; se descarta", location)
                     return None
-        root = ET.fromstring(bytes(contenido))
+        root = parse_xml_safely(bytes(contenido))
     except Exception:
         log.debug("No se pudo leer la descripción del dispositivo en %s", location)
         return None

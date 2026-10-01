@@ -29,6 +29,7 @@ from core.config import get_app_data_dir
 from core.http_limits import MAX_FEED_BYTES, fetch_limited
 from core.json_store import write_json_atomic
 from core.logger import get_logger
+from core.safe_xml import parse_xml_safely
 
 log = get_logger(__name__)
 
@@ -147,7 +148,7 @@ def fetch_episodes(feed_url: str, force_refresh: bool = False, limit: int = 60) 
 
     try:
         content = fetch_limited(feed_url, max_bytes=MAX_FEED_BYTES, timeout=15)
-        root = ET.fromstring(content)
+        root = parse_xml_safely(content)
     except (requests.RequestException, ET.ParseError):
         return _leer_cache()
 
