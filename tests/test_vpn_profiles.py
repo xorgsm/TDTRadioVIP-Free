@@ -280,6 +280,44 @@ def test_strip_dangerous_directives_removes_known_code_execution_directives(dire
     assert quitadas == [directiva]
 
 
+@pytest.mark.parametrize("directiva", [
+    "--up /tmp/evil.sh",
+    "--script-security 3",
+    "---up evil.sh",
+    '"up" evil.sh',
+    "'--route-up' evil.sh",
+    "u"+chr(92)+"p evil.sh",
+    "config otro.ovpn",
+    "log-append C:/Users/x/AppData/Roaming/Microsoft/Windows/Start Menu/evil.bat",
+    "log C:/evil.txt",
+    "writepid C:/evil.pid",
+    "status C:/evil.txt",
+    "management 127.0.0.1 7505",
+    "management-client-auth",
+    "management-hold",
+    "pkcs11-providers evil.dll",
+    "engine dynamic",
+    "cd C:/",
+    "chroot C:/",
+])
+def test_strip_dangerous_directives_removes_evasions_and_file_or_control_directives(directiva):
+    """Una lista negra exacta se salta con el prefijo '--' (OpenVPN lo admite
+    en ficheros de configuracion), comillas o barras de escape, y no cubria
+    directivas que escriben ficheros, incluyen otros .ovpn, abren la interfaz
+    de gestion o cargan una DLL."""
+    ovpn = f"client\ndev tun\n{directiva}\nremote vpn.example.com 1194\n"
+    limpio, quitadas = vpn_profiles._strip_dangerous_directives(ovpn)
+    assert directiva not in limpio.splitlines()
+    assert quitadas == [directiva]
+
+
+def test_strip_dangerous_directives_keeps_unrelated_directives_sharing_a_prefix():
+    ovpn = "client\nup-delay\nlog-level 3\nremote vpn.example.com 1194\n"
+    limpio, quitadas = vpn_profiles._strip_dangerous_directives(ovpn)
+    assert quitadas == []
+    assert "up-delay" in limpio.splitlines()
+
+
 def test_strip_dangerous_directives_is_case_insensitive_on_directive_name():
     ovpn = "client\nUP /tmp/evil.sh\nremote vpn.example.com 1194\n"
     limpio, quitadas = vpn_profiles._strip_dangerous_directives(ovpn)

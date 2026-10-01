@@ -63,7 +63,31 @@ _DANGEROUS_DIRECTIVES = {
     "up", "down", "up-restart", "route-up", "route-pre-down", "ipchange",
     "client-connect", "client-disconnect", "client-crresponse",
     "tls-verify", "auth-user-pass-verify", "plugin", "script-security",
+    # Cargan una DLL, incluyen otro fichero de configuracion, escriben
+    # ficheros en rutas arbitrarias o cambian de directorio/raiz.
+    "pkcs11-providers", "engine", "config", "log", "log-append", "writepid",
+    "status", "cd", "chroot",
 }
+# Todas las que empiezan por "management" abren la interfaz de gestion.
+_DANGEROUS_PREFIXES = ("management",)
+# Caracteres que el tokenizador de OpenVPN descarta al leer el nombre de la
+# directiva (comillas y barra de escape): `"up"` y `u\p` valen como `up`.
+_TOKEN_NOISE = str.maketrans("", "", "\"'\\")
+
+
+def _directive_name(line: str) -> str:
+    """Nombre normalizado de la directiva de una linea de .ovpn.
+
+    OpenVPN admite en ficheros de configuracion el prefijo "--" (`--up`),
+    comillas y barras de escape en el nombre; una comparacion exacta contra
+    la lista negra se saltaba con cualquiera de ellos.
+    """
+    token = line.split(None, 1)[0].lower().translate(_TOKEN_NOISE)
+    return token.lstrip("-")
+
+
+def _is_dangerous(directive: str) -> bool:
+    return directive in _DANGEROUS_DIRECTIVES or directive.startswith(_DANGEROUS_PREFIXES)
 
 
 def _strip_dangerous_directives(text: str) -> Tuple[str, List[str]]:
@@ -81,8 +105,7 @@ def _strip_dangerous_directives(text: str) -> Tuple[str, List[str]]:
         if not stripped or stripped.startswith(("#", ";")):
             kept_lines.append(line)
             continue
-        directive = stripped.split(None, 1)[0].lower()
-        if directive in _DANGEROUS_DIRECTIVES:
+        if _is_dangerous(_directive_name(stripped)):
             removed.append(stripped)
             continue
         kept_lines.append(line)
