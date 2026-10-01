@@ -113,6 +113,13 @@ class _FakeResponse:
     def __init__(self, content, status_ok=True):
         self.content = content.encode("utf-8") if isinstance(content, str) else content
         self._status_ok = status_ok
+        self.headers = {}
+
+    def iter_content(self, chunk_size=1):
+        return iter([self.content])
+
+    def close(self):
+        pass
 
     def raise_for_status(self):
         if not self._status_ok:

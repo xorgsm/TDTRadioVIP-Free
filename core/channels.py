@@ -13,6 +13,7 @@ from typing import List, Optional
 import requests
 
 from core.config import get_app_data_dir, get_profile_data_dir
+from core.http_limits import MAX_PLAYLIST_BYTES, fetch_limited
 from core.json_store import read_json, write_json_atomic
 
 CUSTOM_FILE = "tv_channels_custom.json"
@@ -138,9 +139,9 @@ def read_playlist_source(source: str, timeout: float = 15) -> str:
     decodificado con decode_playlist(). Lanza requests.RequestException u
     OSError si no se puede leer -- quien llama decide cómo avisar."""
     if source.lower().startswith(("http://", "https://")):
-        resp = requests.get(source, timeout=timeout)
-        resp.raise_for_status()
-        return decode_playlist(resp.content)
+        return decode_playlist(
+            fetch_limited(source, max_bytes=MAX_PLAYLIST_BYTES, timeout=timeout)
+        )
     return decode_playlist(Path(source).read_bytes())
 
 
@@ -186,9 +187,8 @@ def fetch_tv_channels(playlist_url: str, force_refresh: bool = False) -> List[Ch
         return cached
 
     try:
-        resp = requests.get(playlist_url, timeout=12)
-        resp.raise_for_status()
-        channels = parse_m3u(decode_playlist(resp.content))
+        content = fetch_limited(playlist_url, max_bytes=MAX_PLAYLIST_BYTES, timeout=12)
+        channels = parse_m3u(decode_playlist(content))
         if channels:
             try:
                 write_json_atomic(cache_path, [asdict(c) for c in channels])

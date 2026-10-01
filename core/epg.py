@@ -29,6 +29,7 @@ from typing import Dict, List, Optional, Tuple
 import requests
 
 from core.config import get_app_data_dir
+from core.http_limits import MAX_EPG_BYTES, fetch_limited
 from core.json_store import read_json, write_json_atomic
 
 CACHE_FILE = "epg_cache.json"
@@ -177,9 +178,8 @@ def fetch_epg(epg_url: str, force_refresh: bool = False) -> Dict[str, List[Progr
                 return cached
 
     try:
-        resp = requests.get(epg_url, timeout=15)
-        resp.raise_for_status()
-        root = ET.fromstring(resp.content)
+        content = fetch_limited(epg_url, max_bytes=MAX_EPG_BYTES, timeout=15)
+        root = ET.fromstring(content)
     except (requests.RequestException, ET.ParseError):
         return _read_cache(cache_path, epg_url)
 

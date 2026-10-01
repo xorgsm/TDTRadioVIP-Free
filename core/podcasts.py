@@ -26,6 +26,7 @@ import requests
 from PySide6.QtCore import QThread, Signal
 
 from core.config import get_app_data_dir
+from core.http_limits import MAX_FEED_BYTES, fetch_limited
 from core.json_store import write_json_atomic
 from core.logger import get_logger
 
@@ -145,9 +146,8 @@ def fetch_episodes(feed_url: str, force_refresh: bool = False, limit: int = 60) 
                 return cacheado
 
     try:
-        resp = requests.get(feed_url, timeout=15)
-        resp.raise_for_status()
-        root = ET.fromstring(resp.content)
+        content = fetch_limited(feed_url, max_bytes=MAX_FEED_BYTES, timeout=15)
+        root = ET.fromstring(content)
     except (requests.RequestException, ET.ParseError):
         return _leer_cache()
 

@@ -11,6 +11,7 @@ from unittest.mock import Mock
 import pytest
 import requests
 
+from _fake_http import fake_response
 from core import channels
 from core.channels import Channel
 
@@ -43,7 +44,7 @@ def _mock_get(monkeypatch, text=M3U, error=None):
     if error is not None:
         get = Mock(side_effect=error)
     else:
-        get = Mock(return_value=Mock(content=text.encode("utf-8"), raise_for_status=Mock()))
+        get = Mock(return_value=fake_response(text.encode("utf-8")))
     monkeypatch.setattr(channels.requests, "get", get)
     return get
 
@@ -300,6 +301,7 @@ def test_fetch_decodes_utf8_even_when_server_omits_charset(dirs, monkeypatch):
     "CanciÃ³n". La lista se decodifica desde los bytes."""
     respuesta = requests.models.Response()
     respuesta._content = M3U_ES.encode("utf-8")
+    respuesta._content_consumed = True
     respuesta.status_code = 200
     respuesta.headers["content-type"] = "text/plain"
     respuesta.encoding = "ISO-8859-1"
