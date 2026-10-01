@@ -26,15 +26,38 @@ def _unlink_with_logging(path: Path, artifact_kind: str) -> None:
         )
 
 
+def _set_aside_corrupt(path: Path) -> None:
+    """Aparta un JSON corrupto a ``<nombre>.corrupt[N]`` sin pisar copias previas.
+
+    Si solo se devolviera el default, la siguiente escritura sobrescribiría
+    el fichero y el usuario perdería sus datos sin remedio.
+    """
+    candidate = path.with_name(path.name + ".corrupt")
+    counter = 1
+    while candidate.exists():
+        candidate = path.with_name(f"{path.name}.corrupt{counter}")
+        counter += 1
+    try:
+        path.replace(candidate)
+    except OSError:
+        logger.warning("No se pudo apartar el JSON corrupto %s", path, exc_info=True)
+        return
+    logger.warning("JSON corrupto al leer %s; copia conservada en %s", path, candidate)
+
+
 def read_json(path: Path, default: T) -> T:
-    """Carga JSON o devuelve ``default`` si falta, está corrupto o es ilegible."""
+    """Carga JSON o devuelve ``default`` si falta, está corrupto o es ilegible.
+
+    Un fichero corrupto se aparta a ``.corrupt`` para que no lo pise la
+    siguiente escritura.
+    """
     try:
         with path.open("r", encoding="utf-8") as source:
             return json.load(source)
     except FileNotFoundError:
         return default
     except (json.JSONDecodeError, UnicodeDecodeError):
-        logger.warning("JSON corrupto al leer %s", path)
+        _set_aside_corrupt(path)
         return default
     except OSError:
         logger.warning("JSON ilegible al leer %s", path)

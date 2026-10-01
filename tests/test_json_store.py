@@ -54,6 +54,49 @@ def test_read_json_devuelve_default_si_no_es_utf8(tmp_path):
     assert read_json(destino, {}) == {}
 
 
+def test_read_json_aparta_el_fichero_corrupto_para_no_perder_los_datos(tmp_path):
+    """Si se devolviera solo el default, la siguiente escritura pisaría el
+    JSON corrupto y el usuario perdería favoritos/ajustes sin copia alguna."""
+    destino = tmp_path / "favoritos.json"
+    contenido = '{"canal": "La 1"'  # sin cerrar
+    destino.write_text(contenido, encoding="utf-8")
+
+    assert read_json(destino, []) == []
+
+    assert not destino.exists()
+    copias = list(tmp_path.glob("favoritos.json.corrupt*"))
+    assert len(copias) == 1
+    assert copias[0].read_text(encoding="utf-8") == contenido
+
+
+def test_read_json_corrupto_repetido_no_sobrescribe_copias_anteriores(tmp_path):
+    destino = tmp_path / "ajustes.json"
+    for texto in ('{"a": 1', '{"b": 2'):
+        destino.write_text(texto, encoding="utf-8")
+        read_json(destino, {})
+
+    copias = sorted(c.read_text(encoding="utf-8") for c in tmp_path.glob("ajustes.json.corrupt*"))
+    assert copias == ['{"a": 1', '{"b": 2']
+
+
+def test_read_json_aparta_tambien_el_fichero_que_no_es_utf8(tmp_path):
+    destino = tmp_path / "binario.json"
+    destino.write_bytes(b"\xff\xfe\x00\x01 no soy texto")
+    assert read_json(destino, {}) == {}
+    assert len(list(tmp_path.glob("binario.json.corrupt*"))) == 1
+
+
+def test_read_json_devuelve_default_aunque_no_pueda_apartar_el_corrupto(tmp_path, monkeypatch):
+    destino = tmp_path / "ajustes.json"
+    destino.write_text("{", encoding="utf-8")
+
+    def _falla(self, target):
+        raise OSError("archivo en uso")
+
+    monkeypatch.setattr(type(destino), "replace", _falla)
+    assert read_json(destino, {"ok": True}) == {"ok": True}
+
+
 def test_read_json_devuelve_default_si_es_un_directorio(tmp_path):
     """Ruta que existe pero no se puede abrir como fichero -> OSError."""
     carpeta = tmp_path / "soy_carpeta.json"
