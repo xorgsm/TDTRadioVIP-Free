@@ -77,6 +77,9 @@ STARTUP_GRACE_MS = 2000
 _MIN_VALID_SIZE_BYTES = 4096
 
 
+_INPUT_PROTOCOLS = "http,https,tcp,tls,crypto"
+
+
 class Recorder:
     # Atributo de clase: los tests crean Recorder con __new__ sin __init__.
     _stopping = False
@@ -157,6 +160,10 @@ class Recorder:
             # los cortes de red pasajeros que son bastante frecuentes en
             # streams IPTV de larga duración.
             "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
+            # Una lista HLS remota puede referenciar file:, concat:, etc.;
+            # solo se admite lo que necesita un stream http(s) (HLS cifrado
+            # incluido) y va antes de -i para aplicarse a esa entrada.
+            "-protocol_whitelist", _INPUT_PROTOCOLS,
             "-i", stream_url,
         ]
 

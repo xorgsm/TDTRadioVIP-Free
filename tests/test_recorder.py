@@ -194,6 +194,23 @@ def test_start_raises_when_ffmpeg_is_not_available(monkeypatch, tmp_path):
         rec.start("http://example.com/stream", "Canal")
 
 
+def test_start_restricts_ffmpeg_input_protocols_before_the_input(monkeypatch, tmp_path):
+    """Una lista HLS remota puede referenciar file:, concat:, etc. Sin
+    -protocol_whitelist ffmpeg seguiria esas referencias (lectura de ficheros
+    locales o acceso a servicios internos)."""
+    monkeypatch.setattr(recorder_module, "get_ffmpeg_exe", lambda: "ffmpeg.exe")
+    cmds = []
+    monkeypatch.setattr(recorder_module.subprocess, "Popen", _fake_popen(cmds))
+
+    Recorder(str(tmp_path)).start("https://example.com/live.m3u8", "Canal")
+
+    cmd = cmds[0]
+    assert cmd.index("-protocol_whitelist") < cmd.index("-i")
+    protocolos = cmd[cmd.index("-protocol_whitelist") + 1].split(",")
+    assert {"http", "https", "tcp", "tls", "crypto"} <= set(protocolos)
+    assert not {"file", "concat", "subfile", "pipe", "data"} & set(protocolos)
+
+
 def test_start_builds_a_radio_command_without_watermark_or_video(monkeypatch, tmp_path):
     monkeypatch.setattr(recorder_module, "get_ffmpeg_exe", lambda: "ffmpeg.exe")
     cmds = []
