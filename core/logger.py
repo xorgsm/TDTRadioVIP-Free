@@ -19,6 +19,7 @@ Coder By X@R
 """
 import logging
 from logging.handlers import RotatingFileHandler
+from urllib.parse import urlsplit
 
 from core.config import get_app_data_dir
 
@@ -69,6 +70,23 @@ def get_logger(nombre: str) -> logging.Logger:
     """Logger con el nombre del módulo que lo pide (típicamente __name__)."""
     _configurar_raiz()
     return logging.getLogger(nombre)
+
+
+def redact_url(url) -> str:
+    """Esquema y host de una URL, sin credenciales, ruta ni query.
+
+    Las URLs de streams IPTV suelen llevar usuario/clave o tokens (en la
+    ruta, en la query o como usuario:clave@host); no deben acabar en app.log.
+    """
+    try:
+        partes = urlsplit(str(url or "").strip())
+        host = partes.hostname
+        if not partes.scheme or not host:
+            return "<url no válida>"
+        puerto = f":{partes.port}" if partes.port else ""
+        return f"{partes.scheme}://{host}{puerto}/..."
+    except ValueError:
+        return "<url no válida>"
 
 
 def log_file_path():

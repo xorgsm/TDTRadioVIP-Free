@@ -272,6 +272,26 @@ def test_start_raises_and_cleans_up_when_popen_fails(monkeypatch, tmp_path):
     assert rec._log_fh is None
 
 
+def test_start_failure_log_does_not_leak_stream_credentials(monkeypatch, tmp_path, caplog):
+    """La URL del stream suele llevar usuario/clave o token: no debe acabar
+    en app.log cuando ffmpeg no arranca."""
+    monkeypatch.setattr(recorder_module, "get_ffmpeg_exe", lambda: "ffmpeg.exe")
+
+    def _raise(cmd, **kwargs):
+        raise OSError("no se pudo lanzar ffmpeg")
+
+    monkeypatch.setattr(recorder_module.subprocess, "Popen", _raise)
+
+    rec = Recorder(str(tmp_path))
+    with caplog.at_level("ERROR"), pytest.raises(RuntimeError):
+        rec.start("http://user:secret@iptv.test:8080/live/user/secret/1.ts?token=abc", "Canal")
+
+    registro = caplog.text
+    assert "iptv.test" in registro
+    assert "secret" not in registro
+    assert "token=abc" not in registro
+
+
 # --------------------------------------------------------------------------
 # check_early_failure()
 # --------------------------------------------------------------------------
