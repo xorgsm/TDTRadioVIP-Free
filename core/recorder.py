@@ -78,6 +78,9 @@ _MIN_VALID_SIZE_BYTES = 4096
 
 
 class Recorder:
+    # Atributo de clase: los tests crean Recorder con __new__ sin __init__.
+    _stopping = False
+
     def __init__(self, output_dir: str):
         self.output_dir = Path(output_dir)
         try:
@@ -313,9 +316,23 @@ class Recorder:
         """
         proceso = self.process
         archivo = self.current_file
-        if proceso is None:
+        if proceso is None or self._stopping:
+            # Sin grabación, o ya se está parando: on_wait entrega eventos
+            # (temporizadores, atajos) que pueden volver a llamar aquí a
+            # mitad de la espera; la llamada original es la que termina.
             return None, False
 
+        self._stopping = True
+        try:
+            return self._stop_process(proceso, archivo, on_wait)
+        finally:
+            self._stopping = False
+
+    @property
+    def is_stopping(self) -> bool:
+        return self._stopping
+
+    def _stop_process(self, proceso, archivo, on_wait) -> Tuple[Optional[Path], bool]:
         try:
             if proceso.stdin:
                 proceso.stdin.write(b"q")

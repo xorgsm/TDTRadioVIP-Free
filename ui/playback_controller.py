@@ -28,7 +28,7 @@ import logging
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QApplication, QGraphicsOpacityEffect, QInputDialog, QListWidget, QListWidgetItem, QMenu,
+    QGraphicsOpacityEffect, QInputDialog, QListWidget, QListWidgetItem, QMenu,
     QMessageBox,
 )
 
@@ -43,6 +43,7 @@ from core import recording_schedule
 from ui import icons as app_icons
 from ui import palette
 from ui.channel_model import ChannelListView
+from ui.event_pump import pump_events_without_input
 from ui.toast import show_toast
 from ui.visual import make_glow
 from ui.widgets import ROLE_DATA, dominant_color
@@ -513,6 +514,10 @@ class PlaybackController:
 
     def toggle_recording(self):
         win = self.win
+        if win.recorder.is_stopping:
+            # La parada en curso bombea eventos; un segundo clic o atajo a
+            # mitad no debe lanzar otra parada ni otra grabación.
+            return
         if not win.recorder.is_recording:
             if not win.current_url:
                 QMessageBox.information(
@@ -550,12 +555,13 @@ class PlaybackController:
                 QMessageBox.warning(win, "No se pudo grabar", str(exc))
                 win.record_btn.setChecked(False)
         else:
-            # on_wait=QApplication.processEvents: parar la grabación puede
+            # on_wait=pump_events_without_input: parar la grabación puede
             # tardar unos segundos (ffmpeg cerrando el archivo con
             # limpieza) -- sin esto, esa espera bloqueaba el hilo de la
             # interfaz entero y Windows llegaba a marcar la ventana como
-            # "no responde" si tardaba lo bastante.
-            finished_file, ok = win.recorder.stop(on_wait=QApplication.processEvents)
+            # "no responde" si tardaba lo bastante. Sin entrada de usuario
+            # para que no se pueda reentrar desde un clic o un atajo.
+            finished_file, ok = win.recorder.stop(on_wait=pump_events_without_input)
             win.record_btn.setChecked(False)
             win.record_btn.setGraphicsEffect(None)
             # Si lo que se acaba de parar a mano era en realidad una

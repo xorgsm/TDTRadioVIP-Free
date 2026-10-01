@@ -292,6 +292,46 @@ def test_start_failure_log_does_not_leak_stream_credentials(monkeypatch, tmp_pat
     assert "token=abc" not in registro
 
 
+def test_stop_reentrant_call_during_wait_does_not_stop_twice(tmp_path):
+    """on_wait=processEvents entrega eventos (temporizadores, atajos) que
+    pueden volver a llamar a stop() a mitad de la espera."""
+    fake = FakeProcess(becomes_dead_on="immediate")
+    rec = Recorder.__new__(Recorder)
+    rec.process = fake
+    rec.current_file = tmp_path / "grabacion.mp4"
+    rec.current_file.write_bytes(b"0" * 5000)
+    rec.current_log = None
+    rec._log_fh = None
+    durante_la_espera = []
+
+    def _on_wait():
+        durante_la_espera.append((rec.is_stopping, rec.stop()))
+
+    archivo, ok = rec.stop(on_wait=_on_wait)
+
+    assert ok is True and archivo == tmp_path / "grabacion.mp4"
+    assert durante_la_espera and all(d == (True, (None, False)) for d in durante_la_espera)
+    assert fake.stdin.written == b"q"  # una sola orden de cierre
+    assert rec.is_stopping is False
+
+
+def test_stop_clears_stopping_flag_even_if_waiting_raises(tmp_path):
+    fake = FakeProcess(becomes_dead_on="immediate")
+    rec = Recorder.__new__(Recorder)
+    rec.process = fake
+    rec.current_file = tmp_path / "grabacion.mp4"
+    rec.current_log = None
+    rec._log_fh = None
+
+    def _boom():
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        rec.stop(on_wait=_boom)
+
+    assert rec.is_stopping is False
+
+
 # --------------------------------------------------------------------------
 # check_early_failure()
 # --------------------------------------------------------------------------
