@@ -8,6 +8,8 @@ que la app acepta (mismos campos, misma normalizacion).
 import base64
 import importlib.util
 import json
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -160,3 +162,33 @@ def test_main_keygen_prints_the_public_key_but_never_the_private_one(tmp_path, c
     assert codigo == 0
     assert "UPDATE_PUBLIC_KEY_N_B64" in salida
     assert "PRIVATE KEY" not in salida
+
+
+@pytest.mark.skipif(os.name != "nt", reason="las ACL de archivo son cosa de Windows")
+def test_keygen_leaves_the_private_key_readable_only_by_the_current_user(tmp_path):
+    """En Windows 0o600 no toca la ACL: la clave heredaria los permisos de la
+    carpeta (a menudo legible por todos los usuarios locales). Debe quedar
+    una sola entrada de acceso, sin herencia."""
+    sign_manifest.generate_keypair(tmp_path / "claves")
+    key_path = tmp_path / "claves" / sign_manifest.KEY_FILENAME
+
+    listado = subprocess.run(
+        ["icacls", str(key_path)], capture_output=True, text=True, check=True
+    ).stdout
+
+    assert listado.count(":(") == 1
+    assert "(I)" not in listado
+
+
+@pytest.mark.skipif(os.name != "nt", reason="las ACL de archivo son cosa de Windows")
+def test_keygen_leaves_no_key_behind_if_it_cannot_restrict_the_acl(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        sign_manifest.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args, 1, "", "denegado"),
+    )
+
+    with pytest.raises(SigningError, match="permisos"):
+        sign_manifest.generate_keypair(tmp_path / "claves")
+
+    assert not (tmp_path / "claves" / sign_manifest.KEY_FILENAME).exists()

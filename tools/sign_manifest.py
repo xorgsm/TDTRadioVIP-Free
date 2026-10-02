@@ -13,8 +13,10 @@ actualizaciones nuevas.
 """
 import argparse
 import base64
+import getpass
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -44,6 +46,23 @@ def _modulus_b64(modulus: int) -> str:
     return base64.b64encode(modulus.to_bytes(_KEY_BITS // 8, "big")).decode("ascii")
 
 
+def _restrict_to_current_user(path: Path) -> None:
+    """En Windows `0o600` no toca la ACL: quita la herencia y deja solo al
+    usuario actual. En otros sistemas el modo 0o600 ya basta."""
+    if os.name != "nt":
+        return
+    result = subprocess.run(
+        ["icacls", str(path), "/inheritance:r", "/grant:r", f"{getpass.getuser()}:F"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise SigningError(
+            "No se pudieron restringir los permisos de la clave privada "
+            f"(icacls: {result.stderr.strip() or result.stdout.strip()})."
+        )
+
+
 def generate_keypair(out_dir: Path, repo_root: Path = REPO_ROOT) -> str:
     """Crea la clave privada en `out_dir` y devuelve el modulo publico (base64)."""
     out_dir = Path(out_dir)
@@ -61,8 +80,15 @@ def generate_keypair(out_dir: Path, repo_root: Path = REPO_ROOT) -> str:
     )
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
     descriptor = os.open(key_path, flags, 0o600)
-    with os.fdopen(descriptor, "wb") as handle:
-        handle.write(pem)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            # Se restringe el archivo vacio y solo despues se escribe la clave:
+            # asi nunca existe en disco con los permisos heredados.
+            _restrict_to_current_user(key_path)
+            handle.write(pem)
+    except BaseException:
+        key_path.unlink(missing_ok=True)
+        raise
     return _modulus_b64(key.public_key().public_numbers().n)
 
 

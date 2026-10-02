@@ -197,11 +197,22 @@ taskkill //F //IM TDTRadioVIP.exe
 {
   "version": "X.Y.Z.W",
   "download_url": "https://github.com/xorgsm/TDTRadioVIP-Free/releases/download/vX.Y.Z.W/TDTRadioVIP_Setup_vX.Y.Z.W.exe",
-  "sha256": "<el sha256 del .exe calculado arriba>"
+  "sha256": "<el sha256 del .exe calculado arriba>",
+  "signature": "<lo añade tools/sign_manifest.py; ver 'Firmar el manifiesto'>"
 }
 ```
 
+Genéralo **sin** `signature` y fírmalo antes de subirlo (siguiente apartado
+y paso 0 de "Publicar"): un manifiesto sin firma hace que la app ofrezca solo
+abrir la página de descarga.
+
 ## Publicar
+
+**0) Firmar `installer_output/manifest.json`** (apartado "Firmar el manifiesto"):
+
+```bash
+python tools/sign_manifest.py sign --key "<ruta a update_signing_key.pem>" --manifest installer_output/manifest.json
+```
 
 **1) Release pública (la que activa el autoactualizador) — `TDTRadioVIP-Free`:**
 
