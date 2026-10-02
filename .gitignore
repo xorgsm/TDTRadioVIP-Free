@@ -55,3 +55,8 @@ graphify-out/
 # código del producto ni debe viajar en el ZIP de fuentes.
 .agents/
 skills-lock.json
+
+# Clave privada de firma de actualizaciones: jamas debe entrar en el repo.
+# (tools/sign_manifest.py ya se niega a escribirla aqui; esto es defensa extra.)
+*.pem
+update_signing_key*
