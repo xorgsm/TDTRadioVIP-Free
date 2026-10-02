@@ -1,7 +1,7 @@
 """
 Controlador de comprobación de actualizaciones de TDT & Radio VIP: consulta
 manual desde Ayuda > Buscar actualizaciones, y descarga/verificación segura
-(SHA-256) del instalador si el usuario lo pide. La comprobación automática
+(firma y SHA-256) del instalador si el usuario lo pide. La comprobación automática
 al arrancar (ver ui/app_lifecycle.py) reutiliza on_update_check_done() para
 que el diálogo y la descarga sean idénticos en ambos casos.
 
@@ -18,7 +18,10 @@ from PySide6.QtWidgets import QMessageBox
 
 from core import config as cfg
 from core import updater
+from core.logger import get_logger
 from ui.fetch_worker import FetchWorker
+
+log = get_logger(__name__)
 
 
 class UpdateCheckController:
@@ -77,7 +80,12 @@ class UpdateCheckController:
             return
         version = resultado.get("version", "?")
         enlace = resultado.get("download_url") or resultado.get("url", "")
-        secure_download = bool(resultado.get("sha256") and enlace)
+        secure_download = bool(enlace) and updater.has_valid_signature(resultado)
+        if not secure_download and resultado.get("sha256"):
+            log.warning(
+                "El manifiesto de actualización no trae una firma válida; "
+                "se ofrece la descarga manual"
+            )
         respuesta = QMessageBox.question(
             win, "Actualización disponible",
             f"Hay una versión nueva disponible: {version} "
@@ -110,6 +118,6 @@ class UpdateCheckController:
             return
         if QMessageBox.question(
             win, "Actualización verificada",
-            "El instalador superó la verificación SHA-256.\n\n¿Ejecutarlo ahora?",
+            "El instalador superó la verificación de firma y SHA-256.\n\n¿Ejecutarlo ahora?",
         ) == QMessageBox.Yes:
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
