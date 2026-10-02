@@ -9,6 +9,9 @@ defecto = desactivado" que core/epg.py con epg_url.
 Formato esperado en update_check_url: un JSON tipo
     {"version": "6.5.0", "url": "https://.../descargas"}
 
+La descarga automática exige además una firma del autor en el manifiesto
+(ver core/update_signature.py): sin ella solo se ofrece abrir la página.
+
 Coder By X@R
 """
 import hashlib
@@ -20,8 +23,10 @@ from urllib.parse import urlsplit
 
 import requests
 
+from core import update_signature  # noqa: F401  (los tests parchean updater.update_signature)
 from core.config import APP_VERSION
 from core.logger import get_logger
+from core.update_signature import normalize_version, verify_signature
 
 log = get_logger(__name__)
 MAX_UPDATE_BYTES = 750 * 1024 * 1024
@@ -151,8 +156,12 @@ def check_for_update_if_due(
     return check_for_update(update_check_url, current_version)
 
 
-def validate_download_manifest(data: dict) -> dict:
-    """Valida los campos necesarios antes de descargar un instalador."""
+def validate_manifest_fields(data: dict) -> dict:
+    """URL HTTPS, SHA-256 y nombre .exe de un manifiesto, sin mirar la firma.
+
+    Es lo que comparten la app y tools/sign_manifest.py para derivar los
+    mismos `filename` y `sha256` que entran en el mensaje firmado.
+    """
     if not isinstance(data, dict):
         raise ValueError("Manifiesto de actualización inválido.")
     url = str(data.get("download_url") or data.get("url") or "").strip()
@@ -164,7 +173,35 @@ def validate_download_manifest(data: dict) -> dict:
     filename = Path(url.split("?", 1)[0]).name or "TDTRadioVIP_Update.exe"
     if not filename.lower().endswith(".exe"):
         raise ValueError("La actualización debe ser un instalador EXE.")
-    return {**data, "download_url": url, "sha256": checksum, "filename": filename}
+    return {"download_url": url, "sha256": checksum, "filename": filename}
+
+
+def validate_download_manifest(data: dict) -> dict:
+    """Valida los campos y la firma antes de descargar un instalador.
+
+    Sin firma válida del autor no se descarga nada: el SHA-256 viaja en el
+    mismo manifiesto que la URL, así que por sí solo no prueba autenticidad.
+    """
+    fields = validate_manifest_fields(data)
+    signature = data.get("signature")
+    signature = signature.strip().lower() if isinstance(signature, str) else ""
+    if not signature:
+        raise ValueError("El manifiesto no está firmado.")
+    version = normalize_version(data.get("version"))
+    if not version or not verify_signature(
+        version, fields["filename"], fields["sha256"], signature
+    ):
+        raise ValueError("La firma del manifiesto no es válida.")
+    return {**data, **fields, "signature": signature}
+
+
+def has_valid_signature(data: object) -> bool:
+    """True si `data` es un manifiesto descargable con firma válida (no lanza)."""
+    try:
+        validate_download_manifest(data)
+    except ValueError:
+        return False
+    return True
 
 
 def download_verified_update(

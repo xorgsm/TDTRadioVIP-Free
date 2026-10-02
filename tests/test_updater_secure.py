@@ -4,6 +4,7 @@ import time
 
 import pytest
 
+import _signing
 from core import updater
 from core.updater import (
     UP_TO_DATE,
@@ -26,12 +27,9 @@ class _Response:
         yield self.payload
 
 
-def test_verified_update_is_published_atomically(tmp_path):
+def test_verified_update_is_published_atomically(tmp_path, trusted_update_key):
     payload = b"signed installer bytes"
-    manifest = {
-        "download_url": "https://updates.test/setup.exe",
-        "sha256": hashlib.sha256(payload).hexdigest(),
-    }
+    manifest = _signing.signed_manifest(payload, filename="setup.exe")
     result = download_verified_update(
         manifest, tmp_path, request_get=lambda *args, **kwargs: _Response(payload)
     )
@@ -39,7 +37,9 @@ def test_verified_update_is_published_atomically(tmp_path):
     assert not result.with_suffix(".exe.part").exists()
 
 
-def test_downloading_a_new_update_removes_previously_downloaded_installers(tmp_path):
+def test_downloading_a_new_update_removes_previously_downloaded_installers(
+    tmp_path, trusted_update_key
+):
     """Cada 'Buscar actualizaciones' > 'Descargar y verificar' se quedaba
     acumulando un .exe nuevo sin borrar los anteriores (reportado: varios
     instaladores acumulados en la carpeta updates)."""
@@ -47,10 +47,9 @@ def test_downloading_a_new_update_removes_previously_downloaded_installers(tmp_p
     old_installer.write_bytes(b"old installer")
 
     payload = b"new installer bytes"
-    manifest = {
-        "download_url": "https://updates.test/TDTRadioVIP_Setup_v8.0.exe",
-        "sha256": hashlib.sha256(payload).hexdigest(),
-    }
+    manifest = _signing.signed_manifest(
+        payload, version="8.0", filename="TDTRadioVIP_Setup_v8.0.exe"
+    )
     download_verified_update(
         manifest, tmp_path, request_get=lambda *args, **kwargs: _Response(payload)
     )
@@ -95,8 +94,10 @@ def test_cleanup_obsolete_updates_tolerates_missing_directory(tmp_path):
     assert cleanup_obsolete_updates(tmp_path / "no-existe", current_version="8.0") == 0
 
 
-def test_invalid_checksum_removes_partial_download(tmp_path):
-    manifest = {"url": "https://updates.test/setup.exe", "sha256": "0" * 64}
+def test_invalid_checksum_removes_partial_download(tmp_path, trusted_update_key):
+    """Firma valida, pero el servidor entrega otros bytes: sigue fallando por
+    SHA-256 y no deja el .part."""
+    manifest = _signing.signed_manifest(b"good", filename="setup.exe")
     with pytest.raises(ValueError, match="SHA-256"):
         download_verified_update(
             manifest, tmp_path, request_get=lambda *args, **kwargs: _Response(b"bad")
@@ -118,6 +119,101 @@ def test_manifest_rejects_insecure_url():
 def test_manifest_rejects_non_web_or_hostless_urls(url):
     with pytest.raises(ValueError, match="HTTPS"):
         validate_download_manifest({"url": url, "sha256": "0" * 64})
+
+
+# --------------------------------------------------------------------------
+# Firma del manifiesto
+# --------------------------------------------------------------------------
+
+def test_manifest_without_signature_is_rejected(trusted_update_key):
+    manifest = _signing.signed_manifest()
+    del manifest["signature"]
+    with pytest.raises(ValueError, match="firmado"):
+        validate_download_manifest(manifest)
+
+
+def test_unsigned_manifest_makes_no_network_request(tmp_path, trusted_update_key):
+    manifest = _signing.signed_manifest()
+    del manifest["signature"]
+
+    def unexpected_request(*args, **kwargs):
+        pytest.fail("un manifiesto sin firma no debe llegar a la red")
+
+    with pytest.raises(ValueError):
+        download_verified_update(manifest, tmp_path, request_get=unexpected_request)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_manifest_with_tampered_hash_is_rejected(trusted_update_key):
+    manifest = _signing.signed_manifest(b"original")
+    manifest["sha256"] = "0" * 64  # el atacante cambia el hash a conveniencia
+    with pytest.raises(ValueError, match="firma"):
+        validate_download_manifest(manifest)
+
+
+def test_manifest_with_tampered_version_is_rejected(trusted_update_key):
+    manifest = _signing.signed_manifest()
+    manifest["version"] = "9.9.9"
+    with pytest.raises(ValueError, match="firma"):
+        validate_download_manifest(manifest)
+
+
+@pytest.mark.parametrize("signature", [None, 123, ["aa"], {"a": 1}, ""])
+def test_signature_of_the_wrong_type_is_treated_as_unsigned(trusted_update_key, signature):
+    manifest = _signing.signed_manifest()
+    manifest["signature"] = signature
+    with pytest.raises(ValueError, match="firmado"):
+        validate_download_manifest(manifest)
+
+
+def test_uppercase_signature_with_spaces_is_accepted(trusted_update_key):
+    manifest = _signing.signed_manifest()
+    manifest["signature"] = "  " + manifest["signature"].upper() + " "
+    clean = validate_download_manifest(manifest)
+    assert clean["signature"] == manifest["signature"].strip().lower()
+
+
+def test_numeric_version_in_the_json_is_normalised_like_the_tool_does(trusted_update_key):
+    manifest = _signing.signed_manifest(version="8.7")
+    manifest["version"] = 8.7  # el JSON trae un numero, no una cadena
+    assert validate_download_manifest(manifest)["filename"] == "TDTRadioVIP_Setup_v8.7.0.exe"
+
+
+def test_query_string_in_the_url_does_not_change_the_signed_filename(trusted_update_key):
+    manifest = _signing.signed_manifest()
+    manifest["download_url"] += "?download=1&token=abc"
+    clean = validate_download_manifest(manifest)
+    assert clean["filename"] == "TDTRadioVIP_Setup_v8.7.0.exe"
+
+
+def test_without_a_configured_public_key_no_manifest_is_accepted(monkeypatch):
+    manifest = _signing.signed_manifest()
+    monkeypatch.setattr(updater.update_signature, "UPDATE_PUBLIC_KEY_N_B64", "")
+    with pytest.raises(ValueError, match="firma"):
+        validate_download_manifest(manifest)
+
+
+def test_has_valid_signature_reports_without_raising(trusted_update_key):
+    firmado = _signing.signed_manifest()
+    sin_firma = {k: v for k, v in firmado.items() if k != "signature"}
+    inseguro = {**firmado, "download_url": "http://updates.test/setup.exe"}
+
+    assert updater.has_valid_signature(firmado) is True
+    assert updater.has_valid_signature(sin_firma) is False
+    assert updater.has_valid_signature(inseguro) is False
+    assert updater.has_valid_signature(None) is False
+    assert updater.has_valid_signature("no es un dict") is False
+
+
+def test_validate_manifest_fields_does_not_look_at_the_signature():
+    campos = updater.validate_manifest_fields(
+        {"download_url": "https://updates.test/Setup_v8.7.0.exe", "sha256": "A" * 64}
+    )
+    assert campos == {
+        "download_url": "https://updates.test/Setup_v8.7.0.exe",
+        "sha256": "a" * 64,
+        "filename": "Setup_v8.7.0.exe",
+    }
 
 
 class _ManifestResponse:
