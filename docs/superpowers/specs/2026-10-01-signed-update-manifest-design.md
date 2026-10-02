@@ -1,6 +1,6 @@
 # Manifiesto de actualización firmado — v8.6.25
 
-**Estado:** Diseño aprobado en conversación (2026-10-01); spec pendiente de revisión.
+**Estado:** Diseño aprobado e implementado (2026-10-01). Pendiente del autor: generar la clave real y pegar la clave pública (ver `RELEASE.md`, "Firmar el manifiesto").
 **Clasificación:** Arquitectónico (cambia el formato del manifiesto, el proceso de publicación y la verificación en la app).
 **Origen:** punto 8 de la revisión general de 8.6.24 (ver más abajo, "Contexto").
 

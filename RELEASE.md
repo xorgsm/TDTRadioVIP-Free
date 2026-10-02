@@ -35,13 +35,20 @@ El manifiesto tiene que ser exactamente:
 {
   "version": "X.Y.Z.W",
   "download_url": "https://github.com/xorgsm/TDTRadioVIP-Free/releases/download/vX.Y.Z.W/TDTRadioVIP_Setup_vX.Y.Z.W.exe",
-  "sha256": "<sha256 en minúsculas, 64 hex>"
+  "sha256": "<sha256 en minúsculas, 64 hex>",
+  "signature": "<firma RSA-2048, 512 hex>"
 }
 ```
 
+**La firma es obligatoria** para que la app ofrezca "Descargar y verificar":
+sin ella (o con una firma inválida) solo ofrece abrir la página de descarga.
+Se añade con `tools/sign_manifest.py` (ver el apartado siguiente); no se
+escribe a mano.
+
 `validate_download_manifest()` en `core/updater.py` exige: `download_url`
-HTTPS con host, `sha256` con regex `^[0-9a-fA-F]{64}$`, y que el nombre de
-archivo termine en `.exe`. Se puede validar en local antes de publicar:
+HTTPS con host, `sha256` con regex `^[0-9a-fA-F]{64}$`, que el nombre de
+archivo termine en `.exe` y una `signature` válida. Se puede validar en
+local, ya firmado y antes de publicar:
 
 ```python
 from core.updater import validate_download_manifest
@@ -56,6 +63,41 @@ comentario junto a `update_check_url` en `core/config.py`. Solo el
 binario compilado sí es público (la activación por licencia sigue
 protegida en tiempo de ejecución por `core/license.py` + ID de
 hardware).
+
+## Firmar el manifiesto
+
+El SHA-256 viaja en el mismo `manifest.json` que la URL, así que no prueba
+por sí solo que el manifiesto lo haya publicado el autor. La firma, hecha con
+una clave privada que **no** está en GitHub, sí (ver
+`docs/superpowers/specs/2026-10-01-signed-update-manifest-design.md`).
+
+**Una sola vez — generar la clave** (necesita `pip install -r requirements-dev.txt`):
+
+```bash
+python tools/sign_manifest.py keygen --out "D:/ruta/fuera/del/repo/claves-tdt"
+```
+
+Imprime la línea `UPDATE_PUBLIC_KEY_N_B64 = "..."`: pégala en
+`core/update_signature.py` y publica una versión con ese cambio **antes** de
+firmar manifiestos. La clave privada queda en
+`update_signing_key.pem`: haz copia de seguridad fuera del PC y de GitHub.
+La herramienta se niega a guardarla dentro del repo o a sobrescribir otra.
+
+> **Si pierdes la clave privada**, ninguna versión instalada podrá verificar
+> actualizaciones nuevas: habría que publicar a mano un instalador con otra
+> clave pública. **Si se filtra**, cualquiera puede firmar instaladores que
+> las versiones instaladas aceptarán: misma salida (versión manual con clave
+> nueva). No es la clave de licencias (`core/license.py`); no las mezcles.
+
+**En cada release — firmar el manifiesto** antes de subirlo:
+
+```bash
+python tools/sign_manifest.py sign --key "D:/ruta/fuera/del/repo/claves-tdt/update_signing_key.pem" --manifest installer_output/manifest.json
+```
+
+Valida los campos, añade `signature` y comprueba que la app lo aceptará
+(incluida la clave pública embebida). Sube el `manifest.json` ya firmado a la
+release de `TDTRadioVIP-Free`.
 
 ## Antes de nada: sincronizar el fix a los 3 repos
 
