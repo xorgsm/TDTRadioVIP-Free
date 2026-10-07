@@ -182,8 +182,19 @@ def test_numeric_version_in_the_json_is_normalised_like_the_tool_does(trusted_up
 def test_query_string_in_the_url_does_not_change_the_signed_filename(trusted_update_key):
     manifest = _signing.signed_manifest()
     manifest["download_url"] += "?download=1&token=abc"
+    manifest["signature"] = _signing.sign(
+        manifest["version"], "TDTRadioVIP_Setup_v8.7.0.exe", manifest["sha256"],
+        manifest["download_url"],
+    )
     clean = validate_download_manifest(manifest)
     assert clean["filename"] == "TDTRadioVIP_Setup_v8.7.0.exe"
+
+
+def test_swapping_the_download_host_invalidates_the_signature(trusted_update_key):
+    manifest = _signing.signed_manifest()
+    manifest["download_url"] = "https://evil.test/TDTRadioVIP_Setup_v8.7.0.exe"
+    with pytest.raises(ValueError, match="firma"):
+        validate_download_manifest(manifest)
 
 
 def test_without_a_configured_public_key_no_manifest_is_accepted(monkeypatch):

@@ -33,8 +33,8 @@ def public_modulus_b64() -> str:
     return base64.b64encode(public_modulus().to_bytes(256, "big")).decode("ascii")
 
 
-def sign(version: str, filename: str, sha256: str) -> str:
-    message = update_signature.signed_message(version, filename, sha256)
+def sign(version: str, filename: str, sha256: str, download_url: str) -> str:
+    message = update_signature.signed_message(version, filename, sha256, download_url)
     return private_key().sign(message, padding.PKCS1v15(), hashes.SHA256()).hex()
 
 
@@ -54,9 +54,10 @@ def signed_manifest(
     host: str = "https://updates.test",
 ) -> dict:
     sha256 = hashlib.sha256(payload).hexdigest()
+    download_url = f"{host}/{filename}"
     return {
         "version": version,
-        "download_url": f"{host}/{filename}",
+        "download_url": download_url,
         "sha256": sha256,
-        "signature": sign(version, filename, sha256),
+        "signature": sign(version, filename, sha256, download_url),
     }

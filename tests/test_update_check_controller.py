@@ -131,6 +131,8 @@ def test_new_version_with_checksum_but_no_signature_opens_the_download_page(
     assert "página de descarga" in boxes.question.call_args.args[2]
     assert workers == []
     ucc_module.QDesktopServices.openUrl.assert_called_once()
+    opened = ucc_module.QDesktopServices.openUrl.call_args.args[0]
+    assert opened.toString() == ucc_module.updater.OFFICIAL_RELEASES_URL
 
 
 def test_new_version_with_invalid_signature_opens_the_download_page(

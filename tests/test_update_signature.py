@@ -18,28 +18,32 @@ from core.update_signature import normalize_version, signed_message, verify_sign
 VERSION = "8.7.0"
 FILENAME = "TDTRadioVIP_Setup_v8.7.0.exe"
 SHA = "a" * 64
+URL = "https://updates.test/TDTRadioVIP_Setup_v8.7.0.exe"
 
 
 @pytest.fixture
 def signature(trusted_update_key):
-    return _signing.sign(VERSION, FILENAME, SHA)
+    return _signing.sign(VERSION, FILENAME, SHA, URL)
 
 
 def test_a_valid_signature_verifies(signature):
-    assert verify_signature(VERSION, FILENAME, SHA, signature) is True
+    assert verify_signature(VERSION, FILENAME, SHA, URL, signature) is True
 
 
-@pytest.mark.parametrize("version,filename,sha256", [
-    ("8.7.1", FILENAME, SHA),
-    (VERSION, "Otro_Setup.exe", SHA),
-    (VERSION, FILENAME, "b" * 64),
+@pytest.mark.parametrize("version,filename,sha256,url", [
+    ("8.7.1", FILENAME, SHA, URL),
+    (VERSION, "Otro_Setup.exe", SHA, URL),
+    (VERSION, FILENAME, "b" * 64, URL),
+    (VERSION, FILENAME, SHA, "https://evil.test/TDTRadioVIP_Setup_v8.7.0.exe"),
 ])
-def test_changing_any_signed_field_invalidates_the_signature(signature, version, filename, sha256):
-    assert verify_signature(version, filename, sha256, signature) is False
+def test_changing_any_signed_field_invalidates_the_signature(
+    signature, version, filename, sha256, url
+):
+    assert verify_signature(version, filename, sha256, url, signature) is False
 
 
 def test_uppercase_hex_signature_still_verifies(signature):
-    assert verify_signature(VERSION, FILENAME, SHA, signature.upper()) is True
+    assert verify_signature(VERSION, FILENAME, SHA, URL, signature.upper()) is True
 
 
 @pytest.mark.parametrize("bad", [
@@ -53,39 +57,40 @@ def test_uppercase_hex_signature_still_verifies(signature):
     " " + "aa" * 256,  # espacio delante: bytes.fromhex lo toleraria
 ])
 def test_malformed_signatures_do_not_verify_and_do_not_raise(trusted_update_key, bad):
-    assert verify_signature(VERSION, FILENAME, SHA, bad) is False
+    assert verify_signature(VERSION, FILENAME, SHA, URL, bad) is False
 
 
 def test_a_signature_larger_than_the_modulus_does_not_verify(trusted_update_key):
-    assert verify_signature(VERSION, FILENAME, SHA, "ff" * 256) is False
+    assert verify_signature(VERSION, FILENAME, SHA, URL, "ff" * 256) is False
 
 
 def test_loose_padding_with_trailing_garbage_does_not_verify(trusted_update_key):
     """Invariante de Bleichenbacher: se compara el bloque completo, no un
     prefijo. Un bloque con el DigestInfo correcto seguido de basura debe
     rechazarse aunque la operacion RSA sea valida."""
-    message = signed_message(VERSION, FILENAME, SHA)
+    message = signed_message(VERSION, FILENAME, SHA, URL)
     digest_info = update_signature._SHA256_DER_PREFIX + hashlib.sha256(message).digest()
     relleno = b"\xff" * 8
     block = b"\x00\x01" + relleno + b"\x00" + digest_info
     block = block + b"garbage" + b"\x00" * (256 - len(block) - 7)
     assert len(block) == 256
-    assert verify_signature(VERSION, FILENAME, SHA, _signing.raw_sign(block)) is False
+    assert verify_signature(VERSION, FILENAME, SHA, URL, _signing.raw_sign(block)) is False
 
 
 def test_a_signature_made_over_another_domain_prefix_does_not_verify(trusted_update_key):
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.asymmetric import padding
 
-    otro = f"OtroProposito\n{VERSION}\n{FILENAME}\n{SHA}".encode("utf-8")
+    otro = f"OtroProposito\n{VERSION}\n{FILENAME}\n{SHA}\n{URL}".encode("utf-8")
     firma = _signing.private_key().sign(otro, padding.PKCS1v15(), hashes.SHA256()).hex()
-    assert verify_signature(VERSION, FILENAME, SHA, firma) is False
+    assert verify_signature(VERSION, FILENAME, SHA, URL, firma) is False
 
 
 @pytest.mark.parametrize("campo", [
-    ("8.7.0\n9.9.9", FILENAME, SHA),
-    (VERSION, "a\rb.exe", SHA),
-    (VERSION, FILENAME, SHA + "\n"),
+    ("8.7.0\n9.9.9", FILENAME, SHA, URL),
+    (VERSION, "a\rb.exe", SHA, URL),
+    (VERSION, FILENAME, SHA + "\n", URL),
+    (VERSION, FILENAME, SHA, URL + "\n"),
 ])
 def test_fields_with_line_breaks_are_rejected(signature, campo):
     with pytest.raises(ValueError):
@@ -102,15 +107,15 @@ def test_fields_with_line_breaks_are_rejected(signature, campo):
 def test_a_misconfigured_public_key_fails_closed(monkeypatch, n_b64):
     """Sin clave valida la app no acepta ninguna actualizacion descargable,
     y tampoco se cae por ello."""
-    firma = _signing.sign(VERSION, FILENAME, SHA)
+    firma = _signing.sign(VERSION, FILENAME, SHA, URL)
     monkeypatch.setattr(update_signature, "UPDATE_PUBLIC_KEY_N_B64", n_b64)
-    assert verify_signature(VERSION, FILENAME, SHA, firma) is False
+    assert verify_signature(VERSION, FILENAME, SHA, URL, firma) is False
 
 
 def test_an_explicit_modulus_overrides_the_embedded_key():
-    firma = _signing.sign(VERSION, FILENAME, SHA)
+    firma = _signing.sign(VERSION, FILENAME, SHA, URL)
     assert verify_signature(
-        VERSION, FILENAME, SHA, firma, modulus=_signing.public_modulus()
+        VERSION, FILENAME, SHA, URL, firma, modulus=_signing.public_modulus()
     ) is True
 
 

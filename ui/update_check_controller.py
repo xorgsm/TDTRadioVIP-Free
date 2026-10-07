@@ -105,7 +105,8 @@ class UpdateCheckController:
                 win.statusBar().showMessage("Descargando actualización segura…")
                 worker.start()
             else:
-                QDesktopServices.openUrl(QUrl(enlace))
+                # El enlace de un manifiesto sin firma válida no es de fiar.
+                QDesktopServices.openUrl(QUrl(updater.OFFICIAL_RELEASES_URL))
 
     def _on_update_download_done(self, path):
         win = self.win

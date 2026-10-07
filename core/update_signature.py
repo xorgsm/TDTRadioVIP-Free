@@ -26,7 +26,7 @@ UPDATE_PUBLIC_KEY_E = 65537
 
 SIGNATURE_BYTES = 256
 _MODULUS_BITS = 2048
-_DOMAIN = "TDTRadioVIP-update-v1"
+_DOMAIN = "TDTRadioVIP-update-v2"
 _SHA256_DER_PREFIX = bytes.fromhex("3031300d060960864801650304020105000420")
 
 
@@ -35,13 +35,15 @@ def normalize_version(value: object) -> str:
     return str(value or "").strip()
 
 
-def signed_message(version: str, filename: str, sha256: str) -> bytes:
-    """Mensaje exacto que se firma. Lanza ValueError si algun campo lleva
-    saltos de linea, que harian ambiguo el limite entre campos."""
-    for field in (version, filename, sha256):
+def signed_message(version: str, filename: str, sha256: str, download_url: str) -> bytes:
+    """Mensaje exacto que se firma. Incluye la URL completa de descarga: sin
+    ella, quien controle el manifiesto podria apuntar a otro host conservando
+    nombre, hash y firma. Lanza ValueError si algun campo lleva saltos de
+    linea, que harian ambiguo el limite entre campos."""
+    for field in (version, filename, sha256, download_url):
         if "\n" in field or "\r" in field:
             raise ValueError("Los campos firmados no pueden contener saltos de línea.")
-    return "\n".join((_DOMAIN, version, filename, sha256)).encode("utf-8")
+    return "\n".join((_DOMAIN, version, filename, sha256, download_url)).encode("utf-8")
 
 
 def _embedded_modulus() -> int | None:
@@ -59,11 +61,12 @@ def verify_signature(
     version: str,
     filename: str,
     sha256: str,
+    download_url: str,
     signature_hex: object,
     *,
     modulus: int | None = None,
 ) -> bool:
-    """True solo si `signature_hex` es la firma del autor sobre los tres campos.
+    """True solo si `signature_hex` es la firma del autor sobre los cuatro campos.
 
     Nunca lanza: ante cualquier entrada rara o clave mal configurada devuelve
     False. `modulus` permite a la herramienta de firma verificar con la clave
@@ -77,7 +80,7 @@ def verify_signature(
         return False
     try:
         signature = bytes.fromhex(signature_hex)
-        message = signed_message(version, filename, sha256)
+        message = signed_message(version, filename, sha256, download_url)
     except ValueError:
         return False
     value = int.from_bytes(signature, "big")

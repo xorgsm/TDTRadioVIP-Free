@@ -30,6 +30,9 @@ from core.update_signature import normalize_version, verify_signature
 
 log = get_logger(__name__)
 MAX_UPDATE_BYTES = 750 * 1024 * 1024
+# Página fija a la que se redirige al usuario cuando el manifiesto no trae una
+# firma válida: nunca se abre una URL que venga de un manifiesto sin firmar.
+OFFICIAL_RELEASES_URL = "https://github.com/xorgsm/TDTRadioVIP-Free/releases/latest"
 SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 # "TDTRadioVIP_Setup_v8.0.exe" -> "8.0" (ver OutputBaseFilename en
 # TDTRadioVIP_Setup.iss, de donde sale este patrón de nombre).
@@ -189,7 +192,7 @@ def validate_download_manifest(data: dict) -> dict:
         raise ValueError("El manifiesto no está firmado.")
     version = normalize_version(data.get("version"))
     if not version or not verify_signature(
-        version, fields["filename"], fields["sha256"], signature
+        version, fields["filename"], fields["sha256"], fields["download_url"], signature
     ):
         raise ValueError("La firma del manifiesto no es válida.")
     return {**data, **fields, "signature": signature}

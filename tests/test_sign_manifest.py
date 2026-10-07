@@ -35,6 +35,12 @@ MANIFEST = {
 }
 
 
+@pytest.fixture(autouse=True)
+def isolated_embed_target(tmp_path, monkeypatch):
+    """Ningun test puede escribir en el core/update_signature.py real."""
+    monkeypatch.setattr(sign_manifest, "UPDATE_SIGNATURE_PATH", tmp_path / "update_signature.py")
+
+
 @pytest.fixture
 def keys(tmp_path, monkeypatch):
     """Clave recien generada e instalada como clave embebida de la app."""
@@ -155,8 +161,16 @@ def test_main_returns_nonzero_and_writes_to_stderr_on_error(tmp_path, capsys):
     assert "Error" in capsys.readouterr().err
 
 
-def test_main_keygen_prints_the_public_key_but_never_the_private_one(tmp_path, capsys):
-    codigo = sign_manifest.main(["keygen", "--out", str(tmp_path / "claves")])
+def test_main_keygen_prints_the_public_key_but_never_the_private_one(
+    tmp_path, capsys, monkeypatch
+):
+    destino = tmp_path / "update_signature.py"
+    destino.write_text('UPDATE_PUBLIC_KEY_N_B64 = ""\n', encoding="utf-8")
+    monkeypatch.setattr(sign_manifest, "UPDATE_SIGNATURE_PATH", destino)
+
+    codigo = sign_manifest.main(
+        ["keygen", "--out", str(tmp_path / "claves"), "--no-passphrase"]
+    )
 
     salida = capsys.readouterr().out
     assert codigo == 0

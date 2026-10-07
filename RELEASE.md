@@ -77,27 +77,37 @@ una clave privada que **no** está en GitHub, sí (ver
 python tools/sign_manifest.py keygen --out "D:/ruta/fuera/del/repo/claves-tdt"
 ```
 
-Imprime la línea `UPDATE_PUBLIC_KEY_N_B64 = "..."`: pégala en
-`core/update_signature.py` y publica una versión con ese cambio **antes** de
-firmar manifiestos. La clave privada queda en
-`update_signing_key.pem`: haz copia de seguridad fuera del PC y de GitHub.
-La herramienta se niega a guardarla dentro del repo o a sobrescribir otra.
+Pide una contraseña (dos veces) y cifra con ella la clave privada, que queda
+en `update_signing_key.pem`; `--no-passphrase` la deja sin cifrar. Escribe
+también la clave pública en `core/update_signature.py`: haz commit y publica
+una versión con ese cambio **antes** de firmar manifiestos. Si el archivo ya
+tiene una clave pública, se niega (cambiarla deja sin verificar a las
+versiones instaladas) salvo `--replace-embedded`. También se niega a guardar la
+clave dentro del repo o a sobrescribir otra. Haz copia de seguridad de la
+clave **y de su contraseña** fuera del PC y de GitHub.
 
-> **Si pierdes la clave privada**, ninguna versión instalada podrá verificar
-> actualizaciones nuevas: habría que publicar a mano un instalador con otra
-> clave pública. **Si se filtra**, cualquiera puede firmar instaladores que
-> las versiones instaladas aceptarán: misma salida (versión manual con clave
-> nueva). No es la clave de licencias (`core/license.py`); no las mezcles.
+> **Si pierdes la clave privada o su contraseña**, ninguna versión instalada
+> podrá verificar actualizaciones nuevas: habría que publicar a mano un
+> instalador con otra clave pública. **Si se filtra**, cualquiera puede firmar
+> instaladores que las versiones instaladas aceptarán: misma salida (versión
+> manual con clave nueva). No es la clave de licencias (`core/license.py`); no
+> las mezcles.
 
-**En cada release — firmar el manifiesto** antes de subirlo:
+**En cada release — generar y firmar el manifiesto** a partir del instalador:
 
 ```bash
-python tools/sign_manifest.py sign --key "D:/ruta/fuera/del/repo/claves-tdt/update_signing_key.pem" --manifest installer_output/manifest.json
+python tools/sign_manifest.py make --key "D:/ruta/fuera/del/repo/claves-tdt/update_signing_key.pem" --installer installer_output/TDTRadioVIP_Setup_vX.Y.Z.W.exe
 ```
 
-Valida los campos, añade `signature` y comprueba que la app lo aceptará
-(incluida la clave pública embebida). Sube el `manifest.json` ya firmado a la
-release de `TDTRadioVIP-Free`.
+Calcula el SHA-256, construye la URL de descarga de `TDTRadioVIP-Free`, firma y
+escribe `installer_output/manifest.json`. La versión sale de `APP_VERSION`
+(`--version` la cambia) y debe aparecer en el nombre del instalador. Si
+`TDT_SIGNING_PASSPHRASE` está definida, se usa como contraseña y no se pregunta
+(cuidado con valores olvidados en la shell); si no, se pide por terminal. Comprueba que la app lo
+aceptará (incluida la clave pública embebida). Para firmar un manifiesto que ya
+tienes escrito, usa `sign --key ... --manifest ...`. Sube el `manifest.json`
+firmado a la release de `TDTRadioVIP-Free` y, después de publicar, comprueba la
+release con `verify` (paso 1 de "Publicar").
 
 ## Antes de nada: sincronizar el fix a los 3 repos
 
@@ -202,26 +212,25 @@ taskkill //F //IM TDTRadioVIP.exe
 }
 ```
 
-Genéralo **sin** `signature` y fírmalo antes de subirlo (siguiente apartado
-y paso 0 de "Publicar"): un manifiesto sin firma hace que la app ofrezca solo
+No lo escribas a mano: `tools/sign_manifest.py make` lo genera ya firmado
+(paso 0 de "Publicar"). Un manifiesto sin firma hace que la app ofrezca solo
 abrir la página de descarga.
 
 ## Publicar
 
-**0) Firmar `installer_output/manifest.json`** (apartado "Firmar el manifiesto"):
+**0) Generar y firmar `installer_output/manifest.json`** (apartado "Firmar el manifiesto"):
 
 ```bash
-python tools/sign_manifest.py sign --key "<ruta a update_signing_key.pem>" --manifest installer_output/manifest.json
+python tools/sign_manifest.py make --key "<ruta a update_signing_key.pem>" --installer installer_output/TDTRadioVIP_Setup_vX.Y.Z.W.exe
 ```
 
 **1) Release pública (la que activa el autoactualizador) — `TDTRadioVIP-Free`:**
 
 ```bash
-cd installer_output
 gh release create vX.Y.Z.W \
-  TDTRadioVIP_Setup_vX.Y.Z.W.exe \
-  TDTRadioVIP_Free_vX.Y.Z.W_portable.zip \
-  manifest.json \
+  installer_output/TDTRadioVIP_Setup_vX.Y.Z.W.exe \
+  installer_output/TDTRadioVIP_Free_vX.Y.Z.W_portable.zip \
+  installer_output/manifest.json \
   --repo xorgsm/TDTRadioVIP-Free \
   --title "TDT & Radio VIP Free X.Y.Z.W" \
   --notes "..."
@@ -232,8 +241,9 @@ como prerelease o no es la más reciente por fecha, `/releases/latest/...`
 no apuntará a ella):
 
 ```bash
-curl -sL "https://github.com/xorgsm/TDTRadioVIP-Free/releases/latest/download/manifest.json"
-# debe devolver el manifest.json recién subido
+python tools/sign_manifest.py verify "https://github.com/xorgsm/TDTRadioVIP-Free/releases/latest/download/manifest.json" --installer installer_output/TDTRadioVIP_Setup_vX.Y.Z.W.exe
+# descarga el manifest.json publicado y lo valida como la app (firma incluida);
+# con --installer comprueba además que el SHA-256 coincide con el .exe local
 ```
 
 **2) Copia privada (histórico de builds, opcional pero es la convención
