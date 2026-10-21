@@ -24,6 +24,7 @@ from PySide6.QtGui import QCursor, QGuiApplication
 
 from ui import icons as app_icons
 from ui import palette
+from ui.nav_sections import NAV_TV
 from ui.style import accent_shades
 
 
@@ -168,7 +169,7 @@ class WindowChrome:
         win._player_fullscreen = True
         win._was_maximized_before_fs = win._pseudo_maximizado
 
-        win.nav_rail.setVisible(False)
+        win.nav_top.setVisible(False)
         win.content_widget.setVisible(False)
         win.library_sidebar.setVisible(False)
         win.groups_sidebar.setVisible(False)
@@ -189,12 +190,6 @@ class WindowChrome:
             self.show_fullscreen_overlay()
 
     def exit_player_fullscreen(self):
-        # Import tardío (no a nivel de módulo): NAV_TV vive en
-        # ui.main_window, que a su vez importa este módulo -- un import a
-        # nivel de módulo aquí crearía un ciclo. Mismo patrón que
-        # ui.epg_controller.
-        from ui.main_window import NAV_TV
-
         win = self.win
         win._player_fullscreen = False
 
@@ -205,9 +200,10 @@ class WindowChrome:
         win.player_header_bar.setVisible(True)
         win.now_playing_bar.setVisible(True)
 
-        win.nav_rail.setVisible(True)
+        win.nav_top.setVisible(True)
         win.content_widget.setVisible(True)
-        # Respeta la preferencia del usuario (botón de biblioteca del riel)
+        # Respeta la preferencia del usuario (botón de biblioteca de la
+        # barra de navegación)
         # en vez de forzarlo visible: si lo había ocultado antes de entrar
         # en pantalla completa, debe seguir oculto al salir.
         win.library_sidebar.setVisible(win.library_toggle_btn.isChecked())
@@ -253,8 +249,8 @@ class WindowChrome:
         """
         Sondeo periódico de la posición global del cursor mientras se está
         en pantalla completa -- ver el comentario en
-        MainWindow._build_player_panel sobre por qué no basta con un
-        eventFilter de Qt (el vídeo es una ventana nativa de libVLC
+        ui.player_panel_builder.build_player_panel sobre por qué no basta
+        con un eventFilter de Qt (el vídeo es una ventana nativa de libVLC
         embebida, ajena al bucle de eventos de Qt).
         """
         win = self.win
@@ -282,7 +278,7 @@ class WindowChrome:
         win._geometria_antes_pip = win.geometry()
         win._was_maximized_before_pip = win._pseudo_maximizado
 
-        win.nav_rail.setVisible(False)
+        win.nav_top.setVisible(False)
         win.content_widget.setVisible(False)
         win.content_widget.setMinimumWidth(0)
         win.library_sidebar.setVisible(False)
@@ -296,14 +292,20 @@ class WindowChrome:
         # devolverla tal cual al salir.
         win._groups_sidebar_visible_before_pip = win.groups_sidebar.isVisible()
         win.groups_sidebar.setVisible(False)
-        # La barra de menú (Archivo/Configuración/Ayuda) tampoco cabe en una
-        # ventana flotante de 460px: Qt la resolvía con una flecha ">>" de
-        # desbordamiento en vez de encogerla, lo que no pinta bien en un
-        # mini reproductor.
-        win.menu_bar.setVisible(False)
+        # win.nav_top ya se oculta más arriba en este mismo método, y con
+        # ella se lleva consigo la búsqueda global y "Más ▾" (ver
+        # ui.more_menu) -- no hace falta ocultarlos aparte, a diferencia de
+        # cuando esto vivía en una QMenuBar independiente de la barra de
+        # navegación.
         win.statusBar().setVisible(False)
         # El PiP funciona como mini reproductor: conserva transporte y mute,
         # pero esconde acciones secundarias para no saturar la ventana.
+        # BUG CONOCIDO (preexistente, no introducido por este refactor): en
+        # la edición Free win.cast_btn es None (ver
+        # ui.now_playing_bar_builder.build_now_playing_bar), así que
+        # widget.isVisible() revienta con AttributeError al entrar en PiP.
+        # Pendiente de arreglar en un cambio aparte -- no se toca aquí para
+        # no mezclar un fix de comportamiento con un refactor puro.
         win._pip_compact_visibility = {
             widget: widget.isVisible() for widget in (
                 win.fav_btn, win.cast_btn, win.record_btn, win.more_btn, win.volume_slider,
@@ -332,12 +334,11 @@ class WindowChrome:
         win = self.win
         win._pip_mode = False
 
-        win.nav_rail.setVisible(True)
+        win.nav_top.setVisible(True)
         win.content_widget.setVisible(True)
         win.content_widget.setMinimumWidth(420)
         win.library_sidebar.setVisible(win.library_toggle_btn.isChecked())
         win.groups_sidebar.setVisible(getattr(win, "_groups_sidebar_visible_before_pip", False))
-        win.menu_bar.setVisible(True)
         win.statusBar().setVisible(True)
         for widget, was_visible in getattr(win, "_pip_compact_visibility", {}).items():
             widget.setVisible(was_visible)

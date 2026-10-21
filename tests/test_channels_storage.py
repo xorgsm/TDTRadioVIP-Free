@@ -11,6 +11,7 @@ from unittest.mock import Mock
 import pytest
 import requests
 
+from _fake_http import fake_response
 from core import channels
 from core.channels import Channel
 
@@ -43,7 +44,7 @@ def _mock_get(monkeypatch, text=M3U, error=None):
     if error is not None:
         get = Mock(side_effect=error)
     else:
-        get = Mock(return_value=Mock(content=text.encode("utf-8"), raise_for_status=Mock()))
+        get = Mock(return_value=fake_response(text.encode("utf-8")))
     monkeypatch.setattr(channels.requests, "get", get)
     return get
 
@@ -300,9 +301,212 @@ def test_fetch_decodes_utf8_even_when_server_omits_charset(dirs, monkeypatch):
     "CanciÃ³n". La lista se decodifica desde los bytes."""
     respuesta = requests.models.Response()
     respuesta._content = M3U_ES.encode("utf-8")
+    respuesta._content_consumed = True
     respuesta.status_code = 200
     respuesta.headers["content-type"] = "text/plain"
     respuesta.encoding = "ISO-8859-1"
     monkeypatch.setattr(channels.requests, "get", Mock(return_value=respuesta))
 
     assert channels.fetch_tv_channels(URL)[0].name == "Canción España"
+
+
+# --------------------------------------------------------------------------
+# Refresco forzado: sin trabajo innecesario en disco
+# --------------------------------------------------------------------------
+
+M3U_CHANGED = M3U + "#EXTINF:-1,Cuatro\nhttps://stream.test/c4.m3u8\n"
+
+
+def test_forced_refresh_does_not_rewrite_an_unchanged_cache(dirs, monkeypatch):
+    _mock_get(monkeypatch)
+    channels.fetch_tv_channels(URL)
+    writes = Mock(wraps=channels.write_json_atomic)
+    monkeypatch.setattr(channels, "write_json_atomic", writes)
+
+    channels.fetch_tv_channels(URL, force_refresh=True)
+
+    writes.assert_not_called()
+
+
+def test_forced_refresh_rewrites_the_cache_when_the_list_changed(dirs, monkeypatch):
+    _mock_get(monkeypatch)
+    channels.fetch_tv_channels(URL)
+    _mock_get(monkeypatch, text=M3U_CHANGED)
+    writes = Mock(wraps=channels.write_json_atomic)
+    monkeypatch.setattr(channels, "write_json_atomic", writes)
+
+    result = channels.fetch_tv_channels(URL, force_refresh=True)
+
+    assert [c.name for c in result] == ["La 1", "Antena 3", "Cuatro"]
+    writes.assert_called_once()
+    assert [c.name for c in channels.fetch_tv_channels(URL)] == ["La 1", "Antena 3", "Cuatro"]
+
+
+# --------------------------------------------------------------------------
+# custom_channel_names(): nombres sin releer la lista personalizada
+# --------------------------------------------------------------------------
+
+def test_custom_channel_names_lists_the_names(dirs):
+    channels.add_custom_channels([Channel("Uno", "u1"), Channel("Dos", "u2")])
+
+    assert channels.custom_channel_names() == frozenset({"Uno", "Dos"})
+
+
+def test_custom_channel_names_is_empty_without_a_custom_file(dirs):
+    assert channels.custom_channel_names() == frozenset()
+
+
+def test_custom_channel_names_does_not_reread_an_unchanged_file(dirs, monkeypatch):
+    channels.add_custom_channels([Channel("Uno", "u1")])
+    channels.custom_channel_names()
+    reads = []
+    real = channels._load_channel_list
+    monkeypatch.setattr(channels, "_load_channel_list", lambda path: reads.append(path) or real(path))
+
+    channels.custom_channel_names()
+    channels.custom_channel_names()
+
+    assert reads == []
+
+
+def test_custom_channel_names_notices_added_and_removed_channels(dirs):
+    channels.add_custom_channels([Channel("Uno", "u1")])
+    assert channels.custom_channel_names() == frozenset({"Uno"})
+
+    channels.add_custom_channel(Channel("Dos", "u2"))
+    assert channels.custom_channel_names() == frozenset({"Uno", "Dos"})
+
+    channels.remove_custom_channel("Uno")
+    assert channels.custom_channel_names() == frozenset({"Dos"})
+
+
+def test_saving_invalidates_the_names_even_if_size_and_mtime_are_unchanged(dirs):
+    import os
+
+    channels.add_custom_channels([Channel("Uno", "u1")])
+    path = dirs[1] / channels.CUSTOM_FILE
+    before = path.stat()
+    assert channels.custom_channel_names() == frozenset({"Uno"})
+
+    channels.update_custom_channel("Uno", Channel("Dos", "u1"))  # mismo tamaño
+    os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+    assert path.stat().st_size == before.st_size
+
+    assert channels.custom_channel_names() == frozenset({"Dos"})
+
+
+# --------------------------------------------------------------------------
+# dedupe_channels(): muchas URLs de respaldo bajo el mismo nombre
+# --------------------------------------------------------------------------
+
+def test_dedupe_keeps_alternate_urls_in_order_without_repeats():
+    items = [
+        Channel("La 1", "u0"), Channel("la 1", "u1"), Channel("LA 1", "u2"),
+        Channel("La 1", "u1"), Channel("La 1", "u0"), Channel("Otro", "o0"),
+    ]
+
+    result = channels.dedupe_channels(items)
+
+    assert [c.name for c in result] == ["La 1", "Otro"]
+    assert result[0].url == "u0"
+    assert result[0].alternate_urls == ["u1", "u2"]
+
+
+def test_dedupe_scales_with_many_urls_under_the_same_name():
+    import time
+
+    items = [Channel("Mismo", f"https://s.test/{i}") for i in range(30000)]
+
+    started = time.perf_counter()
+    result = channels.dedupe_channels(items)
+    elapsed = time.perf_counter() - started
+
+    assert len(result) == 1
+    assert len(result[0].alternate_urls) == 29999
+    assert elapsed < 2
+
+
+def test_playlist_download_separates_connect_and_read_timeouts(dirs, monkeypatch):
+    get = _mock_get(monkeypatch)
+
+    channels.fetch_tv_channels(URL)
+
+    connect, read = get.call_args.kwargs["timeout"]
+    assert connect <= 5 and read <= 15
+
+
+def test_playlist_download_has_a_total_deadline(dirs, monkeypatch):
+    captured = {}
+    real = channels.fetch_limited
+
+    def spy(*args, **kwargs):
+        captured.update(kwargs)
+        return real(*args, **kwargs)
+
+    _mock_get(monkeypatch)
+    monkeypatch.setattr(channels, "fetch_limited", spy)
+
+    channels.fetch_tv_channels(URL)
+
+    assert 0 < captured["deadline"] <= 60
+
+
+# --------------------------------------------------------------------------
+# cache_is_stale(): cuándo conviene revalidar la lista en segundo plano
+# --------------------------------------------------------------------------
+
+def _age_cache(url, seconds):
+    import os
+    import time
+
+    path = channels._cache_path_for(url)
+    old = time.time() - seconds
+    os.utime(path, (old, old))
+
+
+def test_cache_is_stale_only_after_its_ttl(dirs, monkeypatch):
+    _mock_get(monkeypatch)
+    channels.fetch_tv_channels(URL)
+    assert channels.cache_is_stale(URL) is False
+
+    _age_cache(URL, channels.CACHE_TTL_SECONDS + 60)
+
+    assert channels.cache_is_stale(URL) is True
+
+
+def test_cache_is_stale_without_a_cache_file(dirs):
+    assert channels.cache_is_stale(URL) is True
+
+
+def test_a_revalidation_that_finds_no_changes_refreshes_the_cache_age(dirs, monkeypatch):
+    _mock_get(monkeypatch)
+    channels.fetch_tv_channels(URL)
+    _age_cache(URL, channels.CACHE_TTL_SECONDS + 60)
+
+    channels.fetch_tv_channels(URL, force_refresh=True)
+
+    assert channels.cache_is_stale(URL) is False
+
+
+def test_a_cache_dated_in_the_future_counts_as_stale(dirs, monkeypatch):
+    import os
+    import time
+
+    _mock_get(monkeypatch)
+    channels.fetch_tv_channels(URL)
+    future = time.time() + 3 * 86400
+    os.utime(channels._cache_path_for(URL), (future, future))
+
+    assert channels.cache_is_stale(URL) is True
+
+
+def test_a_missing_cache_is_not_stale_when_asked_not_to_count_it(dirs):
+    assert channels.cache_is_stale(URL, missing=False) is False
+
+
+def test_dedupe_does_not_repeat_urls_the_original_already_lists_as_alternates():
+    original = Channel("La 1", "u0", alternate_urls=["u1"])
+
+    result = channels.dedupe_channels([original, Channel("la 1", "u1"), Channel("LA 1", "u2")])
+
+    assert result[0].alternate_urls == ["u1", "u2"]

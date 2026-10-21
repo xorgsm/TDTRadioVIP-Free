@@ -10,7 +10,7 @@ Coder By X@R
 """
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QApplication, QSystemTrayIcon
+from PySide6.QtWidgets import QSystemTrayIcon
 
 from core import epg as epg_module
 from core import epg_reminders
@@ -18,6 +18,8 @@ from core import recorder as rec_module
 from core import recording_schedule
 from core import recurring_recordings
 from ui import palette
+from ui.event_pump import pump_events_without_input
+from ui.visual import make_glow
 
 
 class TrayReminderController:
@@ -74,6 +76,11 @@ class TrayReminderController:
         win = self.win
         if getattr(win, "_is_closing", False):
             return
+        if win.recorder.is_stopping:
+            # Recorder.stop() bombea eventos y este temporizador puede
+            # volver a dispararse a mitad de una parada: la parada original
+            # termina sola y el siguiente disparo ya lo encontrará limpio.
+            return
         # Antes de comprobar qué toca arrancar/parar, se sincronizan las
         # reglas recurrentes (ver core/recurring_recordings.py): si alguna
         # toca hoy y no se había insertado ya, se le crea aquí su
@@ -90,7 +97,7 @@ class TrayReminderController:
                 and win._scheduled_recording_active.start == r.start
             )
             if es_la_activa and win.recorder.is_recording:
-                finished_file, ok = win.recorder.stop(on_wait=QApplication.processEvents)
+                finished_file, ok = win.recorder.stop(on_wait=pump_events_without_input)
                 # Recorder.stop() bombea eventos para que la UI siga respondiendo
                 # mientras termina ffmpeg. Ese pump puede entregar closeEvent(),
                 # que deja la ventana en cierre mientras este callback ya estaba
@@ -151,7 +158,7 @@ class TrayReminderController:
                 continue
             win._scheduled_recording_active = r
             win.record_btn.setChecked(True)
-            win.record_btn.setGraphicsEffect(win._make_glow(QColor(palette.DANGER), blur=24, alpha=170))
+            win.record_btn.setGraphicsEffect(make_glow(QColor(palette.DANGER), blur=24, alpha=170))
             win.statusBar().showMessage(f"Grabación programada iniciada: {output_file}", 8000)
             win._tray_icon.showMessage(
                 "Grabación programada iniciada",

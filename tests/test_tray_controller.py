@@ -35,14 +35,14 @@ def qt_stubs(monkeypatch):
     """QTimer.singleShot y make_glow no hacen falta de verdad aquí."""
     timer = Mock()
     monkeypatch.setattr(tray_controller, "QTimer", timer)
-    monkeypatch.setattr(tray_controller, "make_glow", Mock(return_value="glow"), raising=False)
+    monkeypatch.setattr(tray_controller, "make_glow", Mock(return_value="glow"))
     monkeypatch.setattr(tray_controller.rec_module.Recorder, "ffmpeg_available", staticmethod(lambda: True))
     return timer
 
 
 @pytest.fixture
 def win(profile_dir, qt_stubs):
-    recorder = Mock(is_recording=False, current_file=None)
+    recorder = Mock(is_recording=False, is_stopping=False, current_file=None)
     recorder.start.return_value = "C:/grab/la1.mp4"
     recorder.stop.return_value = ("C:/grab/la1.mp4", True)
     status = Mock()
@@ -53,7 +53,6 @@ def win(profile_dir, qt_stubs):
         _scheduled_recording_active=None,
         recorder=recorder,
         record_btn=Mock(),
-        _make_glow=Mock(return_value="glow"),  # interfaz de la edición Free
         statusBar=Mock(return_value=status),
         epg=Mock(),
         showNormal=Mock(), raise_=Mock(), activateWindow=Mock(),
@@ -248,6 +247,34 @@ def test_finished_active_recording_is_stopped_saved_and_removed(win):
     assert win._scheduled_recording_active is None
     assert _statuses() == {}
     assert "«Noticias» guardado." in win._tray_icon.showMessage.call_args.args[1]
+
+
+def test_scheduled_check_does_nothing_while_a_stop_is_already_in_progress(win):
+    """Recorder.stop() bombea eventos y el temporizador puede volver a
+    disparar este metodo a mitad de la parada: no debe parar ni limpiar
+    nada hasta que la parada original termine."""
+    ahora = datetime.now()
+    rec = _schedule("Noticias", ahora - timedelta(hours=1), ahora - timedelta(seconds=1), "recording")
+    win._scheduled_recording_active = rec
+    win.recorder.is_recording = True
+    win.recorder.is_stopping = True
+
+    TrayReminderController(win).check_scheduled_recordings()
+
+    win.recorder.stop.assert_not_called()
+    assert win._scheduled_recording_active is rec
+    assert _statuses() == {"Noticias": "recording"}
+
+
+def test_stop_uses_a_pump_that_excludes_user_input(win):
+    ahora = datetime.now()
+    rec = _schedule("Noticias", ahora - timedelta(hours=1), ahora - timedelta(seconds=1), "recording")
+    win._scheduled_recording_active = rec
+    win.recorder.is_recording = True
+
+    TrayReminderController(win).check_scheduled_recordings()
+
+    assert win.recorder.stop.call_args.kwargs["on_wait"] is tray_controller.pump_events_without_input
 
 
 def test_finished_recording_not_active_is_only_cleaned_up(win):

@@ -9,11 +9,12 @@ ya estabas al día.
 QMessageBox, FetchWorker y QDesktopServices se sustituyen en el módulo: no
 se abre ningún diálogo ni hilo real.
 """
-from types import SimpleNamespace
+import hashlib
 from unittest.mock import Mock
 
 import pytest
 
+import _signing
 from core.updater import UP_TO_DATE
 from ui import update_check_controller as ucc_module
 from ui.update_check_controller import UpdateCheckController
@@ -84,15 +85,21 @@ def test_failed_check_does_not_claim_you_are_up_to_date(win, boxes):
     assert "No se pudo comprobar" in boxes.warning.call_args.args[2]
 
 
-def test_new_version_offers_the_verified_download(win, boxes, workers):
+def test_new_version_with_valid_signature_offers_the_verified_download(
+    win, boxes, workers, trusted_update_key
+):
     boxes.question.return_value = "yes"
+    firmado = _signing.signed_manifest()
 
-    UpdateCheckController(win).on_update_check_done(NEWER)
+    UpdateCheckController(win).on_update_check_done(firmado)
 
-    assert "8.7.0" in boxes.question.call_args.args[2]
+    texto = boxes.question.call_args.args[2]
+    assert "8.7.0" in texto
+    assert "Descargar y verificar" in texto
     (worker,) = workers
     assert worker.func is ucc_module.updater.download_verified_update
-    assert worker.args[0] == NEWER
+    assert worker.args[0] == firmado
+    assert win._update_expected_sha256 == firmado["sha256"]
     worker.start.assert_called_once()
 
 
@@ -113,6 +120,48 @@ def test_new_version_without_checksum_opens_the_download_page(win, boxes, worker
     ucc_module.QDesktopServices.openUrl.assert_called_once()
 
 
+def test_new_version_with_checksum_but_no_signature_opens_the_download_page(
+    win, boxes, workers, trusted_update_key
+):
+    """NEWER trae sha256 pero ninguna firma: antes se ofrecia la descarga
+    segura; ahora solo abrir la pagina, y nunca se ejecuta nada sin verificar."""
+    boxes.question.return_value = "yes"
+
+    UpdateCheckController(win).on_update_check_done(NEWER)
+
+    assert "página de descarga" in boxes.question.call_args.args[2]
+    assert workers == []
+    ucc_module.QDesktopServices.openUrl.assert_called_once()
+    opened = ucc_module.QDesktopServices.openUrl.call_args.args[0]
+    assert opened.toString() == ucc_module.updater.OFFICIAL_RELEASES_URL
+
+
+def test_new_version_with_invalid_signature_opens_the_download_page(
+    win, boxes, workers, trusted_update_key
+):
+    boxes.question.return_value = "yes"
+    manipulado = _signing.signed_manifest()
+    manipulado["sha256"] = "0" * 64
+
+    UpdateCheckController(win).on_update_check_done(manipulado)
+
+    assert workers == []
+    ucc_module.QDesktopServices.openUrl.assert_called_once()
+
+
+def test_without_a_configured_public_key_the_download_page_is_offered(
+    win, boxes, workers, monkeypatch
+):
+    """App sin clave publica configurada: falla cerrado, no se rompe."""
+    monkeypatch.setattr(ucc_module.updater.update_signature, "UPDATE_PUBLIC_KEY_N_B64", "")
+    boxes.question.return_value = "yes"
+
+    UpdateCheckController(win).on_update_check_done(_signing.signed_manifest())
+
+    assert workers == []
+    ucc_module.QDesktopServices.openUrl.assert_called_once()
+
+
 def test_nothing_is_shown_while_closing(win, boxes):
     win._is_closing = True
 
@@ -128,9 +177,67 @@ def test_failed_download_warns(win, boxes):
     boxes.warning.assert_called_once()
 
 
-def test_verified_download_runs_the_installer_if_accepted(win, boxes):
-    boxes.question.return_value = "yes"
+def _installer(tmp_path, content=b"instalador verificado"):
+    exe = tmp_path / "setup.exe"
+    exe.write_bytes(content)
+    return exe, hashlib.sha256(content).hexdigest()
 
-    UpdateCheckController(win)._on_update_download_done(SimpleNamespace())
+
+def test_verified_download_runs_the_installer_if_accepted(win, boxes, tmp_path):
+    boxes.question.return_value = "yes"
+    exe, sha = _installer(tmp_path)
+    win._update_expected_sha256 = sha
+
+    UpdateCheckController(win)._on_update_download_done(exe)
 
     ucc_module.QDesktopServices.openUrl.assert_called_once()
+    assert "firma" in boxes.question.call_args.args[2]
+
+
+def test_installer_replaced_after_verification_is_not_run(win, boxes, tmp_path):
+    """Entre la descarga verificada y el "si, ejecutalo" el archivo pudo
+    cambiar: se recomprueba el SHA-256 justo antes de abrirlo."""
+    boxes.question.return_value = "yes"
+    exe, sha = _installer(tmp_path)
+    win._update_expected_sha256 = sha
+    exe.write_bytes(b"otro programa")
+
+    UpdateCheckController(win)._on_update_download_done(exe)
+
+    ucc_module.QDesktopServices.openUrl.assert_not_called()
+    boxes.warning.assert_called_once()
+
+
+def test_installer_deleted_after_verification_is_not_run(win, boxes, tmp_path):
+    boxes.question.return_value = "yes"
+    exe, sha = _installer(tmp_path)
+    win._update_expected_sha256 = sha
+    exe.unlink()
+
+    UpdateCheckController(win)._on_update_download_done(exe)
+
+    ucc_module.QDesktopServices.openUrl.assert_not_called()
+    boxes.warning.assert_called_once()
+
+
+def test_installer_is_not_run_without_a_recorded_expected_hash(win, boxes, tmp_path):
+    """Falla cerrado: sin hash esperado no hay con que recomprobar."""
+    boxes.question.return_value = "yes"
+    exe, _ = _installer(tmp_path)
+    win._update_expected_sha256 = None
+
+    UpdateCheckController(win)._on_update_download_done(exe)
+
+    ucc_module.QDesktopServices.openUrl.assert_not_called()
+    boxes.warning.assert_called_once()
+
+
+def test_declining_the_run_never_touches_the_installer(win, boxes, tmp_path):
+    boxes.question.return_value = "no"
+    exe, sha = _installer(tmp_path)
+    win._update_expected_sha256 = sha
+
+    UpdateCheckController(win)._on_update_download_done(exe)
+
+    ucc_module.QDesktopServices.openUrl.assert_not_called()
+    boxes.warning.assert_not_called()

@@ -18,6 +18,10 @@ exclude = [
     "__pycache__",
     ".pytest_cache",
     ".superpowers",
+    # Utillaje de agentes de IA, no código del producto: se versiona (o no)
+    # aparte y no debe hacer fallar `ruff check .` del proyecto.
+    ".agents",
+    ".claude",
 ]
 
 [lint]

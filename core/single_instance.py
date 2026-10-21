@@ -31,6 +31,7 @@ from core.logger import get_logger
 log = get_logger(__name__)
 
 _CONNECT_TIMEOUT_MS = 200
+_ACK_TIMEOUT_MS = 1000
 
 
 class SingleInstanceGuard(QObject):
@@ -56,6 +57,11 @@ class SingleInstanceGuard(QObject):
         if probe.waitForConnected(_CONNECT_TIMEOUT_MS):
             probe.write(b"activate")
             probe.waitForBytesWritten(_CONNECT_TIMEOUT_MS)
+            # Esta instancia se cierra enseguida (ver ui/application.py): se
+            # espera el acuse de la primera para que el aviso no se pierda si
+            # el proceso termina antes de que ella lo haya leído.
+            if not probe.waitForReadyRead(_ACK_TIMEOUT_MS):
+                log.warning("La instancia abierta no confirmó el aviso de activación")
             # A propósito NO se cierra el socket aquí (ni disconnectFromServer()
             # ni dejar que el GC se lo lleve al salir de la función, que tiene
             # el mismo efecto): en Windows, una tubería con nombre que se
@@ -99,4 +105,7 @@ class SingleInstanceGuard(QObject):
 
     def _consume(self, socket: QLocalSocket) -> None:
         socket.readAll()
+        # Acuse para la segunda instancia, que lo espera antes de cerrarse.
+        socket.write(b"ok")
+        socket.flush()
         self.activation_requested.emit()

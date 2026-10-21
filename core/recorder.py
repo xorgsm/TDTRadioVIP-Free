@@ -14,7 +14,7 @@ from typing import Optional, Tuple
 from urllib.parse import urlsplit
 
 from core.config import get_ffmpeg_exe
-from core.logger import get_logger
+from core.logger import get_logger, redact_url
 
 log = get_logger(__name__)
 
@@ -77,7 +77,13 @@ STARTUP_GRACE_MS = 2000
 _MIN_VALID_SIZE_BYTES = 4096
 
 
+_INPUT_PROTOCOLS = "http,https,tcp,tls,crypto"
+
+
 class Recorder:
+    # Atributo de clase: los tests crean Recorder con __new__ sin __init__.
+    _stopping = False
+
     def __init__(self, output_dir: str):
         self.output_dir = Path(output_dir)
         try:
@@ -154,6 +160,10 @@ class Recorder:
             # los cortes de red pasajeros que son bastante frecuentes en
             # streams IPTV de larga duración.
             "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
+            # Una lista HLS remota puede referenciar file:, concat:, etc.;
+            # solo se admite lo que necesita un stream http(s) (HLS cifrado
+            # incluido) y va antes de -i para aplicarse a esa entrada.
+            "-protocol_whitelist", _INPUT_PROTOCOLS,
             "-i", stream_url,
         ]
 
@@ -230,7 +240,10 @@ class Recorder:
             if self._log_fh:
                 self._log_fh.close()
                 self._log_fh = None
-            log.exception("No se pudo arrancar ffmpeg para grabar (canal/emisora en cmd: %s)", cmd)
+            log.exception(
+                "No se pudo arrancar ffmpeg para grabar (canal %r, stream %s)",
+                channel_name, redact_url(stream_url),
+            )
             raise RuntimeError(f"No se pudo iniciar la grabación: {exc}") from exc
 
         return self.current_file
@@ -310,9 +323,23 @@ class Recorder:
         """
         proceso = self.process
         archivo = self.current_file
-        if proceso is None:
+        if proceso is None or self._stopping:
+            # Sin grabación, o ya se está parando: on_wait entrega eventos
+            # (temporizadores, atajos) que pueden volver a llamar aquí a
+            # mitad de la espera; la llamada original es la que termina.
             return None, False
 
+        self._stopping = True
+        try:
+            return self._stop_process(proceso, archivo, on_wait)
+        finally:
+            self._stopping = False
+
+    @property
+    def is_stopping(self) -> bool:
+        return self._stopping
+
+    def _stop_process(self, proceso, archivo, on_wait) -> Tuple[Optional[Path], bool]:
         try:
             if proceso.stdin:
                 proceso.stdin.write(b"q")

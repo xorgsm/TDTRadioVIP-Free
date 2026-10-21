@@ -12,7 +12,7 @@ con la reproducción, el cromado de ventana y el resto de secciones.
 
 Coder By X@R
 """
-from PySide6.QtCore import QPoint, Qt, QTimer
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtWidgets import QListWidget, QListWidgetItem
 
 from core import channels as tv_channels
@@ -20,11 +20,22 @@ from core import epg as epg_module
 from core import favorites as fav_store
 from core import radio as radio_stations
 from core.stream_health_store import StreamHealthStore, is_health_stale, matches_health_filter
-from ui.channel_model import ChannelListModel, ChannelListView
+from ui.channel_model import ChannelListView
 from ui.widgets import (
     ROLE_CUSTOM, ROLE_DATA, ROLE_FAV, ROLE_HEALTH, ROLE_LOGO, ROLE_LOGO_REQUESTED,
     ROLE_PLAYING, ChannelDelegate,
 )
+
+
+def _health_tooltip(health: dict | None) -> str:
+    """Tooltip de una fila de TV/Radio con su último diagnóstico, o "" si
+    nunca se ha diagnosticado."""
+    if not health:
+        return ""
+    return (
+        f"Último diagnóstico: {health.get('checked_at', 'desconocido')} · "
+        f"{health.get('latency_ms', 0)} ms"
+    )
 
 
 class ChannelListsController:
@@ -148,160 +159,74 @@ class ChannelListsController:
         try:
             return {
                 (entry["kind"], entry["url"]): entry
-                for entry in StreamHealthStore().list()
+                for entry in StreamHealthStore().list(include_history=False)
             }
         except OSError:
             return {}
 
     # ---------- Poblado de listas ----------
 
-    def populate_tv_list(self, channels_list):
+    def populate_tv_list(self, channels_list, custom_names=None):
+        """``custom_names``: nombres ya leídos por quien llama (evita releer
+        el JSON de personalizados, que puede tener miles de canales)."""
         win = self.win
-        if isinstance(win.tv_list, ChannelListView):
-            custom_names = {c.name for c in tv_channels.load_custom_channels()}
-            favorite_keys = {(f.get("type"), f.get("name")) for f in win.favorites}
-            health_by_stream = self._health_by_stream()
-            entries = []
-            for ch in channels_list:
-                epg_now = self._epg_now_text(ch.tvg_id)
-                subtitle = f"{ch.group} · {epg_now}" if ch.group and epg_now else (epg_now or ch.group)
-                data = {
-                    "type": "tv", "name": ch.name, "url": ch.url,
-                    "logo": ch.logo, "tvg_id": ch.tvg_id, "group": ch.group,
-                    "subtitle": subtitle, "alternate_urls": ch.alternate_urls,
-                }
-                health = health_by_stream.get(("tv", ch.url))
-                if health:
-                    data["health_checked_at"] = health.get("checked_at", "")
-                entries.append({
-                    ROLE_DATA: data,
-                    ROLE_FAV: ("tv", ch.name) in favorite_keys,
-                    ROLE_PLAYING: win.current_type == "tv" and win.current_name == ch.name,
-                    ROLE_CUSTOM: ch.name in custom_names,
-                    ROLE_HEALTH: health.get("status") if health else None,
-                    Qt.ToolTipRole: (
-                        f"Último diagnóstico: {health.get('checked_at', 'desconocido')} · "
-                        f"{health.get('latency_ms', 0)} ms"
-                        if health else ""
-                    ),
-                })
-            win.tv_list.model().set_entries(entries)
-            self.sort_catalog(win.tv_list)
-            self.load_visible_logos(win.tv_list)
-            return
-        custom_names = {c.name for c in tv_channels.load_custom_channels()}
+        if custom_names is None:
+            custom_names = tv_channels.custom_channel_names()
         favorite_keys = {(f.get("type"), f.get("name")) for f in win.favorites}
         health_by_stream = self._health_by_stream()
-        # setUpdatesEnabled(False): con listas grandes (importar un M3U de
-        # varios miles de canales, o simplemente un país con muchos canales)
-        # cada addItem() por separado repintaba y recalculaba el layout de
-        # la lista una a una -- con miles de canales eso es lo que se veía
-        # como "se pone lento y se cuelga la app" (reportado). Cortando los
-        # repintados hasta que la lista entera está poblada, Qt hace un
-        # único repintado al final en vez de miles.
-        win.tv_list.setUpdatesEnabled(False)
-        try:
-            win.tv_list.clear()
-            for ch in channels_list:
-                item = QListWidgetItem()
-                # Subtítulo combinado: categoría + mini-EPG ("Ahora: ...")
-                # cuando hay guía cargada, uno solo de los dos si falta el
-                # otro (ver ChannelDelegate.paint, que ahora prioriza
-                # "subtitle" sobre "group" para decidir qué texto pintar --
-                # el punto de color de la categoría se sigue dibujando por
-                # separado a partir de "group", no cambia).
-                epg_now = self._epg_now_text(ch.tvg_id)
-                if ch.group and epg_now:
-                    subtitle = f"{ch.group} · {epg_now}"
-                else:
-                    subtitle = epg_now or ch.group
-                item.setData(ROLE_DATA, {
-                    "type": "tv", "name": ch.name, "url": ch.url,
-                    "logo": ch.logo, "tvg_id": ch.tvg_id, "group": ch.group,
-                    "subtitle": subtitle, "alternate_urls": ch.alternate_urls,
-                })
-                item.setData(ROLE_FAV, ("tv", ch.name) in favorite_keys)
-                item.setData(ROLE_PLAYING, win.current_type == "tv" and win.current_name == ch.name)
-                item.setData(ROLE_CUSTOM, ch.name in custom_names)
-                health = health_by_stream.get(("tv", ch.url))
-                item.setData(ROLE_HEALTH, health.get("status") if health else None)
-                data = item.data(ROLE_DATA)
-                data["health_checked_at"] = health.get("checked_at", "") if health else ""
-                item.setData(ROLE_DATA, data)
-                if health:
-                    item.setToolTip(
-                        f"Último diagnóstico: {health.get('checked_at', 'desconocido')} · "
-                        f"{health.get('latency_ms', 0)} ms"
-                    )
-                win.tv_list.addItem(item)
-        finally:
-            win.tv_list.setUpdatesEnabled(True)
+        entries = []
+        for ch in channels_list:
+            # Subtítulo combinado: categoría + mini-EPG ("Ahora: ...") cuando
+            # hay guía cargada, uno solo de los dos si falta el otro (ver
+            # ChannelDelegate.paint, que prioriza "subtitle" sobre "group";
+            # el punto de color de la categoría sale de "group").
+            epg_now = self._epg_now_text(ch.tvg_id)
+            subtitle = f"{ch.group} · {epg_now}" if ch.group and epg_now else (epg_now or ch.group)
+            data = {
+                "type": "tv", "name": ch.name, "url": ch.url,
+                "logo": ch.logo, "tvg_id": ch.tvg_id, "group": ch.group,
+                "subtitle": subtitle, "alternate_urls": ch.alternate_urls,
+            }
+            health = health_by_stream.get(("tv", ch.url))
+            if health:
+                data["health_checked_at"] = health.get("checked_at", "")
+            entries.append({
+                ROLE_DATA: data,
+                ROLE_FAV: ("tv", ch.name) in favorite_keys,
+                ROLE_PLAYING: win.current_type == "tv" and win.current_name == ch.name,
+                ROLE_CUSTOM: ch.name in custom_names,
+                ROLE_HEALTH: health.get("status") if health else None,
+                Qt.ToolTipRole: _health_tooltip(health),
+            })
+        win.tv_list.model().set_entries(entries)
         self.sort_catalog(win.tv_list)
         self.load_visible_logos(win.tv_list)
 
     def populate_radio_list(self, stations_list):
         win = self.win
-        if isinstance(win.radio_list, ChannelListView):
-            custom_names = {s.name for s in radio_stations.load_custom_stations()}
-            favorite_keys = {(f.get("type"), f.get("name")) for f in win.favorites}
-            health_by_stream = self._health_by_stream()
-            entries = []
-            for st in stations_list:
-                subtitle = f"{st.bitrate} kbps" if st.bitrate else (st.tags or "")
-                data = {
-                    "type": "radio", "name": st.name, "url": st.url,
-                    "logo": st.favicon, "subtitle": subtitle,
-                    "alternate_urls": st.alternate_urls,
-                }
-                health = health_by_stream.get(("radio", st.url))
-                if health:
-                    data["health_checked_at"] = health.get("checked_at", "")
-                entries.append({
-                    ROLE_DATA: data,
-                    ROLE_FAV: ("radio", st.name) in favorite_keys,
-                    ROLE_PLAYING: win.current_type == "radio" and win.current_name == st.name,
-                    ROLE_CUSTOM: st.name in custom_names,
-                    ROLE_HEALTH: health.get("status") if health else None,
-                    Qt.ToolTipRole: (
-                        f"Último diagnóstico: {health.get('checked_at', 'desconocido')} · "
-                        f"{health.get('latency_ms', 0)} ms"
-                        if health else ""
-                    ),
-                })
-            win.radio_list.model().set_entries(entries)
-            self.sort_catalog(win.radio_list)
-            self.load_visible_logos(win.radio_list)
-            return
         custom_names = {s.name for s in radio_stations.load_custom_stations()}
         favorite_keys = {(f.get("type"), f.get("name")) for f in win.favorites}
         health_by_stream = self._health_by_stream()
-        win.radio_list.setUpdatesEnabled(False)  # ver comentario en populate_tv_list
-        try:
-            win.radio_list.clear()
-            for st in stations_list:
-                item = QListWidgetItem()
-                subtitle = f"{st.bitrate} kbps" if st.bitrate else (st.tags or "")
-                item.setData(ROLE_DATA, {
-                    "type": "radio", "name": st.name, "url": st.url,
-                    "logo": st.favicon, "subtitle": subtitle,
-                    "alternate_urls": st.alternate_urls,
-                })
-                item.setData(ROLE_FAV, ("radio", st.name) in favorite_keys)
-                item.setData(ROLE_PLAYING, win.current_type == "radio" and win.current_name == st.name)
-                item.setData(ROLE_CUSTOM, st.name in custom_names)
-                health = health_by_stream.get(("radio", st.url))
-                item.setData(ROLE_HEALTH, health.get("status") if health else None)
-                data = item.data(ROLE_DATA)
-                data["health_checked_at"] = health.get("checked_at", "") if health else ""
-                item.setData(ROLE_DATA, data)
-                if health:
-                    item.setToolTip(
-                        f"Último diagnóstico: {health.get('checked_at', 'desconocido')} · "
-                        f"{health.get('latency_ms', 0)} ms"
-                    )
-                win.radio_list.addItem(item)
-        finally:
-            win.radio_list.setUpdatesEnabled(True)
+        entries = []
+        for st in stations_list:
+            subtitle = f"{st.bitrate} kbps" if st.bitrate else (st.tags or "")
+            data = {
+                "type": "radio", "name": st.name, "url": st.url,
+                "logo": st.favicon, "subtitle": subtitle,
+                "alternate_urls": st.alternate_urls,
+            }
+            health = health_by_stream.get(("radio", st.url))
+            if health:
+                data["health_checked_at"] = health.get("checked_at", "")
+            entries.append({
+                ROLE_DATA: data,
+                ROLE_FAV: ("radio", st.name) in favorite_keys,
+                ROLE_PLAYING: win.current_type == "radio" and win.current_name == st.name,
+                ROLE_CUSTOM: st.name in custom_names,
+                ROLE_HEALTH: health.get("status") if health else None,
+                Qt.ToolTipRole: _health_tooltip(health),
+            })
+        win.radio_list.model().set_entries(entries)
         self.sort_catalog(win.radio_list)
         self.load_visible_logos(win.radio_list)
 
@@ -315,42 +240,18 @@ class ChannelListsController:
             return
 
         for kind, list_widget in (("tv", self.win.tv_list), ("radio", self.win.radio_list)):
-            if isinstance(list_widget, ChannelListView):
-                model = list_widget.model()
+            def update_entry(item, entry_kind=kind):
+                data = item.get(ROLE_DATA) or {}
+                health = health_by_stream.get((entry_kind, data.get("url")))
+                if health is None:
+                    return False
+                item[ROLE_HEALTH] = health.get("status")
+                data["health_checked_at"] = health.get("checked_at", "")
+                item[ROLE_DATA] = data
+                item[Qt.ToolTipRole] = _health_tooltip(health)
+                return True
 
-                def update_entry(item, entry_kind=kind):
-                    data = item.get(ROLE_DATA) or {}
-                    health = health_by_stream.get((entry_kind, data.get("url")))
-                    if health is None:
-                        return False
-                    item[ROLE_HEALTH] = health.get("status")
-                    data["health_checked_at"] = health.get("checked_at", "")
-                    item[ROLE_DATA] = data
-                    item[Qt.ToolTipRole] = (
-                        f"Último diagnóstico: {health.get('checked_at', 'desconocido')} · "
-                        f"{health.get('latency_ms', 0)} ms"
-                    )
-                    return True
-
-                model.update_entries(update_entry)
-                continue
-            list_widget.setUpdatesEnabled(False)
-            try:
-                for index in range(list_widget.count()):
-                    item = list_widget.item(index)
-                    data = item.data(ROLE_DATA) or {}
-                    health = health_by_stream.get((kind, data.get("url")))
-                    if health is None:
-                        continue
-                    item.setData(ROLE_HEALTH, health.get("status"))
-                    data["health_checked_at"] = health.get("checked_at", "")
-                    item.setData(ROLE_DATA, data)
-                    item.setToolTip(
-                        f"Último diagnóstico: {health.get('checked_at', 'desconocido')} · "
-                        f"{health.get('latency_ms', 0)} ms"
-                    )
-            finally:
-                list_widget.setUpdatesEnabled(True)
+            list_widget.model().update_entries(update_entry)
 
     def update_epg_subtitles(self) -> None:
         """Actualiza el "Ahora: <programa>" de cada fila de TV cuando la
@@ -366,71 +267,26 @@ class ChannelListsController:
         dato que de verdad cambió (aquí, el subtítulo) en las filas ya
         existentes.
         """
-        win = self.win
-        if isinstance(win.tv_list, ChannelListView):
-            model = win.tv_list.model()
+        def update_entry(item):
+            data = item.get(ROLE_DATA) or {}
+            epg_now = self._epg_now_text(data.get("tvg_id", ""))
+            group = data.get("group") or ""
+            subtitle = f"{group} · {epg_now}" if group and epg_now else (epg_now or group)
+            if data.get("subtitle") == subtitle:
+                return False
+            data["subtitle"] = subtitle
+            item[ROLE_DATA] = data
+            return True
 
-            def update_entry(item):
-                data = item.get(ROLE_DATA) or {}
-                epg_now = self._epg_now_text(data.get("tvg_id", ""))
-                group = data.get("group") or ""
-                subtitle = f"{group} · {epg_now}" if group and epg_now else (epg_now or group)
-                if data.get("subtitle") == subtitle:
-                    return False
-                data["subtitle"] = subtitle
-                item[ROLE_DATA] = data
-                return True
-
-            model.update_entries(update_entry)
-            return
-        win.tv_list.setUpdatesEnabled(False)
-        try:
-            for index in range(win.tv_list.count()):
-                item = win.tv_list.item(index)
-                data = item.data(ROLE_DATA) or {}
-                epg_now = self._epg_now_text(data.get("tvg_id", ""))
-                group = data.get("group") or ""
-                subtitle = f"{group} · {epg_now}" if (group and epg_now) else (epg_now or group)
-                if data.get("subtitle") == subtitle:
-                    continue
-                data["subtitle"] = subtitle
-                item.setData(ROLE_DATA, data)
-        finally:
-            win.tv_list.setUpdatesEnabled(True)
-
-    def _queue_logo_batch(self, pending, list_widget, batch_size=150):
-        """
-        Pide los logos en tandas pequeñas con QTimer.singleShot(0, ...) en
-        vez de las miles que hicieran falta de golpe, todas dentro del
-        mismo bucle que puebla la lista. Aunque el logo ya esté en la
-        caché de disco, cargarlo implica leer el archivo, decodificarlo y
-        redondearle la esquina (rounded_pixmap) -- con un catálogo de
-        decenas de miles de canales, hacer eso uno detrás de otro sin
-        ceder nunca el hilo de la interfaz es lo que la congela del todo
-        ("no responde"). Troceado en tandas, Qt puede seguir pintando y
-        atendiendo la ventana entre tanda y tanda: los logos tardan un
-        poco más en verse todos, pero la interfaz no se bloquea mientras
-        tanto.
-
-        Los QListWidgetItem de `pending` pueden dejar de existir antes de
-        que le toque el turno a su tanda (el usuario cambia de sección,
-        se repuebla la lista, etc.) -- request_logo() accede a ellos, así
-        que cada uno se protege por separado en vez de dejar que un solo
-        ítem ya borrado interrumpa el resto de la tanda.
-        """
-        if not pending:
-            return
-        lote, resto = pending[:batch_size], pending[batch_size:]
-        for url, item in lote:
-            try:
-                self.request_logo(url, item, list_widget)
-            except RuntimeError:
-                continue  # el ítem ya no existe (lista repoblada mientras esperaba turno)
-        if resto:
-            QTimer.singleShot(0, lambda: self._queue_logo_batch(resto, list_widget, batch_size))
+        self.win.tv_list.model().update_entries(update_entry)
 
     def sort_catalog(self, list_widget: QListWidget):
-        """Ordena TV/Radio conservando cada QListWidgetItem y su logo."""
+        """Ordena el catálogo de TV/Radio según el ajuste catalog_sort_*.
+
+        Reordena las entradas del modelo sin recrearlas, así que cada fila
+        conserva su logo ya cargado. El canal activo no necesita reajuste:
+        PlaybackController._active_row_now() lo busca en el momento de usarlo.
+        """
         win = self.win
         if list_widget not in (win.tv_list, win.radio_list):
             return
@@ -438,78 +294,23 @@ class ChannelListsController:
         mode = win.settings.get(f"catalog_sort_{kind}", "source")
         if mode == "source":
             # populate_* ya añade las entradas en el mismo orden que los
-            # datos fuente. Evitar takeItem()/addItem() aquí ahorra una
-            # reconstrucción completa en cada carga, que es el caso
+            # datos fuente: no hay nada que reordenar en el caso
             # predeterminado de la aplicación.
             return
-        elif mode == "favorites":
-            def key(item):
-                data = item.data(ROLE_DATA) or {}
-                return (not bool(item.data(ROLE_FAV)), data.get("name", "").casefold())
+        if mode == "favorites":
+            def key(entry):
+                data = entry.get(ROLE_DATA) or {}
+                return (not bool(entry.get(ROLE_FAV)), data.get("name", "").casefold())
         else:
-            def key(item):
-                return (item.data(ROLE_DATA) or {}).get("name", "").casefold()
-
-        model = list_widget.model()
-        if isinstance(model, ChannelListModel):
-            if mode == "favorites":
-                model.sort_entries(
-                    lambda entry: (
-                        not bool(entry.get(ROLE_FAV)),
-                        (entry.get(ROLE_DATA) or {}).get("name", "").casefold(),
-                    )
-                )
-            else:
-                model.sort_entries(
-                    lambda entry: (entry.get(ROLE_DATA) or {}).get("name", "").casefold()
-                )
-            self.load_visible_logos(list_widget)
-            return
-
-        active_item = None
-        if win._active_list is list_widget and 0 <= win._active_row < list_widget.count():
-            active_item = list_widget.item(win._active_row)
-        # setUpdatesEnabled(False): igual que en populate_tv_list/
-        # populate_radio_list, pero aquí era todavía más grave -- sin esto,
-        # cada una de las N llamadas a takeItem()/addItem() de abajo
-        # repinta y recalcula el layout de la lista visible (con el
-        # delegado personalizado de por medio), así que ordenar un
-        # catálogo de varios cientos/miles de canales costaba, de facto, N
-        # repintados completos en vez de uno solo al final. Con listas
-        # grandes esto por sí solo explicaba minutos de "no responde" en
-        # cada arranque/cambio de sección.
-        list_widget.setUpdatesEnabled(False)
-        try:
-            # takeItem(0) por cada canal (como hacía esto antes) es
-            # engañoso: aunque el bucle sea "solo" N vueltas, QListWidget
-            # guarda las filas en un array por dentro, así que quitar
-            # SIEMPRE la primera implica desplazar todas las que quedan
-            # detrás una posición -- son N desplazamientos en la primera
-            # vuelta, N-1 en la segunda... O(N²) en total. Con 500 canales
-            # (250.000 desplazamientos) no se notaba; con 3.500 (más de 12
-            # millones) sí, y es justo el motivo de que se pusiera "super
-            # lenta" al pasar de una lista a la otra. Quitando siempre la
-            # ÚLTIMA fila en su lugar no hace falta desplazar nada (es O(1)
-            # por vuelta, O(N) en total) -- el resultado sale en orden
-            # inverso, así que se da la vuelta una vez al final con
-            # reverse(), que es barato.
-            items = []
-            while list_widget.count():
-                items.append(list_widget.takeItem(list_widget.count() - 1))
-            items.reverse()
-            items.sort(key=key)
-            for item in items:
-                list_widget.addItem(item)
-        finally:
-            list_widget.setUpdatesEnabled(True)
-        if active_item is not None:
-            win._active_row = list_widget.row(active_item)
+            def key(entry):
+                return (entry.get(ROLE_DATA) or {}).get("name", "").casefold()
+        list_widget.model().sort_entries(key)
         self.load_visible_logos(list_widget)
 
     def refresh_favorites_tab(self):
         win = self.win
         win.fav_list.clear()
-        custom_tv = {c.name for c in tv_channels.load_custom_channels()}
+        custom_tv = tv_channels.custom_channel_names()
         custom_radio = {s.name for s in radio_stations.load_custom_stations()}
         for fav in win.favorites:
             item = QListWidgetItem()
@@ -535,7 +336,7 @@ class ChannelListsController:
     def refresh_history_tab(self):
         win = self.win
         win.hist_list.clear()
-        custom_tv = {c.name for c in tv_channels.load_custom_channels()}
+        custom_tv = tv_channels.custom_channel_names()
         custom_radio = {s.name for s in radio_stations.load_custom_stations()}
         for entry in win.history:
             item = QListWidgetItem()
@@ -589,11 +390,13 @@ class ChannelListsController:
 
     def mark_playing_everywhere(self):
         win = self.win
-        # home_recent_carousel / home_recommended_carousel no entran en este
-        # bucle: son CarouselCard (ui/carousel.py), no QListWidgetItem con
-        # ROLE_PLAYING -- no llevan indicador de "sonando ahora" propio, se
-        # limitan a repoblarse cada vez que se entra en Inicio.
-        for lst in (win.tv_list, win.radio_list, win.fav_list, win.hist_list, win.home_fav_list):
+        # Los 4 carruseles de Inicio (home_recent_carousel,
+        # home_on_air_carousel, home_recommended_carousel,
+        # home_fav_carousel) no entran en este bucle: son CarouselCard
+        # (ui/carousel.py), no QListWidgetItem con ROLE_PLAYING -- no
+        # llevan indicador de "sonando ahora" propio, se limitan a
+        # repoblarse cada vez que se entra en Inicio.
+        for lst in (win.tv_list, win.radio_list, win.fav_list, win.hist_list):
             if isinstance(lst, ChannelListView):
                 def update_entry(item):
                     data = item.get(ROLE_DATA) or {}
@@ -668,7 +471,7 @@ class ChannelListsController:
         # GroupsSidebar (panel lateral con contador por grupo, ver
         # ui/groups_sidebar.py) es ahora el filtro de categoría real para
         # TV -- group_filter de arriba se deja poblado pero oculto durante
-        # esa sección (ver MainWindow._on_nav_changed).
+        # esa sección (ver ui.navigation_controller.NavigationController.on_nav_changed).
         sidebar = getattr(win, "groups_sidebar", None)
         if sidebar is not None:
             counts = {}
@@ -687,83 +490,56 @@ class ChannelListsController:
     def filter_current_list(self):
         win = self.win
         current_widget = win.stack.currentWidget()
-        if isinstance(current_widget, ChannelListView):
-            text = win.search_box.text().strip().lower()
-            group = win.group_filter.currentText()
-            health_key = win.health_filter.currentData() or "all"
-            sidebar_groups = getattr(win, "_tv_sidebar_groups", None)
-
-            def matches(entry):
-                data = entry.get(ROLE_DATA) or {}
-                matches_text = text in data.get("name", "").lower()
-                if current_widget is win.tv_list:
-                    matches_group = sidebar_groups is None or data.get("group") in sidebar_groups
-                elif current_widget is win.fav_list:
-                    if group == "Todas las carpetas":
-                        matches_group = True
-                    elif group == "Sin carpeta":
-                        matches_group = not data.get("group")
-                    else:
-                        matches_group = data.get("group") == group
-                else:
-                    matches_group = True
-                if health_key == "stale":
-                    matches_health = is_health_stale(data.get("health_checked_at"))
-                else:
-                    matches_health = matches_health_filter(entry.get(ROLE_HEALTH), health_key)
-                return matches_text and matches_group and matches_health
-
-            current_widget.model().set_filter(matches)
-            self.load_visible_logos(current_widget)
-            return
-        if not isinstance(current_widget, QListWidget):
-            return
-
         text = win.search_box.text().strip().lower()
-        group = win.group_filter.currentText()
-        # Filtro por estado de salud: solo aplica a TV y Radio, las únicas
-        # listas cuyas filas llevan ROLE_HEALTH (ver populate_tv_list /
-        # populate_radio_list).
-        health_key = win.health_filter.currentData() or "all"
-        aplica_salud = current_widget in (win.tv_list, win.radio_list)
+        if isinstance(current_widget, ChannelListView):
+            self._filter_catalog(current_widget, text)
+        elif isinstance(current_widget, QListWidget):
+            self._filter_library_list(current_widget, text)
+        else:
+            return
+        self.load_visible_logos(current_widget)
 
+    def _filter_catalog(self, view: ChannelListView, text: str) -> None:
+        """TV/Radio: texto, estado de salud y, en TV, los grupos marcados en
+        GroupsSidebar (el panel lateral lleva el filtro de categoría de TV,
+        no el desplegable group_filter -- ver refresh_group_filter())."""
+        win = self.win
+        health_key = win.health_filter.currentData() or "all"
+        sidebar_groups = getattr(win, "_tv_sidebar_groups", None) if view is win.tv_list else None
+
+        def matches(entry):
+            data = entry.get(ROLE_DATA) or {}
+            if text not in data.get("name", "").lower():
+                return False
+            if sidebar_groups is not None and data.get("group") not in sidebar_groups:
+                return False
+            if health_key == "stale":
+                return is_health_stale(data.get("health_checked_at"))
+            return matches_health_filter(entry.get(ROLE_HEALTH), health_key)
+
+        view.model().set_filter(matches)
+
+    def _filter_library_list(self, list_widget: QListWidget, text: str) -> None:
+        """Favoritos/historial: texto y, en favoritos, la carpeta elegida en
+        group_filter. Sus filas no llevan diagnóstico, así que el filtro de
+        salud no se aplica."""
+        win = self.win
+        folder = win.group_filter.currentText() if list_widget is win.fav_list else None
         # setUpdatesEnabled(False): esto se ejecuta en CADA pulsación de
         # tecla en el buscador (search_box.textChanged está conectado
         # directo a este método). Sin cortar los repintados, cada
         # setHidden() de abajo puede disparar un recálculo del layout
-        # visible de la lista -- con un catálogo de varios cientos de
-        # canales eso convertía cada tecla pulsada en cientos de
-        # relayouts, lo que se sentía como la app "lenta por dentro" al
-        # usarla (no solo al arrancar). Mismo patrón que populate_tv_list/
-        # sort_catalog.
-        current_widget.setUpdatesEnabled(False)
+        # visible de la lista.
+        list_widget.setUpdatesEnabled(False)
         try:
-            for i in range(current_widget.count()):
-                item = current_widget.item(i)
+            for i in range(list_widget.count()):
+                item = list_widget.item(i)
                 data = item.data(ROLE_DATA) or {}
-                matches_text = text in data.get("name", "").lower()
-                if current_widget is win.tv_list:
-                    # El filtro de categoría de TV lo lleva GroupsSidebar (panel
-                    # lateral), no el desplegable group_filter -- ver
-                    # MainWindow._on_groups_sidebar_changed / refresh_group_filter().
-                    sidebar_groups = getattr(win, "_tv_sidebar_groups", None)
-                    matches_group = sidebar_groups is None or data.get("group") in sidebar_groups
-                elif current_widget is win.fav_list:
-                    if group == "Todas las carpetas":
-                        matches_group = True
-                    elif group == "Sin carpeta":
-                        matches_group = not data.get("group")
-                    else:
-                        matches_group = data.get("group") == group
-                else:
-                    matches_group = True
-                if aplica_salud and health_key == "stale":
-                    matches_health = is_health_stale(data.get("health_checked_at"))
-                else:
-                    matches_health = not aplica_salud or matches_health_filter(
-                        item.data(ROLE_HEALTH), health_key
-                    )
-                item.setHidden(not (matches_text and matches_group and matches_health))
+                visible = text in data.get("name", "").lower()
+                if folder == "Sin carpeta":
+                    visible = visible and not data.get("group")
+                elif folder not in (None, "Todas las carpetas"):
+                    visible = visible and data.get("group") == folder
+                item.setHidden(not visible)
         finally:
-            current_widget.setUpdatesEnabled(True)
-        self.load_visible_logos(current_widget)
+            list_widget.setUpdatesEnabled(True)

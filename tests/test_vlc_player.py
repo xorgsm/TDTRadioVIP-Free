@@ -291,3 +291,24 @@ def test_release_still_frees_instance_when_stop_fails(qapp, fake_vlc):
     assert mp.released
     assert instancia.released
     assert widget.media_player is None and widget.instance is None
+
+
+# --------------------------------------------------------------------------
+# Esquemas no reproducibles (listas M3U hostiles)
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("url", [
+    "\\\\atacante\\share\\x.ts",
+    "smb://atacante/share/x.ts",
+    "file:///C:/Windows/win.ini",
+    "screen://",
+])
+def test_play_rejects_non_streaming_urls_without_touching_libvlc(player, fake_vlc, url):
+    eventos = _signals(player)
+
+    player.play(url)
+
+    instancia = fake_vlc.instances[0]
+    assert instancia.medias == []
+    assert eventos and eventos[-1][0] == "error"
+    assert "no permitida" in eventos[-1][1].lower()

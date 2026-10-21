@@ -16,6 +16,7 @@ sin duplicar lógica de selección aquí.
 
 Coder By X@R
 """
+import hashlib
 from typing import Callable, List
 from collections import defaultdict, deque
 
@@ -27,10 +28,51 @@ from PySide6.QtWidgets import (
 
 from ui import palette
 from ui.icons import icon_radio, icon_tv
-from ui.visual import set_variant, set_visual_state
+from ui.style import ACCENT_PRESETS, accent_shades
+from ui.visual import set_visual_state
 
 CARD_WIDTH = 128
 CARD_LOGO_SIZE = 96
+
+_PRESET_VALUES = list(ACCENT_PRESETS.values())
+
+
+def _gradient_colors_for_name(name: str) -> tuple[str, str, str]:
+    """Deriva un degradado determinista del nombre del canal/emisora --
+    mismo nombre, mismo color siempre, incluso entre reinicios de la app.
+    hash() de Python no vale para esto: su semilla se aleatoriza por
+    proceso (PYTHONHASHSEED), así que el mismo nombre daría un color
+    distinto cada vez que arrancara la app. hashlib.md5 es estable.
+    """
+    digest = hashlib.md5(name.encode("utf-8")).hexdigest()
+    index = int(digest[:8], 16) % len(_PRESET_VALUES)
+    base = _PRESET_VALUES[index]
+    shades = accent_shades(base)
+    return shades["light"], shades["dark"], shades["lighter"]
+
+
+def _card_stylesheet(name: str) -> str:
+    """Hoja de estilo autocontenida por tarjeta: fondo degradado (base) +
+    hover + foco, todo derivado del mismo nombre. Autocontenida a
+    propósito (no depende de las reglas globales QFrame#carouselCard de
+    ui/style.py, que se retiran en este mismo cambio) para no depender de
+    cómo Qt combine hojas de estilo locales y globales para el mismo
+    selector.
+    """
+    light, dark, lighter = _gradient_colors_for_name(name)
+    return (
+        "QFrame#carouselCard {"
+        f"background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {light}, stop:1 {dark});"
+        "border: 1px solid transparent;"
+        "border-radius: 14px;"
+        "}"
+        "QFrame#carouselCard:hover {"
+        f"border: 1px solid {lighter};"
+        "}"
+        "QFrame#carouselCard:focus {"
+        f"border: 2px solid {lighter};"
+        "}"
+    )
 
 
 class CarouselCard(QFrame):
@@ -40,8 +82,8 @@ class CarouselCard(QFrame):
         super().__init__()
         self.setObjectName("carouselCard")
         is_tv = entry.get("type") == "tv"
-        set_variant(self, "tv" if is_tv else "radio")
         self.setFixedWidth(CARD_WIDTH)
+        self.setStyleSheet(_card_stylesheet(entry.get("name", "")))
         self.setCursor(Qt.PointingHandCursor)
         self.setFocusPolicy(Qt.StrongFocus)
         self._entry = dict(entry)
@@ -102,9 +144,12 @@ class CarouselCard(QFrame):
         if self._entry == entry:
             return
         old_logo = self._entry.get("logo", "")
+        old_name = self._entry.get("name", "")
         self._entry = dict(entry)
         name = entry.get("name", "")
         self.name_label.setText(name)
+        if old_name != name:
+            self.setStyleSheet(_card_stylesheet(name))
         self.setAccessibleName(f"Reproducir {name}")
         self.setToolTip(name)
         is_tv = entry.get("type") == "tv"

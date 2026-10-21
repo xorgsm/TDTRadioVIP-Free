@@ -10,6 +10,10 @@ from ui.widgets import (
 )
 
 
+# Por encima de este numero de filas cambiadas se agrupan las señales dataChanged.
+_MAX_SINGLE_ROW_SIGNALS = 32
+
+
 class ChannelListModel(QAbstractListModel):
     """Almacena todas las entradas y expone solo las filas visibles.
 
@@ -100,16 +104,26 @@ class ChannelListModel(QAbstractListModel):
         return True
 
     def update_entries(self, updater: Callable[[dict], bool]) -> None:
-        changed_rows = []
+        visible_rows = []
         for source_row, entry in enumerate(self._entries):
             if updater(entry):
-                changed_rows.append(source_row)
-        for source_row in changed_rows:
-            visible_row = self._visible_positions.get(source_row, -1)
-            if visible_row < 0:
+                visible_row = self._visible_positions.get(source_row, -1)
+                if visible_row >= 0:
+                    visible_rows.append(visible_row)
+        if len(visible_rows) <= _MAX_SINGLE_ROW_SIGNALS:
+            for visible_row in visible_rows:
+                model_index = self.index(visible_row, 0)
+                self.dataChanged.emit(model_index, model_index, [])
+            return
+        # Muchas filas (p. ej. al llegar la EPG): una señal por rango contiguo.
+        visible_rows.sort()
+        start = previous = visible_rows[0]
+        for row in visible_rows[1:] + [None]:
+            if row is not None and row == previous + 1:
+                previous = row
                 continue
-            model_index = self.index(visible_row, 0)
-            self.dataChanged.emit(model_index, model_index, [])
+            self.dataChanged.emit(self.index(start, 0), self.index(previous, 0), [])
+            start = previous = row
 
 
 class ChannelListItem:

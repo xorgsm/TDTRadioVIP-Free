@@ -142,3 +142,53 @@ def test_automatic_backup_ignores_matching_directories(tmp_path, monkeypatch):
     result = backup.create_automatic_backup(tmp_path, now=datetime(2026, 8, 31, 12, 0, 0))
 
     assert result is not None
+
+
+def _import_settings(tmp_path, monkeypatch, settings):
+    app_data = tmp_path / "app"
+    profile_data = tmp_path / "profile"
+    app_data.mkdir(exist_ok=True)
+    profile_data.mkdir(exist_ok=True)
+    monkeypatch.setattr(backup, "get_app_data_dir", lambda: app_data)
+    monkeypatch.setattr(backup, "get_profile_data_dir", lambda: profile_data)
+    archive = tmp_path / "backup.json"
+    archive.write_text(json.dumps({
+        "app": "TDT & Radio VIP",
+        "backup_format_version": backup.BACKUP_FORMAT_VERSION,
+        "settings": settings,
+    }), encoding="utf-8")
+    backup.import_backup(str(archive))
+    return json.loads((app_data / "settings.json").read_text(encoding="utf-8"))
+
+
+def test_import_drops_settings_with_the_wrong_type(tmp_path, monkeypatch):
+    saved = _import_settings(tmp_path, monkeypatch, {
+        "catalog_card_size": [1, 2],
+        "volume": "alto",
+        "onboarding_shown": 1,
+        "accent_color": "#112233",
+    })
+    assert "catalog_card_size" not in saved
+    assert "volume" not in saved
+    assert "onboarding_shown" not in saved
+    assert saved["accent_color"] == "#112233"
+
+
+@pytest.mark.parametrize("key", ["epg_url", "update_check_url", "tv_playlist_url"])
+@pytest.mark.parametrize("value", ["file:///C:/secreto.xml", "ftp://x/y", "javascript:alert(1)", "//host/share"])
+def test_import_drops_urls_that_are_not_http(tmp_path, monkeypatch, key, value):
+    saved = _import_settings(tmp_path, monkeypatch, {key: value})
+    assert key not in saved
+
+
+def test_import_keeps_valid_http_urls_and_empty_values(tmp_path, monkeypatch):
+    saved = _import_settings(tmp_path, monkeypatch, {
+        "epg_url": "https://example.com/guia.xml",
+        "tv_playlist_url": "",
+        "recordings_dir": None,
+        "ajuste_desconocido": {"a": 1},
+    })
+    assert saved["epg_url"] == "https://example.com/guia.xml"
+    assert saved["tv_playlist_url"] == ""
+    assert saved["recordings_dir"] is None
+    assert saved["ajuste_desconocido"] == {"a": 1}

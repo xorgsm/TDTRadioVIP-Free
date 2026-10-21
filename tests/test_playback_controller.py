@@ -35,7 +35,7 @@ def stores(monkeypatch):
     monkeypatch.setattr(pc_module, "hist_store", Mock(add_entry=Mock(return_value=[])))
     monkeypatch.setattr(pc_module, "fav_store", Mock(is_favorite=Mock(return_value=False)))
     monkeypatch.setattr(pc_module, "recording_schedule", Mock())
-    monkeypatch.setattr(pc_module, "make_glow", Mock(), raising=False)
+    monkeypatch.setattr(pc_module, "make_glow", Mock())
     monkeypatch.setattr(pc_module, "QMessageBox", Mock())
     monkeypatch.setattr(pc_module, "show_toast", Mock())
     monkeypatch.setattr(pc_module.cfg, "save_settings", Mock(return_value=True))
@@ -52,6 +52,7 @@ class SimpleStores:
 def win():
     w = MagicMock()
     w.recorder.is_recording = False
+    w.recorder.is_stopping = False
     w.recorder.stop.return_value = ("C:/grab/x.mp4", True)
     w._scheduled_recording_active = None
     w._playback_token = 0
@@ -186,6 +187,26 @@ def test_record_button_stops_scheduled_recording_and_clears_schedule(ctrl, win):
     win.recorder.stop.assert_called_once()
     pc_module.recording_schedule.mark_done.assert_called_once_with("la1", "Noticias", "20260925210000")
     assert win._scheduled_recording_active is None
+
+
+def test_record_button_ignored_while_a_stop_is_in_progress(ctrl, win):
+    """La parada bombea eventos: un segundo clic/atajo a mitad no debe
+    arrancar otra parada ni otra grabacion."""
+    win.recorder.is_recording = True
+    win.recorder.is_stopping = True
+
+    ctrl.toggle_recording()
+
+    win.recorder.stop.assert_not_called()
+    win.recorder.start.assert_not_called()
+
+
+def test_record_stop_uses_a_pump_that_excludes_user_input(ctrl, win):
+    win.recorder.is_recording = True
+
+    ctrl.toggle_recording()
+
+    assert win.recorder.stop.call_args.kwargs["on_wait"] is pc_module.pump_events_without_input
 
 
 # --------------------------------------------------------------------------

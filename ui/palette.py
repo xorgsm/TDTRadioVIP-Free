@@ -27,15 +27,15 @@ un estado local que no forma parte del sistema visual común.
 
 # ── Fondos ───────────────────────────────────────────────────────────────
 # Escala navy del rediseño 7.5.8 (mockup ui-diseno/panel principal.pen):
-# base #0D1B2A y paneles #1B2A41, con los pasos superiores derivados en el
+# base #0b0c0f y paneles #14161b, con los pasos superiores derivados en el
 # mismo matiz para conservar la jerarquía card < alt < hover.
-BG_ROOT = "#0d1b2a"
-BG_PANEL = "#1b2a41"
-BG_CARD = "#223350"
-BG_PANEL_ALT = "#283c5e"
-BG_HOVER = "#2f466d"
-BORDER = "#2a3b55"
-BORDER_STRONG = "#3d5578"
+BG_ROOT = "#0b0c0f"
+BG_PANEL = "#14161b"
+BG_CARD = "#1a1d23"
+BG_PANEL_ALT = "#21252c"
+BG_HOVER = "#292e37"
+BORDER = "#23262d"
+BORDER_STRONG = "#343944"
 
 # ── Texto ────────────────────────────────────────────────────────────────
 TEXT_PRIMARY = "#f2efe6"
@@ -52,9 +52,9 @@ TEXT_MUTED = "#a6b5c7"
 TEXT_DIM = "#8e9daf"
 
 # ── Acento de marca (dorado por defecto) ────────────────────────────────
-ACCENT = "#c9a227"
-ACCENT_LIGHT = "#e8c360"
-ACCENT_LIGHTER = "#f4d476"
+ACCENT = "#7c6cff"
+ACCENT_LIGHT = "#a095ff"
+ACCENT_LIGHTER = "#c4bcff"
 
 # ── Semánticos ───────────────────────────────────────────────────────────
 # Aclarado desde #ef5350 (contraste WCAG AA: 4.14:1 sobre BG_PANEL, por
@@ -76,6 +76,6 @@ ACCENT_CATEGORY_ORANGE = "#f39a55"
 # Celda del programa en emisión ahora mismo vs. resto de celdas de la
 # rejilla (ui/epg_dialog.py). Distintos de BG_PANEL/TEXT_SECONDARY porque
 # necesitan más contraste dentro de una tabla densa.
-EPG_NOW_BG = "#3a2e14"
-EPG_CELL_BG = "#16223a"
+EPG_NOW_BG = "#262245"
+EPG_CELL_BG = "#121419"
 EPG_CELL_TEXT = "#c7ced8"

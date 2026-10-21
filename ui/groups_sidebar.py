@@ -7,7 +7,8 @@ catálogo de TV por uno o varios grupos a la vez.
 
 Panel aditivo: se inserta en el root layout junto a LibrarySidebar (ver
 ui/main_window._build_ui) y solo se muestra durante la sección de
-Televisión (ver MainWindow._on_nav_changed) -- Radio y el resto de
+Televisión (ver ui.navigation_controller.NavigationController.on_nav_changed)
+-- Radio y el resto de
 secciones no tienen "grupo" como concepto en esta app.
 
 Coder By X@R

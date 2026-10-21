@@ -24,12 +24,20 @@ import unicodedata
 import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass, fields
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, FrozenSet, Iterable, List, Optional, Tuple
 
 import requests
 
 from core.config import get_app_data_dir
-from core.json_store import read_json, write_json_atomic
+from core.http_limits import MAX_EPG_BYTES, fetch_limited
+from core.json_store import read_json, remove_stale_temporaries, write_json_atomic
+from core.safe_xml import parse_xml_safely
+
+# (conexión, lectura) y plazo total: la guía puede pesar cientos de MB (tope de
+# 256 MB, unos 11 minutos a ~3 Mbit/s), así que el plazo solo corta los casos
+# patológicos, no un enlace lento pero constante.
+EPG_TIMEOUT = (4, 15)
+EPG_DEADLINE_SECONDS = 900
 
 CACHE_FILE = "epg_cache.json"
 CACHE_TTL_SECONDS = 6 * 3600
@@ -137,8 +145,32 @@ def _programme_from_cache(data) -> Optional[Programme]:
     return programme
 
 
-def _read_cache(cache_path, epg_url: str) -> Dict[str, List[Programme]]:
+def _cache_covers(cached_keys, wanted: Optional[FrozenSet[str]]) -> bool:
+    """¿Sirve un caché hecho para ``cached_keys`` a quien pide ``wanted``?
+
+    ``None`` en ``cached_keys`` es una guía completa (también los cachés del
+    formato anterior, que no guardaban las claves): sirve para todo. Un
+    caché filtrado solo sirve si contiene todos los canales pedidos.
+    """
+    if cached_keys is None:
+        return True
+    if wanted is None or not isinstance(cached_keys, list):
+        return False
+    return wanted <= set(cached_keys)
+
+
+def _read_cache_entry(
+    cache_path,
+    epg_url: str,
+    wanted: Optional[FrozenSet[str]] = None,
+    *,
+    allow_incomplete: bool = False,
+) -> Optional[Dict[str, List[Programme]]]:
     """Guía cacheada, solo si se descargó de ``epg_url``.
+
+    Con ``wanted`` solo se materializan esos canales. Un caché filtrado que
+    no cubre lo pedido se descarta salvo ``allow_incomplete`` (último
+    recurso cuando la descarga falla: mejor una guía parcial que ninguna).
 
     El caché guarda la URL de origen: antes era solo la guía, y cambiar la
     URL de la EPG en Configuración seguía mostrando la guía de la URL
@@ -146,16 +178,24 @@ def _read_cache(cache_path, epg_url: str) -> Dict[str, List[Programme]]:
     lanza guardar los ajustes no fuerza la descarga. Un caché del formato
     anterior (sin URL) no se reutiliza: no hay forma de saber de qué guía
     viene.
+
+    Devuelve ``None`` si no hay un caché utilizable y ``{}`` si lo hay pero
+    ninguno de los canales pedidos aparece en la guía: esa respuesta vacía
+    también vale durante el TTL, o cada arranque la volvería a descargar.
     """
     raw = read_json(cache_path, None)
     if not isinstance(raw, dict) or raw.get("url") != epg_url:
-        return {}
+        return None
     raw_guide = raw.get("guide")
     if not isinstance(raw_guide, dict):
-        return {}
+        return None
+    if not allow_incomplete and not _cache_covers(raw.get("keys"), wanted):
+        return None
     guide = {}
     for cid, progs in raw_guide.items():
         if not isinstance(progs, list):
+            continue
+        if wanted is not None and cid not in wanted:
             continue
         programmes = [p for p in map(_programme_from_cache, progs) if p is not None]
         if programmes:
@@ -163,25 +203,47 @@ def _read_cache(cache_path, epg_url: str) -> Dict[str, List[Programme]]:
     return _prepare_guide(guide)
 
 
-def fetch_epg(epg_url: str, force_refresh: bool = False) -> Dict[str, List[Programme]]:
+def _read_cache(cache_path, epg_url: str, wanted=None, *, allow_incomplete: bool = False):
+    """Como :func:`_read_cache_entry`, pero ``{}`` cuando no hay caché útil."""
+    entry = _read_cache_entry(cache_path, epg_url, wanted, allow_incomplete=allow_incomplete)
+    return entry or {}
+
+
+def fetch_epg(
+    epg_url: str,
+    force_refresh: bool = False,
+    wanted_keys: Optional[Iterable[str]] = None,
+) -> Dict[str, List[Programme]]:
+    """Guía XMLTV indexada por :func:`channel_key`.
+
+    ``wanted_keys`` limita la guía (y su caché en disco) a esos canales: la
+    guía pública trae miles y la app solo usa los de su lista. ``None`` mantiene
+    la guía completa.
+    """
     if not epg_url:
+        return {}
+    wanted = None if wanted_keys is None else frozenset(wanted_keys)
+    if wanted is not None and not wanted:
         return {}
 
     cache_path = get_app_data_dir() / "cache" / CACHE_FILE
+    remove_stale_temporaries(cache_path.parent)
 
     if not force_refresh and cache_path.exists():
         age = time.time() - cache_path.stat().st_mtime
         if age < CACHE_TTL_SECONDS:
-            cached = _read_cache(cache_path, epg_url)
-            if cached:
+            cached = _read_cache_entry(cache_path, epg_url, wanted)
+            if cached is not None:
                 return cached
 
     try:
-        resp = requests.get(epg_url, timeout=15)
-        resp.raise_for_status()
-        root = ET.fromstring(resp.content)
+        content = fetch_limited(
+            epg_url, max_bytes=MAX_EPG_BYTES,
+            timeout=EPG_TIMEOUT, deadline=EPG_DEADLINE_SECONDS,
+        )
+        root = parse_xml_safely(content)
     except (requests.RequestException, ET.ParseError):
-        return _read_cache(cache_path, epg_url)
+        return _read_cache(cache_path, epg_url, wanted, allow_incomplete=True)
 
     # Antes de leer los <programme>, se recogen las claves normalizadas de
     # cada <channel> -- su id Y todos sus <display-name> (algunas guías,
@@ -220,21 +282,22 @@ def fetch_epg(epg_url: str, force_refresh: bool = False) -> Dict[str, List[Progr
         )
         claves = claves_por_id_crudo.get(channel_id) or {channel_key(channel_id)}
         for clave in claves:
-            if clave:
+            if clave and (wanted is None or clave in wanted):
                 guide.setdefault(clave, []).append(programme)
 
-    if guide:
+    if guide or wanted is not None:
         _prepare_guide(guide)
         try:
             write_json_atomic(cache_path, {
                 "url": epg_url,
+                "keys": None if wanted is None else sorted(wanted),
                 "guide": {cid: [asdict(p) for p in progs] for cid, progs in guide.items()},
             })
         except OSError:
             # Sin permisos o disco lleno: no es motivo para tirar la guía ya
             # descargada, simplemente esta vez no se cachea.
             pass
-    return guide or _read_cache(cache_path, epg_url)
+    return guide or _read_cache(cache_path, epg_url, wanted, allow_incomplete=True)
 
 
 def get_now_next(

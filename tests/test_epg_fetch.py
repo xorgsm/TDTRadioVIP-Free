@@ -15,6 +15,7 @@ from unittest.mock import Mock
 import pytest
 import requests
 
+from _fake_http import fake_response
 from core import epg
 from core.epg import Programme, channel_key, fetch_epg, get_now_next
 
@@ -55,7 +56,7 @@ def _mock_get(monkeypatch, content=XMLTV, error=None):
     if error is not None:
         get = Mock(side_effect=error)
     else:
-        get = Mock(return_value=Mock(content=content, raise_for_status=Mock()))
+        get = Mock(return_value=fake_response(content))
     monkeypatch.setattr(epg.requests, "get", get)
     return get
 
@@ -140,7 +141,7 @@ def test_fetch_epg_does_not_reuse_cache_from_another_url(app_dir, monkeypatch):
     get = _mock_get(monkeypatch)
     fetch_epg(URL_A)
     otra_guia = XMLTV.replace(b"Telediario", b"Otra guia")
-    get.return_value = Mock(content=otra_guia, raise_for_status=Mock())
+    get.return_value = fake_response(otra_guia)
 
     guia = fetch_epg(URL_B)
 
@@ -157,6 +158,19 @@ def test_fetch_epg_falls_back_to_cache_of_same_url_on_failure(app_dir, monkeypat
         _mock_get(monkeypatch, content=b"<tv><programme")  # XML roto
     else:
         _mock_get(monkeypatch, error=error)
+
+    guia = fetch_epg(URL_A, force_refresh=True)
+
+    assert [p.title for p in guia["la1"]] == ["Telediario", "Segundo"]
+
+
+def test_fetch_epg_oversized_response_falls_back_to_cache(app_dir, monkeypatch):
+    """Una guía que supera el tope no se carga en memoria: se degrada como
+    una red caída y se sigue usando la guía cacheada."""
+    _mock_get(monkeypatch)
+    fetch_epg(URL_A)
+    monkeypatch.setattr(epg, "MAX_EPG_BYTES", 10)
+    _mock_get(monkeypatch)
 
     guia = fetch_epg(URL_A, force_refresh=True)
 

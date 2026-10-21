@@ -20,7 +20,7 @@ def _pump_until(app, predicate, timeout_ms=2000, step_ms=10):
 
 
 def test_first_instance_acquires_the_lock():
-    app = _app()
+    _app()
     key = f"TDTRadioVIP-test-{uuid.uuid4().hex}"
     guard = SingleInstanceGuard(key)
     try:
@@ -46,7 +46,7 @@ def test_second_instance_fails_to_acquire_and_notifies_the_first():
 
 
 def test_different_keys_do_not_collide():
-    app = _app()
+    _app()
     key_a = f"TDTRadioVIP-test-{uuid.uuid4().hex}"
     key_b = f"TDTRadioVIP-test-{uuid.uuid4().hex}"
     guard_a = SingleInstanceGuard(key_a)
@@ -57,3 +57,33 @@ def test_different_keys_do_not_collide():
     finally:
         guard_a.deleteLater()
         guard_b.deleteLater()
+
+
+def test_second_process_that_exits_right_away_still_activates_the_first():
+    """La segunda instancia real termina nada más avisar (ver
+    ui/application.py): el aviso tiene que llegar aunque su proceso muera."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    app = _app()
+    key = f"TDTRadioVIP-test-{uuid.uuid4().hex}"
+    first = SingleInstanceGuard(key)
+    activated = []
+    first.activation_requested.connect(lambda: activated.append(True))
+    code = (
+        "from PySide6.QtCore import QCoreApplication\n"
+        "from core.single_instance import SingleInstanceGuard\n"
+        "app = QCoreApplication([])\n"
+        f"raise SystemExit(0 if SingleInstanceGuard({key!r}).try_acquire() is False else 1)\n"
+    )
+    try:
+        assert first.try_acquire() is True
+        second = subprocess.Popen(
+            [sys.executable, "-c", code], cwd=Path(__file__).resolve().parent.parent
+        )
+        assert _pump_until(app, lambda: second.poll() is not None, timeout_ms=15000)
+        assert second.returncode == 0
+        assert _pump_until(app, lambda: len(activated) == 1)
+    finally:
+        first.deleteLater()

@@ -14,7 +14,7 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from core.config import get_app_data_dir, get_profile_data_dir, APP_VERSION
+from core.config import DEFAULT_SETTINGS, get_app_data_dir, get_profile_data_dir, APP_VERSION
 from core.json_store import replace_json_files_atomically, write_json_atomic
 
 BACKUP_FORMAT_VERSION = 1
@@ -86,6 +86,40 @@ def export_backup(destino: str, *, app_data_dir=None, profile_data_dir=None) -> 
     write_json_atomic(Path(destino), contenido, indent=2)
 
 
+_URL_SETTINGS = ("epg_url", "update_check_url", "tv_playlist_url")
+
+
+def _has_valid_type(value: object, default: object) -> bool:
+    if default is None:
+        return value is None or isinstance(value, str)
+    if isinstance(default, bool):
+        return isinstance(value, bool)
+    if isinstance(default, (int, float)):
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return isinstance(value, type(default))
+
+
+def _is_http_url_or_empty(value: object) -> bool:
+    if value in (None, ""):
+        return True
+    return isinstance(value, str) and value.lower().startswith(("http://", "https://"))
+
+
+def sanitize_imported_settings(settings: dict) -> dict:
+    """Descarta de unos ajustes importados los valores con el tipo equivocado
+    (rompen el siguiente arranque, p. ej. una lista en `catalog_card_size`) y
+    las URL que no sean http(s). Los ajustes descartados vuelven a su valor
+    por defecto; los desconocidos se conservan tal cual."""
+    clean = {}
+    for key, value in settings.items():
+        if key in DEFAULT_SETTINGS and not _has_valid_type(value, DEFAULT_SETTINGS[key]):
+            continue
+        if key in _URL_SETTINGS and not _is_http_url_or_empty(value):
+            continue
+        clean[key] = value
+    return clean
+
+
 def import_backup(origen: str) -> list[str]:
     """
     Restaura un backup generado por export_backup(), sobrescribiendo los
@@ -130,7 +164,8 @@ def import_backup(origen: str) -> list[str]:
     for file_name, key, directory in files:
         if key not in datos:
             continue
-        values[directory / file_name] = datos[key]
+        value = sanitize_imported_settings(datos[key]) if key == "settings" else datos[key]
+        values[directory / file_name] = value
         restored.append(key)
 
     replace_json_files_atomically(values, indent=2)

@@ -5,7 +5,11 @@ Fuente por defecto: listas públicas y gratuitas de iptv-org, mantenidas por
 la comunidad: https://github.com/iptv-org/iptv — una por país.
 """
 import hashlib
+import os
 import re
+import functools
+import threading
+import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import List, Optional
@@ -13,7 +17,18 @@ from typing import List, Optional
 import requests
 
 from core.config import get_app_data_dir, get_profile_data_dir
+from core.http_limits import MAX_PLAYLIST_BYTES, fetch_limited
 from core.json_store import read_json, write_json_atomic
+
+# (conexión, lectura): una conexión que no abre en pocos segundos suele ser DNS,
+# VPN o proxy y no mejora esperando; el plazo total corta servidores que
+# entregan la lista a gotas, ya que el timeout de lectura es por operación.
+PLAYLIST_TIMEOUT = (4, 12)
+PLAYLIST_DEADLINE_SECONDS = 45
+
+# Pasado este tiempo la lista en caché se muestra igualmente al arrancar, pero
+# se revalida contra la red en segundo plano (ver cache_is_stale).
+CACHE_TTL_SECONDS = 12 * 3600
 
 CUSTOM_FILE = "tv_channels_custom.json"
 # Nombres de canales de la lista PÚBLICA (iptv-org/URL de país, no los
@@ -21,7 +36,8 @@ CUSTOM_FILE = "tv_channels_custom.json"
 # más abajo. A diferencia de tv_channels_custom.json, esto no guarda datos
 # de ningún canal, solo su nombre: la lista pública se sigue descargando y
 # cacheando entera como siempre, esto es un filtro que se aplica encima al
-# combinarla con la personalizada (ver ui/main_window._on_tv_channels_loaded).
+# combinarla con la personalizada (ver
+# ui.catalog_load_controller.CatalogLoadController._on_tv_channels_loaded).
 HIDDEN_FILE = "tv_channels_hidden.json"
 
 IPTV_ORG_BASE = "https://iptv-org.github.io/iptv/countries"
@@ -103,15 +119,21 @@ def dedupe_channels(channels: List[Channel]) -> List[Channel]:
     (entre dos fuentes distintas).
     """
     vistos = {}
+    # URLs ya conocidas por canal (la principal y las de respaldo): buscar en
+    # la lista alternate_urls era cuadrático con muchas URLs bajo un nombre.
+    urls_vistas: dict = {}
     resultado: List[Channel] = []
     for ch in channels:
         clave = ch.name.strip().casefold()
         if clave in vistos:
             original = resultado[vistos[clave]]
-            if ch.url and ch.url != original.url and ch.url not in original.alternate_urls:
+            conocidas = urls_vistas[clave]
+            if ch.url and ch.url not in conocidas:
+                conocidas.add(ch.url)
                 original.alternate_urls.append(ch.url)
             continue
         vistos[clave] = len(resultado)
+        urls_vistas[clave] = {ch.url, *ch.alternate_urls}
         resultado.append(ch)
     return resultado
 
@@ -137,9 +159,9 @@ def read_playlist_source(source: str, timeout: float = 15) -> str:
     decodificado con decode_playlist(). Lanza requests.RequestException u
     OSError si no se puede leer -- quien llama decide cómo avisar."""
     if source.lower().startswith(("http://", "https://")):
-        resp = requests.get(source, timeout=timeout)
-        resp.raise_for_status()
-        return decode_playlist(resp.content)
+        return decode_playlist(
+            fetch_limited(source, max_bytes=MAX_PLAYLIST_BYTES, timeout=timeout)
+        )
     return decode_playlist(Path(source).read_bytes())
 
 
@@ -175,6 +197,27 @@ def parse_m3u(text: str, *, deduplicate: bool = True) -> List[Channel]:
     return dedupe_channels(channels) if deduplicate else channels
 
 
+# Desfase admitido entre la fecha del fichero de caché y el reloj del sistema.
+_CACHE_CLOCK_SKEW_SECONDS = 5
+
+
+def cache_is_stale(
+    playlist_url: str, max_age: float = CACHE_TTL_SECONDS, *, missing: bool = True
+) -> bool:
+    """¿La caché de esta lista es más vieja que ``max_age`` segundos?
+
+    ``missing`` es la respuesta si no hay caché. Una fecha futura (reloj
+    atrasado, fichero copiado) cuenta como vieja: de otro modo nunca caduca.
+    Se tolera un pequeño desfase: justo tras renovarla con os.utime, la
+    fecha del fichero puede ir unas milésimas por delante de time.time().
+    """
+    try:
+        age = time.time() - _cache_path_for(playlist_url).stat().st_mtime
+    except OSError:
+        return missing
+    return age > max_age or age < -_CACHE_CLOCK_SKEW_SECONDS
+
+
 def fetch_tv_channels(playlist_url: str, force_refresh: bool = False) -> List[Channel]:
     """Descarga la lista de canales; si falla, usa la caché local en disco."""
     cache_path = _cache_path_for(playlist_url)
@@ -185,12 +228,19 @@ def fetch_tv_channels(playlist_url: str, force_refresh: bool = False) -> List[Ch
         return cached
 
     try:
-        resp = requests.get(playlist_url, timeout=12)
-        resp.raise_for_status()
-        channels = parse_m3u(decode_playlist(resp.content))
+        content = fetch_limited(
+            playlist_url, max_bytes=MAX_PLAYLIST_BYTES,
+            timeout=PLAYLIST_TIMEOUT, deadline=PLAYLIST_DEADLINE_SECONDS,
+        )
+        channels = parse_m3u(decode_playlist(content))
         if channels:
+            # Reescribir con fsync una caché idéntica solo retrasa la entrega
+            # del resultado (más con antivirus o un disco lento).
             try:
-                write_json_atomic(cache_path, [asdict(c) for c in channels])
+                if channels != cached:
+                    write_json_atomic(cache_path, [asdict(c) for c in channels])
+                else:
+                    os.utime(cache_path)  # sigue vigente: renueva su antigüedad
             except OSError:
                 pass  # no poder cachear no invalida la lista ya descargada
             return channels
@@ -200,6 +250,21 @@ def fetch_tv_channels(playlist_url: str, force_refresh: bool = False) -> List[Ch
     return cached
 
 
+# La carga combinada del catálogo corre en un worker y load_custom_channels()
+# puede reescribir el fichero al autorrepararlo: todas las secuencias
+# leer-modificar-escribir de la lista personalizada van serializadas para que
+# una no pise a otra (p. ej. añadir un canal durante la carga inicial).
+_CUSTOM_WRITE_LOCK = threading.RLock()
+
+
+def _custom_serialized(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        with _CUSTOM_WRITE_LOCK:
+            return func(*args, **kwargs)
+    return wrapper
+
+
 def _save_custom(channels: List[Channel]) -> None:
     """Punto único de guardado de la lista personalizada."""
     path = get_profile_data_dir() / CUSTOM_FILE
@@ -207,8 +272,11 @@ def _save_custom(channels: List[Channel]) -> None:
         write_json_atomic(path, [asdict(c) for c in channels])
     except OSError:
         pass
+    with _CUSTOM_NAMES_LOCK:
+        _CUSTOM_NAMES_CACHE.pop(path, None)
 
 
+@_custom_serialized
 def load_custom_channels() -> List[Channel]:
     channels = _load_channel_list(get_profile_data_dir() / CUSTOM_FILE)
 
@@ -225,12 +293,39 @@ def load_custom_channels() -> List[Channel]:
     return limpios
 
 
+# Nombres de la lista personalizada, memorizados por fecha y tamaño del
+# fichero. Favoritos, historial y el poblado de TV solo necesitan saber QUÉ
+# canales son propios, y releer un JSON de miles de canales cuesta decenas de
+# milisegundos en el hilo de la interfaz cada vez.
+_CUSTOM_NAMES_CACHE: dict = {}
+_CUSTOM_NAMES_LOCK = threading.Lock()
+
+
+def custom_channel_names() -> frozenset:
+    path = get_profile_data_dir() / CUSTOM_FILE
+    try:
+        stat = path.stat()
+    except OSError:
+        return frozenset()
+    stamp = (stat.st_mtime_ns, stat.st_size)
+    with _CUSTOM_NAMES_LOCK:
+        cached = _CUSTOM_NAMES_CACHE.get(path)
+        if cached is not None and cached[0] == stamp:
+            return cached[1]
+    names = frozenset(channel.name for channel in load_custom_channels())
+    with _CUSTOM_NAMES_LOCK:
+        _CUSTOM_NAMES_CACHE[path] = (stamp, names)
+    return names
+
+
+@_custom_serialized
 def add_custom_channel(channel: Channel) -> None:
     channels = load_custom_channels()
     channels.append(channel)
     _save_custom(channels)
 
 
+@_custom_serialized
 def add_custom_channels(channels: List[Channel]) -> None:
     """
     Añade varios canales de golpe con una sola lectura y una sola escritura
@@ -247,14 +342,17 @@ def add_custom_channels(channels: List[Channel]) -> None:
     _save_custom(actuales)
 
 
+@_custom_serialized
 def update_custom_channel(old_name: str, channel: Channel) -> None:
     _save_custom([channel if c.name == old_name else c for c in load_custom_channels()])
 
 
+@_custom_serialized
 def remove_custom_channel(name: str) -> None:
     _save_custom([c for c in load_custom_channels() if c.name != name])
 
 
+@_custom_serialized
 def remove_custom_channels(names) -> int:
     """
     Quita varios canales de golpe con una sola lectura y una sola escritura

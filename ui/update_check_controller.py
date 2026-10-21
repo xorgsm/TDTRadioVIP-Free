@@ -1,8 +1,8 @@
 """
 Controlador de comprobación de actualizaciones de TDT & Radio VIP: consulta
 manual desde Ayuda > Buscar actualizaciones, y descarga/verificación segura
-(SHA-256) del instalador si el usuario lo pide. La comprobación automática
-al arrancar (ver ui/main_window.py) reutiliza on_update_check_done() para
+(firma y SHA-256) del instalador si el usuario lo pide. La comprobación automática
+al arrancar (ver ui/app_lifecycle.py) reutiliza on_update_check_done() para
 que el diálogo y la descarga sean idénticos en ambos casos.
 
 Extraído de ui/main_window.py por el mismo motivo que
@@ -18,7 +18,10 @@ from PySide6.QtWidgets import QMessageBox
 
 from core import config as cfg
 from core import updater
+from core.logger import get_logger
 from ui.fetch_worker import FetchWorker
+
+log = get_logger(__name__)
 
 
 class UpdateCheckController:
@@ -56,7 +59,7 @@ class UpdateCheckController:
         comprobación manual (con el resultado de
         core.updater.check_update_status()) como desde el aviso de la
         comprobación automática al arrancar, que solo llega aquí con un
-        manifiesto (ver ui/main_window.py).
+        manifiesto (ver ui.app_lifecycle.AppLifecycle).
         """
         win = self.win
         if win._is_closing:
@@ -77,7 +80,12 @@ class UpdateCheckController:
             return
         version = resultado.get("version", "?")
         enlace = resultado.get("download_url") or resultado.get("url", "")
-        secure_download = bool(resultado.get("sha256") and enlace)
+        secure_download = bool(enlace) and updater.has_valid_signature(resultado)
+        if not secure_download and resultado.get("sha256"):
+            log.warning(
+                "El manifiesto de actualización no trae una firma válida; "
+                "se ofrece la descarga manual"
+            )
         respuesta = QMessageBox.question(
             win, "Actualización disponible",
             f"Hay una versión nueva disponible: {version} "
@@ -87,6 +95,8 @@ class UpdateCheckController:
         )
         if respuesta == QMessageBox.Yes and enlace:
             if secure_download:
+                # Hash firmado del manifiesto: se recomprueba antes de ejecutar.
+                win._update_expected_sha256 = resultado["sha256"]
                 worker = FetchWorker(
                     updater.download_verified_update,
                     resultado,
@@ -97,7 +107,8 @@ class UpdateCheckController:
                 win.statusBar().showMessage("Descargando actualización segura…")
                 worker.start()
             else:
-                QDesktopServices.openUrl(QUrl(enlace))
+                # El enlace de un manifiesto sin firma válida no es de fiar.
+                QDesktopServices.openUrl(QUrl(updater.OFFICIAL_RELEASES_URL))
 
     def _on_update_download_done(self, path):
         win = self.win
@@ -110,6 +121,15 @@ class UpdateCheckController:
             return
         if QMessageBox.question(
             win, "Actualización verificada",
-            "El instalador superó la verificación SHA-256.\n\n¿Ejecutarlo ahora?",
+            "El instalador superó la verificación de firma y SHA-256.\n\n¿Ejecutarlo ahora?",
         ) == QMessageBox.Yes:
+            # El archivo pudo cambiar desde la verificacion hasta este "si".
+            if not updater.file_matches_sha256(path, getattr(win, "_update_expected_sha256", None)):
+                log.warning("El instalador descargado ya no coincide con el SHA-256 firmado; no se ejecuta")
+                QMessageBox.warning(
+                    win, "Actualización",
+                    "El instalador cambió después de verificarse, así que no se "
+                    "ejecutará. Vuelve a descargarlo desde Buscar actualizaciones.",
+                )
+                return
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))

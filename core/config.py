@@ -21,7 +21,7 @@ APP_ORG = "CoderByXOR"
 # carpeta propia, para poder probarla junto a 7.5.11 sin modificar sus datos.
 APP_DATA_NAME = "TDTRadioVIP_7.6.0"
 LEGACY_APP_ORG = "CoderByXOR"
-APP_VERSION = "8.6.24"
+APP_VERSION = "8.6.35"
 # Correo al que el cliente envía su ID de equipo para pedir el código de
 # activación. Centralizado aquí para no tener que buscarlo por el código
 # si algún día cambia.
@@ -51,7 +51,7 @@ DEFAULT_SETTINGS = {
     "tv_playlist_url": "",
     "tv_country_code": "ES",
     "radio_country_code": "ES",
-    "accent_color": "#c9a227",
+    "accent_color": "#7c6cff",
     "theme_mode": "dark",
     # Vista del catálogo compartida por TV y Radio. Se conserva entre
     # sesiones para que la interfaz no vuelva siempre al modo lista.
@@ -403,6 +403,28 @@ def get_icon_path() -> Optional[str]:
     return candidato if os.path.isfile(candidato) else None
 
 
+# Tipografías empaquetadas en resources/fonts/: Manrope para el texto,
+# Playfair Display (serif) para los títulos e Inter como alternativa.
+BUNDLED_FONT_FILES = (
+    "Manrope-Variable.ttf",
+    "PlayfairDisplay-Variable.ttf",
+    "Inter-Variable.ttf",
+)
+
+
+@lru_cache(maxsize=1)
+def get_font_paths() -> tuple[str, ...]:
+    """Rutas de las tipografías empaquetadas que existen (puede ser vacío)."""
+    base_dir = getattr(
+        sys, "_MEIPASS", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
+    candidatos = (
+        os.path.join(base_dir, "resources", "fonts", nombre)
+        for nombre in BUNDLED_FONT_FILES
+    )
+    return tuple(ruta for ruta in candidatos if os.path.isfile(ruta))
+
+
 @lru_cache(maxsize=1)
 def get_font_path() -> Optional[str]:
     """
@@ -426,7 +448,6 @@ def load_settings() -> dict:
         settings["recordings_dir"] = str(get_app_data_dir() / "recordings")
     _migrate_legacy_country_settings(settings)
     _migrate_legacy_epg_url(settings)
-    _migrate_legacy_update_check_url(settings)
     return settings
 
 
@@ -443,20 +464,6 @@ def _migrate_legacy_epg_url(settings: dict) -> None:
     """
     if settings.get("epg_url") == _LEGACY_EPG_URL:
         settings["epg_url"] = DEFAULT_SETTINGS["epg_url"]
-
-
-def _migrate_legacy_update_check_url(settings: dict) -> None:
-    """
-    "update_check_url" no tiene ningún campo en Preferencias (a diferencia
-    de "epg_url", ver ui/dialogs.py) -- solo se lee/escribe desde este
-    módulo. Por tanto un valor vacío en settings.json nunca puede venir de
-    una elección deliberada del usuario: solo pasa en instalaciones cuyo
-    settings.json se creó antes de que este ajuste tuviera un valor por
-    defecto real (ver DEFAULT_SETTINGS más arriba), y sin esto se quedarían
-    ancladas para siempre a "comprobación de actualizaciones desactivada".
-    """
-    if not settings.get("update_check_url"):
-        settings["update_check_url"] = DEFAULT_SETTINGS["update_check_url"]
 
 
 def _migrate_legacy_country_settings(settings: dict) -> None:

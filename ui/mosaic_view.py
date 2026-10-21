@@ -23,8 +23,8 @@ from typing import List
 
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import (
-    QCheckBox, QDialog, QGridLayout, QHBoxLayout, QLabel, QPushButton,
-    QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
+    QDialog, QGridLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
+    QPushButton, QStackedWidget, QVBoxLayout, QWidget,
 )
 
 from core.channels import Channel
@@ -41,7 +41,8 @@ class _SelectorCanales(QWidget):
     def __init__(self, canales: List[Channel], on_iniciar, parent=None):
         super().__init__(parent)
         self._on_iniciar = on_iniciar
-        self._checks = []
+        self._items = []
+        self._marcados = 0
 
         root = QVBoxLayout(self)
         root.setContentsMargins(20, 18, 20, 18)
@@ -59,37 +60,38 @@ class _SelectorCanales(QWidget):
         aviso.setStyleSheet(f"color: {palette.TEXT_MUTED}; font-size: 8.5pt;")
         root.addWidget(aviso)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        contenedor = QWidget()
-        lista_layout = QVBoxLayout(contenedor)
-        lista_layout.setSpacing(2)
+        # Una lista con casillas en vez de un QCheckBox por canal: con cientos
+        # de canales, crear un widget por fila retrasaba la apertura.
+        self._lista = QListWidget()
+        self._lista.setUniformItemSizes(True)
         for ch in canales:
-            cb = QCheckBox(ch.name)
-            cb.toggled.connect(self._on_toggle)
-            lista_layout.addWidget(cb)
-            self._checks.append((cb, ch))
-        lista_layout.addStretch(1)
-        scroll.setWidget(contenedor)
-        root.addWidget(scroll, stretch=1)
+            item = QListWidgetItem(ch.name)
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.Unchecked)
+            self._lista.addItem(item)
+            self._items.append((item, ch))
+        self._lista.itemChanged.connect(self._on_toggle)
+        root.addWidget(self._lista, stretch=1)
 
         self.iniciar_btn = QPushButton("Iniciar multivista")
         self.iniciar_btn.setEnabled(False)
         self.iniciar_btn.clicked.connect(lambda: self._on_iniciar(self.seleccionados()))
         root.addWidget(self.iniciar_btn)
 
-    def _on_toggle(self, _checked):
-        if len(self.seleccionados()) > MAX_TILES:
+    def _on_toggle(self, item):
+        marcado = item.checkState() == Qt.Checked
+        self._marcados += 1 if marcado else -1
+        if self._marcados > MAX_TILES:
             # Se deshace el clic que se pasó del límite, en vez de bloquear
-            # el checkbox a medias -- más predecible para quien lo usa.
-            sender = self.sender()
-            sender.blockSignals(True)
-            sender.setChecked(False)
-            sender.blockSignals(False)
-        self.iniciar_btn.setEnabled(1 <= len(self.seleccionados()) <= MAX_TILES)
+            # la casilla a medias -- más predecible para quien lo usa.
+            self._lista.blockSignals(True)
+            item.setCheckState(Qt.Unchecked)
+            self._lista.blockSignals(False)
+            self._marcados -= 1
+        self.iniciar_btn.setEnabled(1 <= self._marcados <= MAX_TILES)
 
     def seleccionados(self) -> List[Channel]:
-        return [ch for cb, ch in self._checks if cb.isChecked()]
+        return [ch for item, ch in self._items if item.checkState() == Qt.Checked]
 
 
 class _MosaicTile(QWidget):

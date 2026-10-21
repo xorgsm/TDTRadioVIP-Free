@@ -6,6 +6,8 @@ stream sin volver a comprobarlo al abrir una lista.
 """
 from __future__ import annotations
 
+import functools
+import threading
 from collections.abc import Iterable, Mapping
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -16,7 +18,9 @@ from core.json_store import read_json, write_json_atomic
 
 
 HEALTH_FILE = "stream_health.json"
-MAX_HISTORY_PER_STREAM = 20
+# El historial por stream no lo usa la interfaz (solo el último estado) y con
+# decenas de miles de streams a 20 eventos el fichero llegó a pesar 26 MB.
+MAX_HISTORY_PER_STREAM = 5
 SLOW_LATENCY_MS = 1_500
 HealthStatus = Literal["stable", "slow", "down", "restricted"]
 
@@ -85,6 +89,27 @@ def derive_health_status(
     return "slow" if latency_ms >= slow_latency_ms else "stable"
 
 
+# Última lectura ligera (sin historial) por fichero, válida mientras no cambie
+# su fecha de modificación ni su tamaño. Las listas de TV y radio, Inicio y el
+# diagnóstico leen el mismo fichero varias veces seguidas al arrancar y al
+# refrescar; con decenas de miles de streams cada lectura costaba ~0,35 s en
+# el hilo de la interfaz.
+_LIGHT_CACHE: dict[Path, tuple[tuple[int, int], list[dict]]] = {}
+_LIGHT_CACHE_LOCK = threading.Lock()
+# El diagnóstico automático y el manual guardan desde hilos distintos: sin
+# serializar la secuencia leer-modificar-escribir, el último en escribir
+# borraba los resultados del otro.
+_STORE_WRITE_LOCK = threading.RLock()
+
+
+def _serialized(method):
+    @functools.wraps(method)
+    def wrapper(*args, **kwargs):
+        with _STORE_WRITE_LOCK:
+            return method(*args, **kwargs)
+    return wrapper
+
+
 class StreamHealthStore:
     """Guarda y consulta el historial de diagnósticos de un perfil.
 
@@ -100,6 +125,7 @@ class StreamHealthStore:
         self.path = path or get_profile_data_dir() / HEALTH_FILE
         self.max_history = max_history
 
+    @_serialized
     def record_result(
         self,
         kind: str,
@@ -133,6 +159,7 @@ class StreamHealthStore:
         self._save_streams(streams)
         return _public_stream(current)
 
+    @_serialized
     def record_results(self, results: Iterable[Mapping[str, object]]) -> list[dict]:
         """Registra un lote de resultados válidos y devuelve sus estados."""
         # Cargar y guardar una sola vez. El diagnóstico completo puede traer
@@ -180,8 +207,19 @@ class StreamHealthStore:
                 return _public_stream(stream)
         return None
 
-    def list(self, kind: str | None = None) -> list[dict]:
-        """Lista estados, con los comprobados más recientemente primero."""
+    def list(self, kind: str | None = None, *, include_history: bool = True) -> list[dict]:
+        """Lista estados, con los comprobados más recientemente primero.
+
+        ``include_history=False`` devuelve solo el último estado de cada
+        stream (sin la clave ``history``) y reutiliza la lectura anterior
+        mientras el fichero no cambie: es lo que necesita la interfaz.
+        """
+        if not include_history:
+            streams = self._light_streams()
+            if kind is not None:
+                kind = kind.strip()
+                streams = [stream for stream in streams if stream["kind"] == kind]
+            return [dict(stream) for stream in streams]
         streams = self._load_streams()
         if kind is not None:
             kind = kind.strip()
@@ -192,6 +230,37 @@ class StreamHealthStore:
             reverse=True,
         )
 
+    def _light_streams(self) -> list[dict]:
+        """Estados sin historial, ordenados, memorizados por versión del fichero."""
+        try:
+            stat = self.path.stat()
+        except OSError:
+            return []
+        stamp = (stat.st_mtime_ns, stat.st_size)
+        with _LIGHT_CACHE_LOCK:
+            cached = _LIGHT_CACHE.get(self.path)
+            if cached is not None and cached[0] == stamp:
+                return cached[1]
+        streams = sorted(
+            (
+                _normalise_stream(stream, with_history=False)
+                for stream in self._raw_streams()
+                if _is_stream(stream)
+            ),
+            key=lambda stream: stream["checked_at"],
+            reverse=True,
+        )
+        with _LIGHT_CACHE_LOCK:
+            _LIGHT_CACHE[self.path] = (stamp, streams)
+        return streams
+
+    def _raw_streams(self) -> list:
+        data = read_json(self.path, {"streams": []})
+        if not isinstance(data, dict) or not isinstance(data.get("streams"), list):
+            return []
+        return data["streams"]
+
+    @_serialized
     def clear(self, kind: str | None = None, url: str | None = None) -> int:
         """Elimina estados y devuelve cuántos streams se han retirado."""
         if url is not None and kind is None:
@@ -213,13 +282,16 @@ class StreamHealthStore:
         return removed
 
     def _load_streams(self) -> list[dict]:
-        data = read_json(self.path, {"streams": []})
-        if not isinstance(data, dict) or not isinstance(data.get("streams"), list):
-            return []
-        return [_normalise_stream(stream) for stream in data["streams"] if _is_stream(stream)]
+        return [
+            _normalise_stream(stream, self.max_history)
+            for stream in self._raw_streams()
+            if _is_stream(stream)
+        ]
 
     def _save_streams(self, streams: list[dict]) -> None:
-        write_json_atomic(self.path, {"version": 1, "streams": streams}, indent=2)
+        write_json_atomic(self.path, {"version": 1, "streams": streams})
+        with _LIGHT_CACHE_LOCK:
+            _LIGHT_CACHE.pop(self.path, None)
 
     @staticmethod
     def _validate_identity(kind: str, url: str) -> tuple[str, str]:
@@ -245,9 +317,9 @@ def get_status(kind: str, url: str) -> dict | None:
     return StreamHealthStore().get(kind, url)
 
 
-def list_health(kind: str | None = None) -> list[dict]:
+def list_health(kind: str | None = None, *, include_history: bool = True) -> list[dict]:
     """Lista los diagnósticos persistidos del perfil activo."""
-    return StreamHealthStore().list(kind)
+    return StreamHealthStore().list(kind, include_history=include_history)
 
 
 def summarize_health(entries: Iterable[Mapping[str, object]]) -> dict[str, int]:
@@ -287,7 +359,7 @@ def select_stale_entries(
     # lineal con el número de streams guardados.
     health_by_identity = {
         (entry["kind"], entry["url"]): entry
-        for entry in health_store.list()
+        for entry in health_store.list(include_history=False)
     }
     selected = []
     for entry in entries:
@@ -317,11 +389,10 @@ def _is_stream(value: object) -> bool:
     return isinstance(value, dict) and bool(value.get("kind")) and bool(value.get("url"))
 
 
-def _normalise_stream(stream: dict) -> dict:
-    history = stream.get("history")
-    history = history if isinstance(history, list) else []
-    normalised_history = [event for event in history if isinstance(event, dict)]
-    return {
+def _normalise_stream(
+    stream: dict, max_history: int | None = None, *, with_history: bool = True
+) -> dict:
+    normalised = {
         "kind": str(stream["kind"]),
         "url": str(stream["url"]),
         "status": str(stream.get("status", "down")),
@@ -329,8 +400,12 @@ def _normalise_stream(stream: dict) -> dict:
         "latency_ms": _as_int(stream.get("latency_ms", 0)),
         "http_status": _as_int(stream.get("http_status", 0)),
         "error": str(stream.get("error", "") or ""),
-        "history": normalised_history,
     }
+    if with_history:
+        history = stream.get("history")
+        history = history if isinstance(history, list) else []
+        normalised["history"] = [event for event in history if isinstance(event, dict)][:max_history]
+    return normalised
 
 
 def _public_stream(stream: dict) -> dict:

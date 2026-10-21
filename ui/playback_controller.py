@@ -28,7 +28,7 @@ import logging
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QApplication, QGraphicsOpacityEffect, QInputDialog, QListWidget, QListWidgetItem, QMenu,
+    QGraphicsOpacityEffect, QInputDialog, QListWidget, QListWidgetItem, QMenu,
     QMessageBox,
 )
 
@@ -43,7 +43,9 @@ from core import recording_schedule
 from ui import icons as app_icons
 from ui import palette
 from ui.channel_model import ChannelListView
+from ui.event_pump import pump_events_without_input
 from ui.toast import show_toast
+from ui.visual import make_glow
 from ui.widgets import ROLE_DATA, dominant_color
 
 
@@ -120,7 +122,7 @@ class PlaybackController:
         win.now_subtitle.setText("TV en directo" if item_type == "tv" else "Radio online")
         # Borde de color en el logo de "reproduciendo ahora" según el tipo
         # de contenido -- mismo azul/naranja que ya usan TV/Radio en el
-        # riel y las tarjetas, para que se note de un vistazo qué se está
+        # barra de navegación y las tarjetas, para que se note de un vistazo qué se está
         # escuchando sin tener que leer el subtítulo.
         tipo_accent = palette.ACCENT_INFO if item_type == "tv" else palette.ACCENT_CATEGORY_ORANGE
         win.now_logo.setStyleSheet(
@@ -512,6 +514,10 @@ class PlaybackController:
 
     def toggle_recording(self):
         win = self.win
+        if win.recorder.is_stopping:
+            # La parada en curso bombea eventos; un segundo clic o atajo a
+            # mitad no debe lanzar otra parada ni otra grabación.
+            return
         if not win.recorder.is_recording:
             if not win.current_url:
                 QMessageBox.information(
@@ -532,7 +538,7 @@ class PlaybackController:
                     win.current_url, win.current_name, kind=win.current_type or "tv"
                 )
                 win.record_btn.setChecked(True)
-                win.record_btn.setGraphicsEffect(win._make_glow(QColor(palette.DANGER), blur=24, alpha=170))
+                win.record_btn.setGraphicsEffect(make_glow(QColor(palette.DANGER), blur=24, alpha=170))
                 win.statusBar().showMessage(f"Grabando en: {output_file}")
                 # ffmpeg puede arrancar el proceso sin problema y aun así no
                 # llegar a grabar nada (URL que rechaza la conexión,
@@ -549,12 +555,13 @@ class PlaybackController:
                 QMessageBox.warning(win, "No se pudo grabar", str(exc))
                 win.record_btn.setChecked(False)
         else:
-            # on_wait=QApplication.processEvents: parar la grabación puede
+            # on_wait=pump_events_without_input: parar la grabación puede
             # tardar unos segundos (ffmpeg cerrando el archivo con
             # limpieza) -- sin esto, esa espera bloqueaba el hilo de la
             # interfaz entero y Windows llegaba a marcar la ventana como
-            # "no responde" si tardaba lo bastante.
-            finished_file, ok = win.recorder.stop(on_wait=QApplication.processEvents)
+            # "no responde" si tardaba lo bastante. Sin entrada de usuario
+            # para que no se pueda reentrar desde un clic o un atajo.
+            finished_file, ok = win.recorder.stop(on_wait=pump_events_without_input)
             win.record_btn.setChecked(False)
             win.record_btn.setGraphicsEffect(None)
             # Si lo que se acaba de parar a mano era en realidad una
@@ -643,9 +650,8 @@ class PlaybackController:
         saltaba a otro cualquiera o no hacía nada. Por eso ahí se busca el
         canal en el momento de usarlo; -1 si ha quedado fuera del filtro (la
         siguiente fila es entonces el primer resultado visible). En los
-        QListWidget (favoritos, historial) filtrar solo oculta filas y
-        ChannelListsController.sort_catalog ya reajusta _active_row, así que
-        ahí vale la fila guardada.
+        QListWidget (favoritos, historial) filtrar solo oculta filas y no se
+        reordenan por ajuste, así que ahí vale la fila guardada.
         """
         win = self.win
         if isinstance(win._active_list, ChannelListView) and win._active_item is not None:
@@ -704,8 +710,8 @@ class PlaybackController:
         menu.addSeparator()
         menu.addAction("Cancelar temporizador", self.cancelar_sleep)
         # Ancla a more_btn: sleep_btn ya no vive en ningún layout visible
-        # (ver ui/main_window.py _build_now_playing_bar) y su posición en
-        # pantalla no sería fiable para mapToGlobal.
+        # (ver ui.now_playing_bar_builder.build_now_playing_bar) y su posición
+        # en pantalla no sería fiable para mapToGlobal.
         menu.exec(win.more_btn.mapToGlobal(win.more_btn.rect().bottomLeft()))
         # Si el usuario cierra el menú sin elegir nada, desmarcar el botón.
         if not win._sleep_timer.isActive():

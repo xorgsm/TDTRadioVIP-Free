@@ -1,7 +1,7 @@
 """
 Pruebas de "Añadir lista pública de TV…" (AddPublicTvListDialog +
 LibraryController.open_add_public_tv_list_dialog) -- ver
-ui/dialogs.py y ui/library_controller.py.
+ui/dialogs/add_public_tv_list.py y ui/library_controller.py.
 """
 from types import SimpleNamespace
 

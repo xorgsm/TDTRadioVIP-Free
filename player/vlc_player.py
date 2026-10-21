@@ -10,6 +10,8 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QFrame
 
 from core.logger import get_logger
+from core.net_safety import is_playable_stream_url
+from player.vlc_equalizer import VLCEqualizer
 
 log = get_logger(__name__)
 
@@ -77,15 +79,11 @@ class VLCPlayer(QFrame):
         self._media_actual = None
         self._salida_asignada = False
 
-        # Estado del ecualizador (ver la sección "ecualizador" más abajo):
-        # se guarda aquí, no solo en el objeto AudioEqualizer de libVLC,
-        # porque _recrear_media_player() sustituye el media_player en cada
-        # cambio de canal/emisora y un media_player nuevo no hereda el
-        # ecualizador del anterior.
-        self._eq_enabled = False
-        self._eq_preamp = 0.0
-        self._eq_bands = []
-        self._eq_object = None
+        # Ciclo de vida del ecualizador nativo, aislado en su propia clase
+        # (ver player/vlc_equalizer.py) porque _recrear_media_player()
+        # sustituye el media_player en cada cambio de canal/emisora y un
+        # media_player nuevo no hereda el ecualizador del anterior.
+        self._equalizer = VLCEqualizer()
 
         # Qt ya encola solo estas emisiones (al comparar la afinidad de hilo
         # del receptor, la conexión automática se resuelve como en cola), así
@@ -231,6 +229,12 @@ class VLCPlayer(QFrame):
         if not self.disponible:
             self.error_occurred.emit(self.motivo_no_disponible())
             return
+        # Las URL vienen de listas M3U remotas o importadas: una UNC/smb:/file:
+        # haria que Windows o libVLC abran un recurso del atacante.
+        if not is_playable_stream_url(url):
+            log.warning("Reproduccion rechazada: esquema de URL no permitido")
+            self.error_occurred.emit("Dirección no permitida: solo se reproducen emisiones de red.")
+            return
         self._recrear_media_player()
         if self.media_player is None:
             self.error_occurred.emit(self.motivo_no_disponible())
@@ -360,7 +364,7 @@ class VLCPlayer(QFrame):
             if volumen >= 0:
                 self.media_player.audio_set_volume(volumen)
             self.media_player.audio_set_mute(muted)
-            self._aplicar_equalizer()
+            self._equalizer.apply_to(self.media_player)
         except Exception:
             log.exception("No se pudo recrear el media_player (media_player_new)")
             # Mismo motivo que en _crear_instancia(): sin release() aquí, un
@@ -470,7 +474,7 @@ class VLCPlayer(QFrame):
     # protege con try/except porque este recorrido depende de detalles de
     # la struct que pueden variar entre versiones de libVLC/python-vlc; si
     # algo no encaja, es mejor devolver una lista vacía (el menú de
-    # pistas se oculta solo, ver ui/main_window._build_tracks_menu) que
+    # pistas se oculta solo, ver ui.player_menus.open_tracks_menu) que
     # reventar la reproducción por esto.
 
     def _walk_track_descriptions(self, descs):
@@ -555,105 +559,34 @@ class VLCPlayer(QFrame):
 
     # ---------- ecualizador ----------
     #
-    # libVLC trae de fábrica un ecualizador gráfico (N bandas de frecuencia
-    # + preamplificación, -20.0 a +20.0 dB cada valor) aplicable en caliente
-    # sin cortar la reproducción. python-vlc lo expone como un objeto
-    # AudioEqualizer independiente de la Instance, que se "engancha" al
-    # media_player con set_equalizer() -- ver _aplicar_equalizer() y el
-    # comentario de _recrear_media_player() sobre por qué hay que reaplicarlo
-    # en cada zapeo.
+    # Ciclo de vida del objeto AudioEqualizer nativo de libVLC delegado por
+    # completo a VLCEqualizer (player/vlc_equalizer.py) -- ver el comentario
+    # de _recrear_media_player() sobre por qué hay que reaplicarlo en cada
+    # zapeo. Estos métodos públicos se conservan tal cual para no romper a
+    # quien ya los llama (EqualizerDialog, MainWindow).
 
     def equalizer_band_count(self) -> int:
-        return vlc.libvlc_audio_equalizer_get_band_count() if vlc else 0
+        return VLCEqualizer.band_count()
 
     def equalizer_band_frequency(self, index: int) -> float:
-        return vlc.libvlc_audio_equalizer_get_band_frequency(index) if vlc else 0.0
+        return VLCEqualizer.band_frequency(index)
 
     def equalizer_preset_names(self) -> list[str]:
         """Nombres de los presets de fábrica de libVLC (Rock, Pop, Jazz...)."""
-        if vlc is None:
-            return []
-        total = vlc.libvlc_audio_equalizer_get_preset_count()
-        nombres = []
-        for i in range(total):
-            nombre = vlc.libvlc_audio_equalizer_get_preset_name(i)
-            if isinstance(nombre, bytes):
-                nombre = nombre.decode("utf-8", "replace")
-            nombres.append(nombre or f"Preset {i}")
-        return nombres
+        return VLCEqualizer.preset_names()
 
     def equalizer_preset_values(self, index: int):
         """(preamp, [amplitud por banda]) de un preset de fábrica, sin aplicarlo todavía."""
-        if vlc is None:
-            return 0.0, []
-        eq = vlc.libvlc_audio_equalizer_new_from_preset(index)
-        if eq is None:
-            return 0.0, []
-        try:
-            bandas = [eq.get_amp_at_index(i) for i in range(self.equalizer_band_count())]
-            return eq.get_preamp(), bandas
-        finally:
-            # AudioEqualizer no tiene __del__: sin release() explícito, cada
-            # preset que el usuario prueba desde el combo filtra el objeto
-            # nativo -- este solo se usa para leer sus valores, nunca se
-            # aplica (ver set_equalizer para el que sí queda "vivo").
-            eq.release()
+        return VLCEqualizer.preset_values(index)
 
     def set_equalizer(self, preamp: float, bandas: list) -> None:
         """Activa (o actualiza, si ya estaba activo) el ecualizador con esta preamplificación y amplitud por banda, en dB."""
-        self._eq_enabled = True
-        self._eq_preamp = preamp
-        self._eq_bands = list(bandas)
-        self._aplicar_equalizer()
+        self._equalizer.configure(preamp, bandas)
+        self._equalizer.apply_to(self.media_player)
 
     def clear_equalizer(self) -> None:
         """Desactiva el ecualizador: deja pasar la señal de audio sin procesar."""
-        self._eq_enabled = False
-        if self.media_player is not None:
-            try:
-                self.media_player.set_equalizer(None)
-            except Exception:
-                log.warning("No se pudo desactivar el ecualizador", exc_info=True)
-        self._liberar_eq_object()
-
-    def _liberar_eq_object(self) -> None:
-        """AudioEqualizer no tiene __del__ (confirmado en python-vlc): hay
-        que llamar a release() a mano o el objeto nativo se queda filtrado
-        para siempre, aunque Python recolecte la referencia de Python."""
-        if self._eq_object is not None:
-            try:
-                self._eq_object.release()
-            except Exception:
-                log.warning("No se pudo liberar el ecualizador anterior", exc_info=True)
-            self._eq_object = None
-
-    def _aplicar_equalizer(self) -> None:
-        if not self._eq_enabled or self.media_player is None or vlc is None:
-            return
-        eq = None
-        try:
-            eq = vlc.AudioEqualizer()
-            eq.set_preamp(self._eq_preamp)
-            for i, amp in enumerate(self._eq_bands):
-                eq.set_amp_at_index(amp, i)
-            self.media_player.set_equalizer(eq)
-            # Cada llamada crea un objeto nativo nuevo (arrastrar el slider
-            # del ecualizador dispara esto docenas de veces por segundo):
-            # hay que liberar el anterior antes de sustituir la referencia,
-            # o cada ajuste filtra memoria nativa sin límite.
-            self._liberar_eq_object()
-            # Referencia viva obligatoria: si "eq" se recolectara, libVLC se
-            # quedaría con un puntero a un objeto ya liberado por Python.
-            self._eq_object = eq
-            eq = None
-        except Exception:
-            log.warning("No se pudo aplicar el ecualizador", exc_info=True)
-        finally:
-            if eq is not None:
-                try:
-                    eq.release()
-                except Exception:
-                    log.warning("No se pudo liberar el ecualizador fallido", exc_info=True)
+        self._equalizer.clear(self.media_player)
 
     # ---------- cierre ordenado ----------
 
@@ -667,7 +600,7 @@ class VLCPlayer(QFrame):
         parar el media_player (el primer paso) se saltara todo lo demás,
         dejando justo la Instance -- la que tiene los hilos -- sin liberar.
         """
-        self._release_step("liberar el ecualizador", self._liberar_eq_object)
+        self._equalizer.release()
         if self.media_player is not None:
             # Igual que en _recrear_media_player(): sin desenganchar los
             # eventos, un callback tardío de libVLC podría llegar a un

@@ -8,18 +8,15 @@ Extraído de ui/main_window.py por el mismo motivo que
 ui.playback_controller.PlaybackController y el resto de controladores —
 ver el docstring de PlaybackController para la explicación completa del
 porqué del patrón (estado en MainWindow, comportamiento aquí). La
-construcción de la página (_build_home_page) sigue en MainWindow: este
-controlador solo refresca/reacciona sobre los widgets ya construidos.
+construcción de la página vive en ui.home_page_builder.build_home_page():
+este controlador solo refresca/reacciona sobre los widgets ya construidos.
 
 Coder By X@R
 """
-from PySide6.QtWidgets import QBoxLayout, QListWidgetItem
+from PySide6.QtWidgets import QBoxLayout
 
-from core import channels as tv_channels
-from core import radio as radio_stations
 from core.stream_health_store import list_health, summarize_health
 from ui.visual import set_variant
-from ui.widgets import ROLE_CUSTOM, ROLE_DATA, ROLE_FAV, ROLE_PLAYING
 
 
 class HomeController:
@@ -29,14 +26,26 @@ class HomeController:
         self.win = window
 
     def update_home_compact(self, width: int) -> None:
+        """width es el ancho de _home_viewport (el área scrolleable de
+        Inicio), no el de la ventana entera -- vive dentro del splitter
+        junto al panel del reproductor, así que puede ser bastante más
+        estrecho que la ventana incluso en su ancho mínimo (860px). Dos
+        umbrales, no uno (spec v8 §5.4): 520px ya apilaba la fila de
+        "reproduciendo ahora"/salud en vertical; 360px (un margen real
+        por debajo de eso, no elegido a ojo) encoge además el hero en
+        altura -- menos padding, título más pequeño -- en vez de obligar
+        a un layout distinto o esconder contenido."""
         win = self.win
         compact = width < 520
+        very_compact = width < 360
         direction = QBoxLayout.TopToBottom if compact else QBoxLayout.LeftToRight
-        win._home_quick_layout.setDirection(direction)
         win._home_now_layout.setDirection(direction)
         win._home_health_layout.setDirection(direction)
-        win._home_secondary_layout.setDirection(direction)
         win._home_layout.setContentsMargins(2, 4, 2 if compact else 20, 18)
+        margin = 14 if very_compact else 22
+        win._home_hero_layout.setContentsMargins(margin, margin - 4, margin, margin - 4)
+        win._home_hero_layout.setSpacing(6 if very_compact else 10)
+        win.home_greeting.setStyleSheet("font-size: 15pt;" if very_compact else "")
 
     def home_resume_or_search(self):
         win = self.win
@@ -46,7 +55,7 @@ class HomeController:
         elif win.history and win.history[0].get("url"):
             self.activate_home_entry(win.history[0])
         else:
-            win._open_command_palette()
+            win.dialogs.open_command_palette()
 
     def _refresh_home_now_playing(self):
         """Sincroniza la tarjeta de portada con el reproductor real."""
@@ -70,43 +79,27 @@ class HomeController:
         win.home_float_btn.setVisible(True)
 
     def refresh_home_page(self):
-        """Puebla los carruseles de 'Recientes' y 'Recomendado para ti', y la
-        lista de favoritos destacados, con los mismos datos que ya usan sus
-        propias pestañas — se llama cada vez que se entra en Inicio, para
-        que nunca se quede desactualizada respecto a lo que se ha
-        visto/marcado mientras tanto."""
+        """Puebla las 4 filas de carrusel de Inicio (Continuar viendo/
+        escuchando, Ahora en antena, Recomendado para ti, Favoritos) con
+        los mismos datos que ya usan sus propias pestañas/paneles -- se
+        llama cada vez que se entra en Inicio, para que nunca se quede
+        desactualizada respecto a lo que se ha visto/marcado mientras
+        tanto."""
         win = self.win
-        custom_tv = {c.name for c in tv_channels.load_custom_channels()}
         self._refresh_home_now_playing()
         self.refresh_home_health()
-        custom_radio = {s.name for s in radio_stations.load_custom_stations()}
 
-        win.home_on_air_carousel.set_entries(win.epg.now_on_air_entries())
         win.home_recent_carousel.set_entries(win.history[:12])
+        win.home_on_air_carousel.set_entries(win.epg.now_on_air_entries())
         win.home_recommended_carousel.set_entries(self._compute_recommendations())
-
-        win.home_fav_list.clear()
-        destacados = win.favorites[:5]
-        for fav in destacados:
-            item = QListWidgetItem()
-            data = dict(fav)
-            data["group"] = fav.get("folder", "")
-            item.setData(ROLE_DATA, data)
-            item.setData(ROLE_FAV, True)
-            item.setData(ROLE_PLAYING, win.current_type == fav["type"] and win.current_name == fav["name"])
-            is_custom = fav["name"] in (custom_tv if fav["type"] == "tv" else custom_radio)
-            item.setData(ROLE_CUSTOM, is_custom)
-            win.home_fav_list.addItem(item)
-            win.lists.request_logo(fav.get("logo", ""), item, win.home_fav_list)
-        win.home_fav_list.setVisible(bool(destacados))
-        win.home_fav_empty.setVisible(not destacados)
+        win.home_fav_carousel.set_entries(win.favorites[:5])
 
     def refresh_home_health(self):
         """Muestra un resumen claro de los últimos diagnósticos guardados."""
         win = self.win
         if not hasattr(win, "home_health_summary"):
             return
-        health = summarize_health(list_health())
+        health = summarize_health(list_health(include_history=False))
         if not health["total"]:
             win.home_health_summary.setText(
                 "Aún no hay diagnósticos. La app revisa streams en segundo plano."

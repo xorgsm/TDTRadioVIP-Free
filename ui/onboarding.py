@@ -25,9 +25,9 @@ TIPS = (
      "Pulsa Ctrl+K en cualquier momento para saltar a cualquier sección o "
      "acción sin tocar el ratón."),
     ("☰", "Biblioteca lateral",
-     "El botón de abajo del todo en el riel izquierdo abre un panel con tus "
-     "carpetas de favoritos y lo último visto -- está oculto por defecto "
-     "para no ocupar sitio si no lo usas."),
+     "El botón de Biblioteca, a la derecha de la barra de navegación "
+     "superior, abre un panel con tus carpetas de favoritos y lo último "
+     "visto -- está oculto por defecto para no ocupar sitio si no lo usas."),
     ("⧉", "Ventana flotante (PiP)",
      "El icono junto a pantalla completa saca el vídeo a una ventana "
      "pequeña siempre visible, para seguir viendo mientras usas otra cosa."),

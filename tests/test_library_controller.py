@@ -69,6 +69,7 @@ def test_import_from_local_file_keeps_accents(tmp_path, codificacion):
 def test_import_from_url_decodes_bytes_not_guessed_text(monkeypatch):
     respuesta = requests.models.Response()
     respuesta._content = M3U_ES.encode("utf-8")
+    respuesta._content_consumed = True
     respuesta.status_code = 200
     respuesta.encoding = "ISO-8859-1"  # lo que requests supone para text/plain sin charset
     monkeypatch.setattr(lc_module.requests, "get", Mock(return_value=respuesta))

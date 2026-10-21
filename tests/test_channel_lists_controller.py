@@ -8,11 +8,6 @@ radio son ChannelListView sobre ChannelListModel reales, favoritos e
 historial son QListWidget reales -- igual que en producción (ver
 MainWindow._make_list). Lo que toca disco (canales personalizados,
 historial de diagnósticos, guardar favoritos) y la guía EPG se sustituyen.
-
-No se prueban las ramas QListWidget de populate_tv_list/populate_radio_list,
-sort_catalog, update_stream_health, update_epg_subtitles y
-filter_current_list para TV/radio: en la app esas dos listas son siempre
-ChannelListView, así que esas ramas no se ejecutan.
 """
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -58,7 +53,7 @@ def disk(monkeypatch):
     )
 
     class FakeHealthStore:
-        def list(self):
+        def list(self, kind=None, *, include_history=True):
             if state.health_error:
                 raise state.health_error
             return list(state.health)
@@ -68,7 +63,8 @@ def disk(monkeypatch):
         return (SimpleNamespace(title=title) if title else None), None
 
     monkeypatch.setattr(clm, "tv_channels", SimpleNamespace(
-        load_custom_channels=lambda: [SimpleNamespace(name=n) for n in state.custom_tv]))
+        load_custom_channels=lambda: [SimpleNamespace(name=n) for n in state.custom_tv],
+        custom_channel_names=lambda: frozenset(state.custom_tv)))
     monkeypatch.setattr(clm, "radio_stations", SimpleNamespace(
         load_custom_stations=lambda: [SimpleNamespace(name=n) for n in state.custom_radio]))
     monkeypatch.setattr(clm, "StreamHealthStore", FakeHealthStore)
@@ -94,7 +90,7 @@ def win(qapp):
         health_filter.addItem(label, key)
     w = SimpleNamespace(
         tv_list=tv_list, radio_list=radio_list, tv_model=tv_model, radio_model=radio_model,
-        fav_list=QListWidget(), hist_list=QListWidget(), home_fav_list=QListWidget(),
+        fav_list=QListWidget(), hist_list=QListWidget(),
         group_filter=QComboBox(), health_filter=health_filter, search_box=QLineEdit(),
         stack=Mock(), logo_loader=Mock(), library_sidebar=Mock(), groups_sidebar=None,
         favorites=[], history=[], settings={}, epg_guide={"x": []},
@@ -102,7 +98,7 @@ def win(qapp):
         _playback_failed=False, _active_list=None, _active_row=-1, _tv_sidebar_groups=None,
     )
     yield w
-    for widget in (tv_list, radio_list, w.fav_list, w.hist_list, w.home_fav_list, w.group_filter,
+    for widget in (tv_list, radio_list, w.fav_list, w.hist_list, w.group_filter,
                    health_filter, w.search_box):
         widget.deleteLater()
 
@@ -715,24 +711,10 @@ def test_request_logo_without_url_does_nothing(ctrl, win):
     win.logo_loader.load.assert_not_called()
 
 
-def test_queue_logo_batch_splits_work_and_skips_deleted_items(ctrl, win, monkeypatch):
-    programadas = []
-    monkeypatch.setattr(clm, "QTimer", Mock(singleShot=lambda ms, fn: programadas.append(fn)))
-    pedidos = []
+def test_populate_tv_list_uses_the_custom_names_it_is_given_instead_of_reading_the_disk(ctrl, win, disk):
+    disk.custom_tv = ["Del disco"]
 
-    def request_logo(url, item, _list):
-        if item == "borrado":
-            raise RuntimeError("C++ object already deleted")
-        pedidos.append(url)
+    ctrl.populate_tv_list([_channel("Del disco"), _channel("Recibido")], custom_names={"Recibido"})
 
-    monkeypatch.setattr(ctrl, "request_logo", request_logo)
-    pending = [("u1", "i1"), ("u2", "borrado"), ("u3", "i3")]
-
-    ctrl._queue_logo_batch(pending, win.tv_list, batch_size=2)
-    assert pedidos == ["u1"] and len(programadas) == 1
-
-    programadas.pop()()
-    assert pedidos == ["u1", "u3"] and programadas == []
-
-    ctrl._queue_logo_batch([], win.tv_list)
-    assert programadas == []
+    flags = {(e[ROLE_DATA])["name"]: e[ROLE_CUSTOM] for e in _entries(win.tv_list)}
+    assert flags == {"Del disco": False, "Recibido": True}

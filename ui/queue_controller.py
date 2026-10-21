@@ -98,8 +98,8 @@ class QueueController:
         else:
             self._render_list()
         # Ancla a more_btn: queue_btn ya no vive en ningún layout visible
-        # (ver ui/main_window.py _build_now_playing_bar) y su posición en
-        # pantalla no sería fiable para mapToGlobal.
+        # (ver ui.now_playing_bar_builder.build_now_playing_bar) y su posición
+        # en pantalla no sería fiable para mapToGlobal.
         btn = self.win.more_btn
         pos = btn.mapToGlobal(btn.rect().bottomRight())
         self._dialog.adjustSize()

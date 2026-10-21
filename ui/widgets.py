@@ -6,12 +6,13 @@ import random
 from collections import OrderedDict, deque
 from functools import lru_cache
 
-import requests
 from PySide6.QtCore import QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QStyle, QStyledItemDelegate, QWidget
 
 from core.config import get_app_data_dir
+from core.http_limits import MAX_LOGO_BYTES, fetch_limited
+from core.net_safety import is_safe_download_url
 from ui import palette
 from ui.fetch_worker import FetchWorker
 from ui.icons import icon_radio, icon_tv
@@ -23,6 +24,12 @@ ROLE_FAV = Qt.UserRole + 3
 ROLE_CUSTOM = Qt.UserRole + 4
 ROLE_HEALTH = Qt.UserRole + 5
 ROLE_LOGO_REQUESTED = Qt.UserRole + 6
+
+# Logos: se piden por docenas al pintar el catálogo, así que un host lento no
+# debe retener un hilo muchos segundos (el logo se reintenta al volver a verlo).
+LOGO_TIMEOUT = (3.05, 6)
+LOGO_DEADLINE_SECONDS = 20
+LOGO_MAX_REDIRECTS = 3
 
 # Paleta de acento por categoría (Deportes, Infantiles, Noticias...). No es
 # un mapeo fijo nombre->color: con canales internacionales las categorías
@@ -137,10 +144,16 @@ def _download_logo_bytes(url: str) -> bytes:
     docstring de LogoLoader). FetchWorker.run() ya envuelve la llamada en
     try/except y convierte cualquier excepción en ``None`` para el
     callback, así que aquí no hace falta capturar nada a mano.
+
+    El `tvg-logo` viene de listas que pueden ser ajenas y se pide solo al
+    pintar el catálogo: se rechazan loopback, metadatos de nube y las
+    redirecciones hacia ellos.
     """
-    resp = requests.get(url, timeout=8)
-    resp.raise_for_status()
-    return resp.content
+    return fetch_limited(
+        url, max_bytes=MAX_LOGO_BYTES, timeout=LOGO_TIMEOUT,
+        deadline=LOGO_DEADLINE_SECONDS, max_redirects=LOGO_MAX_REDIRECTS,
+        validate_url=is_safe_download_url,
+    )
 
 
 def _read_logo_image(url, cache_file):

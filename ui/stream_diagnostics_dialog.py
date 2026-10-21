@@ -13,12 +13,17 @@ from core import radio as radio_store
 from core.stream_health import diagnose_catalog, safe_csv_cell
 from core.stream_health_store import derive_health_status, record_results
 from ui import palette
+from ui.fetch_worker import FetchWorker
 from ui.visual import set_surface
 
 
+# Resultados que se agrupan antes de avisar a la interfaz: una señal por stream
+# saturaba el hilo de la interfaz con catálogos de cientos de entradas.
+_RESULT_BATCH_SIZE = 25
+
+
 class StreamDiagnosticsWorker(QThread):
-    result_ready = Signal(dict)
-    progress = Signal(int, int)
+    results_ready = Signal(list, int, int)  # (resultados, completados, total)
     completed = Signal(bool)
 
     def __init__(self, entries, parent=None, max_workers: int = 12):
@@ -31,11 +36,20 @@ class StreamDiagnosticsWorker(QThread):
         self._cancel_event.set()
 
     def run(self):
+        batch = []
+        last_progress = (0, len(self.entries))
+
         def report(result, completed, total):
-            self.result_ready.emit(result)
-            self.progress.emit(completed, total)
+            nonlocal last_progress
+            batch.append(result)
+            last_progress = (completed, total)
+            if len(batch) >= _RESULT_BATCH_SIZE:
+                self.results_ready.emit(list(batch), completed, total)
+                batch.clear()
 
         diagnose_catalog(self.entries, report, self._cancel_event, max_workers=self.max_workers)
+        if batch:
+            self.results_ready.emit(list(batch), *last_progress)
         self.completed.emit(self._cancel_event.is_set())
 
 
@@ -117,13 +131,22 @@ class StreamDiagnosticsDialog(QDialog):
         root.addLayout(footer)
 
         self.worker = StreamDiagnosticsWorker(entries, self)
-        self.worker.result_ready.connect(self._add_result)
-        self.worker.progress.connect(self._on_progress)
+        self.worker.results_ready.connect(self._add_results)
         self.worker.completed.connect(self._on_completed)
         if entries:
             self.worker.start()
         else:
             self.summary.setText("No hay canales ni emisoras cargados.")
+
+    def _add_results(self, results, completed, total):
+        # Sin repintados intermedios mientras se rellenan las filas del lote.
+        self.table.setUpdatesEnabled(False)
+        try:
+            for result in results:
+                self._add_result(result)
+        finally:
+            self.table.setUpdatesEnabled(True)
+        self._on_progress(completed, total)
 
     def _add_result(self, result):
         self._results.append(result)
@@ -183,6 +206,15 @@ class StreamDiagnosticsDialog(QDialog):
                 row, bool(only_problems and self.table.item(row, 0).data(Qt.UserRole) == "stable")
             )
 
+    def reject(self):
+        # La X de la ventana y Escape llegan aquí sin pasar por el botón
+        # Cerrar: con el worker en marcha hay que cancelarlo y esperar a
+        # que termine, o el QThread seguiría vivo tras cerrar el diálogo.
+        if self.worker.isRunning():
+            self._cancel_or_close()
+            return
+        super().reject()
+
     def _cancel_or_close(self):
         if self.worker.isRunning():
             self._close_when_done = True
@@ -200,11 +232,11 @@ class StreamDiagnosticsDialog(QDialog):
         if cancelled and self._close_when_done:
             self.accept()
         elif not cancelled:
-            try:
-                record_results(self._results)
-            except OSError:
-                # No se pierde el informe actual si el perfil no se puede escribir.
-                pass
+            # record_results relee y reescribe todo el almacén de salud con
+            # fsync: fuera del hilo de la interfaz. Si el perfil no se puede
+            # escribir (OSError) el informe en pantalla no se pierde.
+            self._persist_worker = FetchWorker(record_results, list(self._results))
+            self._persist_worker.start()
             self.summary.setText(self.summary.text() + " · Diagnóstico terminado")
             self.table.setSortingEnabled(True)
             self.table.sortItems(0, Qt.AscendingOrder)

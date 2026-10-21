@@ -115,7 +115,7 @@ class ChannelMenuController:
             a descargar entera en cada "Actualizar canales".
         """
         win = self.win
-        custom_names = {c.name for c in tv_channels.load_custom_channels()}
+        custom_names = tv_channels.custom_channel_names()
         nombres = [c.name for c in win.tv_channels_data if c.group in group_names]
         if not nombres:
             return

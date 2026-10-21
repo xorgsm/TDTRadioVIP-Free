@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QMessageBox
 from core import epg as epg_module
 from ui.epg_dialog import EpgDialog
 from ui.fetch_worker import FetchWorker
+from ui.nav_sections import NAV_TV
 
 
 class EpgController:
@@ -21,17 +22,47 @@ class EpgController:
 
     def __init__(self, window):
         self.win = window
+        self._generation = 0
+        self._request = None
 
     def load(self):
+        """Descarga la guía de los canales de TV ya cargados.
+
+        Sin canales no hay nada que emparejar: se espera a que termine la
+        carga de TV (que vuelve a llamar aquí) en vez de bajar y parsear la
+        guía pública entera, que compite con ella por CPU y disco.
+        """
         win = self.win
-        worker = FetchWorker(epg_module.fetch_epg, win.settings["epg_url"], False)
-        worker.done.connect(self._on_loaded)
+        wanted = {
+            epg_module.channel_key(ch.tvg_id)
+            for ch in win.tv_channels_data
+            if getattr(ch, "tvg_id", "")
+        }
+        wanted.discard("")
+        if not wanted:
+            return
+        url = win.settings["epg_url"]
+        request = (url, frozenset(wanted))
+        previous = getattr(win, "_epg_worker", None)
+        if previous is not None and previous.isRunning():
+            if request == self._request:
+                return
+            # Otra URL u otros canales: la descarga en curso ya no sirve.
+            previous.cancel()
+        self._request = request
+        self._generation += 1
+        worker = FetchWorker(epg_module.fetch_epg, url, False, wanted)
+        worker.done.connect(
+            lambda guide, token=self._generation: self._on_loaded(guide, token)
+        )
         win._epg_worker = worker
         worker.start()
 
-    def _on_loaded(self, guide):
+    def _on_loaded(self, guide, generation=None):
         win = self.win
         if getattr(win, "_is_closing", False):
+            return
+        if generation is not None and generation != self._generation:
             return
         guide = guide or {}
         # Guías públicas como EPG_dobleM traen TODOS los canales de España
@@ -109,17 +140,10 @@ class EpgController:
         return entradas
 
     def tune_to_tvg_id(self, tvg_id: str):
-        # Import tardío (no a nivel de módulo): NAV_TV vive en
-        # ui.main_window, que es quien construye este controlador -- un
-        # import normal aquí arriba crearía un ciclo. En tiempo de
-        # ejecución (el usuario eligiendo algo en la guía) el módulo ya
-        # está totalmente cargado, así que no hay problema real.
-        from ui.main_window import NAV_TV
-
         win = self.win
         for ch in win.tv_channels_data:
             if ch.tvg_id == tvg_id:
                 win.playback.play("tv", ch.name, ch.url, ch.tvg_id, ch.logo)
                 win.nav_group.button(NAV_TV).setChecked(True)
-                win._on_nav_changed(NAV_TV)
+                win.navigation.on_nav_changed(NAV_TV)
                 return

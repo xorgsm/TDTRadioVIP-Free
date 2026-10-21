@@ -1,6 +1,7 @@
 """Helpers visuales compartidos, sin lógica de negocio."""
 
-from PySide6.QtWidgets import QWidget
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QFrame, QGraphicsDropShadowEffect, QWidget
 
 
 VALID_VARIANTS = frozenset({
@@ -17,6 +18,11 @@ VALID_VARIANTS = frozenset({
     "radio",
     "podcast",
     "download",
+    # Insignia de edición junto a la versión en la barra de título -- ver
+    # ui.title_bar.update_edition_badge.
+    "free",
+    "licensed",
+    "unactivated",
 })
 
 VALID_STATES = frozenset({"default", "active", "loading", "empty", "error"})
@@ -51,3 +57,34 @@ def set_surface(widget: QWidget, surface: str) -> str:
     safe = surface if surface in VALID_SURFACES else "default"
     _set_dynamic(widget, "uiSurface", safe)
     return safe
+
+
+def make_separator() -> QFrame:
+    """
+    Línea vertical fina entre grupos de botones de control. Antes todos
+    los botones iban en una sola fila sin ninguna separación visual más
+    que el spacing del layout — con el halo del play y poco espacio
+    entre botones, la fila entera se veía como un bloque pegado en vez
+    de controles agrupados por función (favorito/cast, reproducción,
+    grabar/volumen, vista).
+    """
+    sep = QFrame()
+    sep.setObjectName("ctrlSeparator")
+    sep.setFixedWidth(1)
+    sep.setFixedHeight(22)
+    return sep
+
+
+def make_glow(color: QColor, blur: float = 22, alpha: int = 160, y_offset: float = 0) -> QGraphicsDropShadowEffect:
+    """
+    Halo de color alrededor de un botón, vía QGraphicsDropShadowEffect
+    (esto sí aplica a QWidgets normales, a diferencia de los delegados
+    de lista, que no soportan QGraphicsEffect y necesitan pintarlo a mano).
+    """
+    effect = QGraphicsDropShadowEffect()
+    glow_color = QColor(color)
+    glow_color.setAlpha(alpha)
+    effect.setColor(glow_color)
+    effect.setBlurRadius(blur)
+    effect.setOffset(0, y_offset)
+    return effect

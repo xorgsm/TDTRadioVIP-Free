@@ -9,9 +9,13 @@ defecto = desactivado" que core/epg.py con epg_url.
 Formato esperado en update_check_url: un JSON tipo
     {"version": "6.5.0", "url": "https://.../descargas"}
 
+La descarga automática exige además una firma del autor en el manifiesto
+(ver core/update_signature.py): sin ella solo se ofrece abrir la página.
+
 Coder By X@R
 """
 import hashlib
+import json
 import re
 import time
 from pathlib import Path
@@ -20,12 +24,25 @@ from urllib.parse import urlsplit
 
 import requests
 
+from core import update_signature  # noqa: F401  (los tests parchean updater.update_signature)
 from core.config import APP_VERSION
+from core.http_limits import fetch_limited, get_following_safe_redirects
+from core.net_safety import is_safe_https_url
 from core.logger import get_logger
+from core.update_signature import normalize_version, verify_signature
 
 log = get_logger(__name__)
 MAX_UPDATE_BYTES = 750 * 1024 * 1024
+# Un manifiesto real pesa unos cientos de bytes; el tope evita cargar en RAM
+# una respuesta enorme de un servidor comprometido.
+MAX_MANIFEST_BYTES = 64 * 1024
+# Página fija a la que se redirige al usuario cuando el manifiesto no trae una
+# firma válida: nunca se abre una URL que venga de un manifiesto sin firmar.
+OFFICIAL_RELEASES_URL = "https://github.com/xorgsm/TDTRadioVIP-Free/releases/latest"
 SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+# "TDTRadioVIP_Setup_v8.0.exe" -> "8.0" (ver OutputBaseFilename en
+# TDTRadioVIP_Setup.iss, de donde sale este patrón de nombre).
+_UPDATE_FILENAME_VERSION_RE = re.compile(r"_v([0-9][0-9.]*)\.exe$", re.IGNORECASE)
 
 
 def _version_tuple(texto: str) -> tuple:
@@ -76,9 +93,12 @@ def check_update_status(
         log.warning("La URL de comprobación de actualizaciones no es HTTPS válida")
         return None
     try:
-        resp = requests.get(update_check_url, timeout=8)
-        resp.raise_for_status()
-        data = resp.json()
+        data = json.loads(
+            fetch_limited(
+                update_check_url, max_bytes=MAX_MANIFEST_BYTES, timeout=8,
+                validate_url=is_safe_https_url,
+            )
+        )
     except Exception:
         log.warning("No se pudo comprobar actualizaciones en %s", update_check_url, exc_info=True)
         return None
@@ -121,13 +141,12 @@ def check_for_update_if_due(
 ) -> Optional[dict]:
     """
     Como check_for_update(), pero para la comprobación automática al
-    arrancar (ver ui.main_window.MainWindow._check_update_automatically):
-    solo llega a consultar la red si han pasado al menos
-    min_interval_hours desde el último intento, con resultado o sin él.
-    Sin esto, cada arranque de la app golpearía el manifiesto remoto
-    aunque el usuario abra y cierre varias veces al día. La comprobación
-    manual (Ayuda > Buscar actualizaciones) sigue llamando a
-    check_for_update() directamente, sin este límite.
+    arrancar (ver ui.app_lifecycle.AppLifecycle): solo llega a consultar la
+    red si han pasado al menos min_interval_hours desde el último intento,
+    con resultado o sin él. Sin esto, cada arranque de la app golpearía el
+    manifiesto remoto aunque el usuario abra y cierre varias veces al día.
+    La comprobación manual (Ayuda > Buscar actualizaciones) sigue llamando
+    a check_for_update() directamente, sin este límite.
 
     La fecha del último intento se guarda como el mtime de un fichero
     marcador vacío en marker_dir, no en los ajustes -- así no depende de
@@ -149,8 +168,12 @@ def check_for_update_if_due(
     return check_for_update(update_check_url, current_version)
 
 
-def validate_download_manifest(data: dict) -> dict:
-    """Valida los campos necesarios antes de descargar un instalador."""
+def validate_manifest_fields(data: dict) -> dict:
+    """URL HTTPS, SHA-256 y nombre .exe de un manifiesto, sin mirar la firma.
+
+    Es lo que comparten la app y tools/sign_manifest.py para derivar los
+    mismos `filename` y `sha256` que entran en el mensaje firmado.
+    """
     if not isinstance(data, dict):
         raise ValueError("Manifiesto de actualización inválido.")
     url = str(data.get("download_url") or data.get("url") or "").strip()
@@ -162,7 +185,35 @@ def validate_download_manifest(data: dict) -> dict:
     filename = Path(url.split("?", 1)[0]).name or "TDTRadioVIP_Update.exe"
     if not filename.lower().endswith(".exe"):
         raise ValueError("La actualización debe ser un instalador EXE.")
-    return {**data, "download_url": url, "sha256": checksum, "filename": filename}
+    return {"download_url": url, "sha256": checksum, "filename": filename}
+
+
+def validate_download_manifest(data: dict) -> dict:
+    """Valida los campos y la firma antes de descargar un instalador.
+
+    Sin firma válida del autor no se descarga nada: el SHA-256 viaja en el
+    mismo manifiesto que la URL, así que por sí solo no prueba autenticidad.
+    """
+    fields = validate_manifest_fields(data)
+    signature = data.get("signature")
+    signature = signature.strip().lower() if isinstance(signature, str) else ""
+    if not signature:
+        raise ValueError("El manifiesto no está firmado.")
+    version = normalize_version(data.get("version"))
+    if not version or not verify_signature(
+        version, fields["filename"], fields["sha256"], fields["download_url"], signature
+    ):
+        raise ValueError("La firma del manifiesto no es válida.")
+    return {**data, **fields, "signature": signature}
+
+
+def has_valid_signature(data: object) -> bool:
+    """True si `data` es un manifiesto descargable con firma válida (no lanza)."""
+    try:
+        validate_download_manifest(data)
+    except ValueError:
+        return False
+    return True
 
 
 def download_verified_update(
@@ -180,8 +231,12 @@ def download_verified_update(
     partial_path = final_path.with_suffix(final_path.suffix + ".part")
     digest = hashlib.sha256()
     total = 0
+    response = None
     try:
-        response = request_get(clean["download_url"], stream=True, timeout=30)
+        response = get_following_safe_redirects(
+            clean["download_url"], validate_url=is_safe_https_url,
+            get=request_get, stream=True, timeout=30,
+        )
         response.raise_for_status()
         with partial_path.open("wb") as output:
             for chunk in response.iter_content(chunk_size=1024 * 1024):
@@ -195,7 +250,86 @@ def download_verified_update(
         if digest.hexdigest() != clean["sha256"]:
             raise ValueError("La actualización descargada no supera la verificación SHA-256.")
         partial_path.replace(final_path)
+        _cleanup_old_updates(destination, final_path)
         return final_path
     except Exception:
         partial_path.unlink(missing_ok=True)
         raise
+    finally:
+        # La descarga va en streaming: sin close() la conexion se queda
+        # abierta (y el socket) cuando se corta, se pasa del tope o el hash falla.
+        if response is not None:
+            response.close()
+
+
+def file_matches_sha256(path: str | Path, sha256: object, *, chunk_size: int = 1024 * 1024) -> bool:
+    """True si el archivo existe y su SHA-256 es `sha256`. Nunca lanza.
+
+    Se usa justo antes de ejecutar un instalador ya descargado: entre la
+    verificacion de la descarga y el "si, ejecutalo" el archivo pudo
+    cambiar, asi que se vuelve a comprobar contra el hash firmado.
+    """
+    if not isinstance(sha256, str) or not SHA256_RE.fullmatch(sha256):
+        return False
+    digest = hashlib.sha256()
+    try:
+        with Path(path).open("rb") as archivo:
+            while chunk := archivo.read(chunk_size):
+                digest.update(chunk)
+    except OSError:
+        return False
+    return digest.hexdigest() == sha256.lower()
+
+
+def _cleanup_old_updates(destination: Path, keep: Path) -> None:
+    """Borra otros instaladores de actualización ya descargados en
+    destination, dejando solo `keep` (el que se acaba de verificar). Cada
+    "Buscar actualizaciones" > "Descargar y verificar" se quedaba
+    acumulando un .exe nuevo sin borrar los anteriores (reportado: varios
+    instaladores acumulados en la carpeta updates desde hacía semanas).
+    Los fallos de borrado (archivo en uso, permisos) se ignoran -- limpiar
+    espacio en disco no debe romper el flujo de "ya tienes la
+    actualización lista".
+    """
+    try:
+        for path in destination.glob("*.exe"):
+            if path != keep:
+                path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def cleanup_obsolete_updates(destination_dir: str | Path, current_version: str = APP_VERSION) -> int:
+    """
+    Borra, de destination_dir, los instaladores de actualización ya
+    descargados cuya versión (extraída del nombre de archivo, patrón
+    "..._vX.Y.Z.exe") sea igual o anterior a la que ya está instalada y
+    corriendo -- ya no sirven para nada, la actualización ya se aplicó (o
+    el usuario ya está en una versión más reciente). Se llama al arrancar
+    (ver ui.app_lifecycle.AppLifecycle), no solo tras descargar una nueva,
+    para que también limpie instalaciones ya existentes con varios .exe
+    acumulados de antes de que existiera esta limpieza.
+
+    Solo toca archivos cuyo nombre encaja con el patrón de versión
+    conocido -- nunca borra algo que no se pueda identificar con
+    confianza como un instalador propio. Los fallos de borrado (en uso,
+    permisos) se ignoran uno a uno, sin interrumpir el resto. Devuelve
+    cuántos archivos se borraron.
+    """
+    destination = Path(destination_dir)
+    if not destination.is_dir():
+        return 0
+    actual = _version_tuple(current_version)
+    borrados = 0
+    for path in destination.glob("*.exe"):
+        match = _UPDATE_FILENAME_VERSION_RE.search(path.name)
+        if not match:
+            continue
+        if _version_tuple(match.group(1)) > actual:
+            continue
+        try:
+            path.unlink()
+            borrados += 1
+        except OSError:
+            continue
+    return borrados

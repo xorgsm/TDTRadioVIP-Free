@@ -2,6 +2,32 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.35] — 2026-10-21
+
+Reúne los cambios de las versiones 8.6.25 a 8.6.35 de la edición completa que
+afectan a la edición Free. Desde esta versión, el código de este repo se monta
+automáticamente a partir del código principal (todo menos lo exclusivo de la
+edición con licencia), así que vuelve a estar al día.
+
+### Changed
+- **Nuevo aspecto minimalista oscuro**: fondos grafito, acento índigo por defecto
+  (el dorado sigue en Configuración > Apariencia), paneles más amplios.
+- Estructura reorganizada: `ui/dialogs/` y `ui/style/` son paquetes, y la ventana
+  principal se reparte en controladores más pequeños.
+
+### Added
+- **La app no se abre dos veces**: una segunda apertura trae al frente la ventana ya abierta.
+- **«Añadir lista pública de TV…»** sin pegar URLs (Gestión de contenido y Ctrl+K).
+
+### Performance
+- Con listas grandes (500+ canales): guardado del estado de los streams, combinación de
+  catálogos y diagnóstico por lotes fuera del hilo de la interfaz; radio sin recargas
+  duplicadas; multivista ligera; la guía EPG solo guarda los canales que usa la lista.
+
+### Security
+- Actualizaciones con manifiesto firmado; podcasts, listas y logos validan destino y
+  redirecciones; el reproductor solo abre emisiones de red y rutas locales.
+
 ## [8.6.24] — 2026-09-30
 
 Reúne los arreglos de las versiones 8.6.22 a 8.6.24 de la edición completa

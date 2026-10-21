@@ -194,6 +194,23 @@ def test_start_raises_when_ffmpeg_is_not_available(monkeypatch, tmp_path):
         rec.start("http://example.com/stream", "Canal")
 
 
+def test_start_restricts_ffmpeg_input_protocols_before_the_input(monkeypatch, tmp_path):
+    """Una lista HLS remota puede referenciar file:, concat:, etc. Sin
+    -protocol_whitelist ffmpeg seguiria esas referencias (lectura de ficheros
+    locales o acceso a servicios internos)."""
+    monkeypatch.setattr(recorder_module, "get_ffmpeg_exe", lambda: "ffmpeg.exe")
+    cmds = []
+    monkeypatch.setattr(recorder_module.subprocess, "Popen", _fake_popen(cmds))
+
+    Recorder(str(tmp_path)).start("https://example.com/live.m3u8", "Canal")
+
+    cmd = cmds[0]
+    assert cmd.index("-protocol_whitelist") < cmd.index("-i")
+    protocolos = cmd[cmd.index("-protocol_whitelist") + 1].split(",")
+    assert {"http", "https", "tcp", "tls", "crypto"} <= set(protocolos)
+    assert not {"file", "concat", "subfile", "pipe", "data"} & set(protocolos)
+
+
 def test_start_builds_a_radio_command_without_watermark_or_video(monkeypatch, tmp_path):
     monkeypatch.setattr(recorder_module, "get_ffmpeg_exe", lambda: "ffmpeg.exe")
     cmds = []
@@ -270,6 +287,66 @@ def test_start_raises_and_cleans_up_when_popen_fails(monkeypatch, tmp_path):
 
     assert rec.current_file is None
     assert rec._log_fh is None
+
+
+def test_start_failure_log_does_not_leak_stream_credentials(monkeypatch, tmp_path, caplog):
+    """La URL del stream suele llevar usuario/clave o token: no debe acabar
+    en app.log cuando ffmpeg no arranca."""
+    monkeypatch.setattr(recorder_module, "get_ffmpeg_exe", lambda: "ffmpeg.exe")
+
+    def _raise(cmd, **kwargs):
+        raise OSError("no se pudo lanzar ffmpeg")
+
+    monkeypatch.setattr(recorder_module.subprocess, "Popen", _raise)
+
+    rec = Recorder(str(tmp_path))
+    with caplog.at_level("ERROR"), pytest.raises(RuntimeError):
+        rec.start("http://user:secret@iptv.test:8080/live/user/secret/1.ts?token=abc", "Canal")
+
+    registro = caplog.text
+    assert "iptv.test" in registro
+    assert "secret" not in registro
+    assert "token=abc" not in registro
+
+
+def test_stop_reentrant_call_during_wait_does_not_stop_twice(tmp_path):
+    """on_wait=processEvents entrega eventos (temporizadores, atajos) que
+    pueden volver a llamar a stop() a mitad de la espera."""
+    fake = FakeProcess(becomes_dead_on="immediate")
+    rec = Recorder.__new__(Recorder)
+    rec.process = fake
+    rec.current_file = tmp_path / "grabacion.mp4"
+    rec.current_file.write_bytes(b"0" * 5000)
+    rec.current_log = None
+    rec._log_fh = None
+    durante_la_espera = []
+
+    def _on_wait():
+        durante_la_espera.append((rec.is_stopping, rec.stop()))
+
+    archivo, ok = rec.stop(on_wait=_on_wait)
+
+    assert ok is True and archivo == tmp_path / "grabacion.mp4"
+    assert durante_la_espera and all(d == (True, (None, False)) for d in durante_la_espera)
+    assert fake.stdin.written == b"q"  # una sola orden de cierre
+    assert rec.is_stopping is False
+
+
+def test_stop_clears_stopping_flag_even_if_waiting_raises(tmp_path):
+    fake = FakeProcess(becomes_dead_on="immediate")
+    rec = Recorder.__new__(Recorder)
+    rec.process = fake
+    rec.current_file = tmp_path / "grabacion.mp4"
+    rec.current_log = None
+    rec._log_fh = None
+
+    def _boom():
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        rec.stop(on_wait=_boom)
+
+    assert rec.is_stopping is False
 
 
 # --------------------------------------------------------------------------

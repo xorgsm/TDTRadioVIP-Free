@@ -1,7 +1,7 @@
 """
 Reproducir desde lo guardado en el historial: el carrusel "Recientes" de
 Inicio (HomeController.activate_home_entry), "reanudar al abrir"
-(MainWindow._resume_last_stream) y "Recientes" de la barra lateral
+(AppLifecycle.resume_last_stream) y "Recientes" de la barra lateral
 (LibrarySidebar._activate_recent).
 
 Los tres deben pasar a play() todo lo que la entrada guarda -- logo,
@@ -15,9 +15,9 @@ from unittest.mock import Mock
 import pytest
 from PySide6.QtWidgets import QApplication
 
+from ui.app_lifecycle import AppLifecycle
 from ui.home_controller import HomeController
 from ui.library_sidebar import ROLE_ACTION, LibrarySidebar
-from ui.main_window import MainWindow
 
 ENTRY = {
     "type": "tv", "name": "La 1", "url": "https://stream.test/la1",
@@ -55,7 +55,7 @@ def test_home_recent_card_plays_with_everything_saved(entry, expected):
 def test_resume_last_stream_plays_with_everything_saved(entry, expected):
     win = _window(entry)
 
-    MainWindow._resume_last_stream(win)
+    AppLifecycle(win).resume_last_stream()
 
     win.playback.play.assert_called_once_with(*expected)
 

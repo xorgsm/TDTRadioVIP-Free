@@ -4,6 +4,7 @@ import logging
 import os
 import shutil
 import tempfile
+import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import TypeVar
@@ -26,15 +27,38 @@ def _unlink_with_logging(path: Path, artifact_kind: str) -> None:
         )
 
 
+def _set_aside_corrupt(path: Path) -> None:
+    """Aparta un JSON corrupto a ``<nombre>.corrupt[N]`` sin pisar copias previas.
+
+    Si solo se devolviera el default, la siguiente escritura sobrescribiría
+    el fichero y el usuario perdería sus datos sin remedio.
+    """
+    candidate = path.with_name(path.name + ".corrupt")
+    counter = 1
+    while candidate.exists():
+        candidate = path.with_name(f"{path.name}.corrupt{counter}")
+        counter += 1
+    try:
+        path.replace(candidate)
+    except OSError:
+        logger.warning("No se pudo apartar el JSON corrupto %s", path, exc_info=True)
+        return
+    logger.warning("JSON corrupto al leer %s; copia conservada en %s", path, candidate)
+
+
 def read_json(path: Path, default: T) -> T:
-    """Carga JSON o devuelve ``default`` si falta, está corrupto o es ilegible."""
+    """Carga JSON o devuelve ``default`` si falta, está corrupto o es ilegible.
+
+    Un fichero corrupto se aparta a ``.corrupt`` para que no lo pise la
+    siguiente escritura.
+    """
     try:
         with path.open("r", encoding="utf-8") as source:
             return json.load(source)
     except FileNotFoundError:
         return default
     except (json.JSONDecodeError, UnicodeDecodeError):
-        logger.warning("JSON corrupto al leer %s", path)
+        _set_aside_corrupt(path)
         return default
     except OSError:
         logger.warning("JSON ilegible al leer %s", path)
@@ -57,6 +81,35 @@ def write_json_atomic(path: Path, value: object, *, indent: int | None = None) -
     finally:
         if temporary_path is not None:
             _unlink_with_logging(temporary_path, "el temporal")
+
+
+STALE_TEMPORARY_AGE_SECONDS = 24 * 3600
+
+
+def remove_stale_temporaries(
+    directory: Path, max_age_seconds: float = STALE_TEMPORARY_AGE_SECONDS
+) -> int:
+    """Borra los ``tmp*.tmp`` que ``write_json_atomic`` dejó huérfanos.
+
+    Si el proceso muere entre crear el temporal y reemplazar el destino, el
+    temporal queda para siempre (llegaron a ocupar cientos de MB). Solo se
+    tocan los de más de ``max_age_seconds``: uno reciente puede ser una
+    escritura en curso. Devuelve cuántos se borraron.
+    """
+    cutoff = time.time() - max_age_seconds
+    removed = 0
+    try:
+        candidates = list(directory.glob("tmp*.tmp"))
+    except OSError:
+        return 0
+    for candidate in candidates:
+        try:
+            if candidate.is_file() and candidate.stat().st_mtime < cutoff:
+                candidate.unlink()
+                removed += 1
+        except OSError:
+            logger.warning("No se pudo eliminar el temporal huérfano %s", candidate, exc_info=True)
+    return removed
 
 
 def replace_json_files_atomically(
