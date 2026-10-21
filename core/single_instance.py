@@ -31,7 +31,10 @@ from core.logger import get_logger
 log = get_logger(__name__)
 
 _CONNECT_TIMEOUT_MS = 200
-_ACK_TIMEOUT_MS = 1000
+# La primera instancia puede tardar en atender el aviso (cargando una lista
+# enorme): si la segunda se cierra antes, el aviso se pierde. Esta espera no
+# se ve (la segunda instancia no tiene ventana) y acaba en cuanto llega el acuse.
+_ACK_TIMEOUT_MS = 10000
 
 
 class SingleInstanceGuard(QObject):

@@ -29,7 +29,10 @@ def test_first_instance_acquires_the_lock():
         guard.deleteLater()
 
 
-def test_second_instance_fails_to_acquire_and_notifies_the_first():
+def test_second_instance_fails_to_acquire_and_notifies_the_first(monkeypatch):
+    # Las dos instancias comparten hilo: la primera no puede acusar recibo
+    # mientras la segunda espera, así que no se espera el plazo real.
+    monkeypatch.setattr("core.single_instance._ACK_TIMEOUT_MS", 50)
     app = _app()
     key = f"TDTRadioVIP-test-{uuid.uuid4().hex}"
     first = SingleInstanceGuard(key)
@@ -82,6 +85,37 @@ def test_second_process_that_exits_right_away_still_activates_the_first():
         second = subprocess.Popen(
             [sys.executable, "-c", code], cwd=Path(__file__).resolve().parent.parent
         )
+        assert _pump_until(app, lambda: second.poll() is not None, timeout_ms=15000)
+        assert second.returncode == 0
+        assert _pump_until(app, lambda: len(activated) == 1)
+    finally:
+        first.deleteLater()
+
+
+def test_activation_survives_a_first_instance_busy_for_a_few_seconds():
+    """La ventana abierta puede tardar en atender eventos (cargando una lista
+    enorme, por ejemplo): el aviso de la segunda instancia no debe perderse."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    app = _app()
+    key = f"TDTRadioVIP-test-{uuid.uuid4().hex}"
+    first = SingleInstanceGuard(key)
+    activated = []
+    first.activation_requested.connect(lambda: activated.append(True))
+    code = (
+        "from PySide6.QtCore import QCoreApplication\n"
+        "from core.single_instance import SingleInstanceGuard\n"
+        "app = QCoreApplication([])\n"
+        f"raise SystemExit(0 if SingleInstanceGuard({key!r}).try_acquire() is False else 1)\n"
+    )
+    try:
+        assert first.try_acquire() is True
+        second = subprocess.Popen(
+            [sys.executable, "-c", code], cwd=Path(__file__).resolve().parent.parent
+        )
+        time.sleep(2.5)  # primera instancia ocupada: no procesa eventos
         assert _pump_until(app, lambda: second.poll() is not None, timeout_ms=15000)
         assert second.returncode == 0
         assert _pump_until(app, lambda: len(activated) == 1)
