@@ -2,6 +2,15 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [8.6.36] — 2026-10-21
+
+### Added
+- **La app no se abre dos veces**: una segunda apertura trae al frente la ventana ya abierta.
+- **«Añadir lista pública de TV…»** sin pegar URLs (Gestión de contenido y Ctrl+K).
+
+### Fixed
+- La caché de la lista de TV ya no se da por caducada justo después de renovarla.
+
 ## [8.6.35] — 2026-10-21
 
 Reúne los cambios de las versiones 8.6.25 a 8.6.35 de la edición completa que
