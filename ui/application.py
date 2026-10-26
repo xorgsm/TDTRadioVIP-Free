@@ -65,6 +65,7 @@ def _create_application(instance_key: str) -> tuple[QApplication, QIcon, SingleI
     # Referencia fuerte en el propio QApplication: como variable local nada
     # la mantendría viva hasta conectar activation_requested a la ventana.
     app._single_instance_guard = guard
+    app.aboutToQuit.connect(guard.release)
     app.setApplicationName("TDT & Radio VIP")
     app.setApplicationVersion(APP_VERSION)
     _register_app_font()

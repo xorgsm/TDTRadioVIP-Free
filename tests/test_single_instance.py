@@ -221,3 +221,82 @@ def test_mutex_creation_failure_is_logged_and_does_not_block_startup(monkeypatch
         assert any("mutex" in r.getMessage().lower() for r in caplog.records)
     finally:
         guard.deleteLater()
+
+
+_CHILD = """
+import sys, time
+from PySide6.QtWidgets import QApplication
+from core.single_instance import SingleInstanceGuard
+
+app = QApplication([])
+guard = SingleInstanceGuard(sys.argv[1])
+if not guard.try_acquire():
+    print("denied", flush=True)
+    sys.exit(0)
+got = []
+guard.bind_activation(lambda: got.append(1))
+print("ready", flush=True)
+deadline = time.monotonic() + 20
+while time.monotonic() < deadline and not got:
+    app.processEvents()
+    time.sleep(0.01)
+print("activated" if got else "timeout", flush=True)
+guard.release()
+"""
+
+
+def _spawn_child(key):
+    import os
+    import subprocess
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    env = dict(os.environ, QT_QPA_PLATFORM="offscreen")
+    return subprocess.Popen(
+        [sys.executable, "-c", _CHILD, key],
+        cwd=root, env=env, stdout=subprocess.PIPE, text=True,
+    )
+
+
+def _kill_tree(child):
+    # El python.exe de un venv de Windows es un lanzador que crea el proceso
+    # real como hijo: child.kill() solo mataría el lanzador.
+    import subprocess
+    import sys
+
+    if sys.platform == "win32":
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(child.pid)],
+            capture_output=True, check=False,
+        )
+    else:
+        child.kill()
+    child.wait()
+
+
+def test_two_real_processes_only_one_acquires_and_the_other_is_notified():
+    _app()
+    key = f"TDTRadioVIP-test-{uuid.uuid4().hex}"
+    child = _spawn_child(key)
+    guard = SingleInstanceGuard(key)
+    try:
+        assert child.stdout.readline().strip() == "ready"
+        assert guard.try_acquire() is False
+        assert child.stdout.readline().strip() == "activated"
+    finally:
+        _kill_tree(child)
+        guard.deleteLater()
+
+
+def test_lock_is_free_again_after_the_owning_process_dies():
+    _app()
+    key = f"TDTRadioVIP-test-{uuid.uuid4().hex}"
+    child = _spawn_child(key)
+    guard = SingleInstanceGuard(key)
+    try:
+        assert child.stdout.readline().strip() == "ready"
+        _kill_tree(child)  # cierre en seco: sin release() ni aboutToQuit
+        assert guard.try_acquire() is True
+    finally:
+        guard.release()
+        guard.deleteLater()
