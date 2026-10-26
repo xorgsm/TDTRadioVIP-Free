@@ -121,7 +121,7 @@ def run_vip() -> int:
         activated = splash.activated
     window = MainWindow(activated=activated)
     window.setWindowIcon(app_icon)
-    guard.activation_requested.connect(lambda: _bring_existing_window_to_front(window))
+    guard.bind_activation(lambda: _bring_existing_window_to_front(window))
     window.show()
     return app.exec()
 
@@ -134,6 +134,6 @@ def run_free() -> int:
     app, app_icon, guard = created
     window = MainWindow(activated=True, es_version_free=True)
     window.setWindowIcon(app_icon)
-    guard.activation_requested.connect(lambda: _bring_existing_window_to_front(window))
+    guard.bind_activation(lambda: _bring_existing_window_to_front(window))
     window.show()
     return app.exec()

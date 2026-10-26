@@ -9,12 +9,11 @@ traen), timestamp (texto ya formateado, que la interfaz muestra como
 subtítulo) y play_count (veces que se ha reproducido ese canal/emisora --
 ver top_played(), usado por ui/stats_dialog.py).
 """
-import json
 from datetime import datetime
 from typing import List, Optional
 
 from core.config import get_profile_data_dir
-from core.json_store import write_json_atomic
+from core.json_store import read_json, write_json_atomic
 
 HISTORY_FILE = "history.json"
 MAX_ENTRIES = 100
@@ -25,14 +24,8 @@ def _path():
 
 
 def load_history() -> List[dict]:
-    """Devuelve el historial guardado, del más reciente al más antiguo."""
-    path = _path()
-    if not path.exists():
-        return []
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return []
+    """Carga el historial; si el JSON está dañado, conserva una copia recuperable."""
+    data = read_json(_path(), [])
     if not isinstance(data, list):
         return []
     return [

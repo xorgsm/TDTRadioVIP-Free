@@ -44,6 +44,19 @@ def test_load_favorites_returns_empty_list_when_json_is_corrupt(monkeypatch, tmp
     assert favorites.load_favorites() == []
 
 
+def test_load_favorites_preserves_corrupt_json_for_recovery(monkeypatch, tmp_path):
+    _redirect(monkeypatch, tmp_path)
+    path = tmp_path / favorites.FAVORITES_FILE
+    original = '[{"type": "tv", "name": "La 1"'
+    path.write_text(original, encoding="utf-8")
+
+    assert favorites.load_favorites() == []
+    assert not path.exists()
+    preserved = list(tmp_path.glob(f"{favorites.FAVORITES_FILE}.corrupt*"))
+    assert len(preserved) == 1
+    assert preserved[0].read_text(encoding="utf-8") == original
+
+
 def test_load_favorites_returns_empty_list_when_json_root_is_not_a_list(monkeypatch, tmp_path):
     _redirect(monkeypatch, tmp_path)
     path = tmp_path / favorites.FAVORITES_FILE

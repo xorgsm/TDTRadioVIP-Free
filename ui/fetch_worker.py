@@ -15,6 +15,10 @@ from typing import Iterable
 
 from PySide6.QtCore import QCoreApplication, QEventLoop, QThread, Qt, Signal, Slot
 
+from core.logger import get_logger
+
+log = get_logger(__name__)
+
 
 class ActiveWorkerRegistry:
     """Mantiene referencias fuertes a los FetchWorker activos de la app."""
@@ -140,6 +144,9 @@ class FetchWorker(QThread):
         try:
             result = self.func(*self.args, **self.kwargs)
         except Exception:
+            # El resultado None ya es la señal de fallo para quien escucha done;
+            # el rastro evita que un OSError al guardar desaparezca sin más.
+            log.warning("FetchWorker: fallo en %s", getattr(self.func, "__name__", self.func), exc_info=True)
             result = None
         with self._state_lock:
             if self._cancelled:

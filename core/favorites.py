@@ -8,11 +8,10 @@ alternate_urls (lo necesario para reproducirlo con su guía EPG y sus fuentes
 de respaldo; los favoritos guardados antes de 8.6.22 no los traen hasta que
 se vuelve a reproducir el canal, ver complete_favorite()).
 """
-import json
 from typing import List, Optional
 
 from core.config import get_profile_data_dir
-from core.json_store import write_json_atomic
+from core.json_store import read_json, write_json_atomic
 
 FAVORITES_FILE = "favorites.json"
 
@@ -22,14 +21,8 @@ def _path():
 
 
 def load_favorites() -> List[dict]:
-    """Devuelve la lista de favoritos guardada, o vacía si no hay o está dañada."""
-    path = _path()
-    if not path.exists():
-        return []
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return []
+    """Carga favoritos; si el JSON está dañado, conserva una copia recuperable."""
+    data = read_json(_path(), [])
     if not isinstance(data, list):
         return []
     # Descarta entradas malformadas para que un archivo corrupto no tumbe la app.

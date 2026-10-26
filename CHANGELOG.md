@@ -2,6 +2,13 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [Sin publicar]
+
+### Fixed
+- Abrir la app dos veces seguidas muy rápido ya no deja dos ventanas, y el aviso a la ventana abierta no se pierde durante el arranque.
+- Favoritos e historial dañados se apartan como `.corrupt` en vez de perderse.
+- Los fallos al guardar en segundo plano quedan registrados en el log.
+
 ## [8.6.36] — 2026-10-21
 
 ### Added

@@ -43,6 +43,19 @@ def test_load_history_returns_empty_list_when_json_is_corrupt(monkeypatch, tmp_p
     assert history.load_history() == []
 
 
+def test_load_history_preserves_corrupt_json_for_recovery(monkeypatch, tmp_path):
+    _redirect(monkeypatch, tmp_path)
+    path = tmp_path / history.HISTORY_FILE
+    original = '[{"type": "tv", "name": "La 1"'
+    path.write_text(original, encoding="utf-8")
+
+    assert history.load_history() == []
+    assert not path.exists()
+    preserved = list(tmp_path.glob(f"{history.HISTORY_FILE}.corrupt*"))
+    assert len(preserved) == 1
+    assert preserved[0].read_text(encoding="utf-8") == original
+
+
 def test_load_history_returns_empty_list_when_json_root_is_not_a_list(monkeypatch, tmp_path):
     _redirect(monkeypatch, tmp_path)
     path = tmp_path / history.HISTORY_FILE

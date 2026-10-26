@@ -23,8 +23,11 @@ Coder By X@R
 """
 from __future__ import annotations
 
+import sys
+import time
+
 from PySide6.QtCore import QObject, Signal
-from PySide6.QtNetwork import QLocalServer, QLocalSocket
+from PySide6.QtNetwork import QAbstractSocket, QLocalServer, QLocalSocket
 
 from core.logger import get_logger
 
@@ -35,6 +38,11 @@ _CONNECT_TIMEOUT_MS = 200
 # enorme): si la segunda se cierra antes, el aviso se pierde. Esta espera no
 # se ve (la segunda instancia no tiene ventana) y acaba en cuanto llega el acuse.
 _ACK_TIMEOUT_MS = 10000
+# Con el mutex tomado por otra instancia que aún está arrancando, su servidor
+# local puede no estar escuchando todavía: se reintenta el aviso este rato.
+_NOTIFY_RETRY_S = 3.0
+_NOTIFY_RETRY_STEP_S = 0.1
+_ERROR_ALREADY_EXISTS = 183
 
 
 class SingleInstanceGuard(QObject):
@@ -47,6 +55,21 @@ class SingleInstanceGuard(QObject):
         self._key = key
         self._server: QLocalServer | None = None
         self._probe: QLocalSocket | None = None
+        self._bound = False
+        self._pending_activation = False
+        self._mutex = None
+
+    def bind_activation(self, callback) -> None:
+        """
+        Conecta `callback` a activation_requested y le entrega el aviso que
+        llegó antes de poder conectarlo (una segunda instancia durante el
+        splash, cuando todavía no existe la ventana).
+        """
+        self._bound = True
+        self.activation_requested.connect(callback)
+        if self._pending_activation:
+            self._pending_activation = False
+            callback()
 
     def try_acquire(self) -> bool:
         """
@@ -55,7 +78,86 @@ class SingleInstanceGuard(QObject):
         (se le avisó para que se active; esta debe cerrarse sin más, ver
         ui/application.py).
         """
-        probe = QLocalSocket(self)
+        if self._take_process_mutex() is False:
+            # Otra instancia tiene el cerrojo, aunque todavía no esté
+            # escuchando (doble clic rápido): se le avisa en cuanto pueda.
+            deadline = time.monotonic() + _NOTIFY_RETRY_S
+            while not self._notify_running_instance():
+                if time.monotonic() >= deadline:
+                    log.warning("La instancia abierta no atendió el aviso de activación")
+                    break
+                time.sleep(_NOTIFY_RETRY_STEP_S)
+            return False
+
+        if self._notify_running_instance():
+            return False
+
+        # Nombre "fantasma" de un cierre en seco anterior (crash, kill): un
+        # segundo listen() sobre el mismo nombre sin este paso previo
+        # fallaría con AddressInUseError aunque no haya ningún proceso real
+        # detrás -- removeServer() ya comprueba que no haya un servidor de
+        # verdad escuchando antes de dejar reusar el nombre.
+        QLocalServer.removeServer(self._key)
+        server = QLocalServer(self)
+        server.newConnection.connect(self._on_new_connection)
+        if not server.listen(self._key):
+            # Dos arranques simultáneos (doble clic rápido): los dos fallaron
+            # el sondeo y el otro ganó el listen(). Se vuelve a sondear antes
+            # de dar el cerrojo por inalcanzable.
+            if (
+                server.serverError() == QAbstractSocket.SocketError.AddressInUseError
+                and self._notify_running_instance()
+            ):
+                return False
+            # No se pudo escuchar por algo distinto de "ya hay una instancia"
+            # (permisos, nombre no válido en este SO...) -- no tiene sentido
+            # bloquear un arranque legítimo por un problema del cerrojo en
+            # sí, así que se deja pasar como si fuera la única instancia.
+            log.warning("No se pudo crear el cerrojo de instancia única (%s)", server.errorString())
+            return True
+        self._server = server
+        return True
+
+    def _take_process_mutex(self) -> bool | None:
+        """
+        En Windows, QLocalServer.listen() sobre un nombre en uso NO falla (las
+        dos instancias de un doble clic rápido acabarían "escuchando"), así
+        que el cerrojo atómico es un mutex con nombre, que el sistema libera
+        al morir el proceso. False si ya lo tenía otro proceso, True si lo
+        toma esta instancia, None si no hay mutex en esta plataforma.
+        """
+        if sys.platform != "win32":
+            return None
+        import ctypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CreateMutexW.restype = ctypes.c_void_p
+        kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_wchar_p]
+        handle = kernel32.CreateMutexW(None, False, "Local\\" + self._key)
+        if not handle:
+            # Sin mutex solo queda el sondeo del servidor local, que en
+            # Windows no basta para un doble clic rápido: se deja constancia.
+            log.warning("No se pudo crear el mutex de instancia única (error %s)", ctypes.get_last_error())
+            return None
+        self._mutex = handle
+        return ctypes.get_last_error() != _ERROR_ALREADY_EXISTS
+
+    def release(self) -> None:
+        """Libera el mutex y el servidor local; se puede llamar varias veces."""
+        if self._mutex is not None:
+            import ctypes
+
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+            kernel32.CloseHandle(self._mutex)
+            self._mutex = None
+        if self._server is not None:
+            self._server.close()
+            self._server = None
+
+    def _notify_running_instance(self) -> bool:
+        """True si había otra instancia escuchando y se le avisó."""
+        probe = QLocalSocket()
         probe.connectToServer(self._key)
         if probe.waitForConnected(_CONNECT_TIMEOUT_MS):
             probe.write(b"activate")
@@ -77,25 +179,9 @@ class SingleInstanceGuard(QObject):
             # ui/application.py), momento en el que el sistema operativo
             # libera el socket sin que haga falta cerrarlo a mano.
             self._probe = probe
-            return False
-
-        # Nombre "fantasma" de un cierre en seco anterior (crash, kill): un
-        # segundo listen() sobre el mismo nombre sin este paso previo
-        # fallaría con AddressInUseError aunque no haya ningún proceso real
-        # detrás -- removeServer() ya comprueba que no haya un servidor de
-        # verdad escuchando antes de dejar reusar el nombre.
-        QLocalServer.removeServer(self._key)
-        server = QLocalServer(self)
-        server.newConnection.connect(self._on_new_connection)
-        if not server.listen(self._key):
-            # No se pudo escuchar por algo distinto de "ya hay una instancia"
-            # (permisos, nombre no válido en este SO...) -- no tiene sentido
-            # bloquear un arranque legítimo por un problema del cerrojo en
-            # sí, así que se deja pasar como si fuera la única instancia.
-            log.warning("No se pudo crear el cerrojo de instancia única (%s)", server.errorString())
             return True
-        self._server = server
-        return True
+        probe.deleteLater()
+        return False
 
     def _on_new_connection(self):
         if self._server is None:
@@ -111,4 +197,6 @@ class SingleInstanceGuard(QObject):
         # Acuse para la segunda instancia, que lo espera antes de cerrarse.
         socket.write(b"ok")
         socket.flush()
+        if not self._bound:
+            self._pending_activation = True
         self.activation_requested.emit()
