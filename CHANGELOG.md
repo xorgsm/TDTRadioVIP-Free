@@ -4,7 +4,11 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
 ## [Sin publicar]
 
+## [8.6.37] — 2026-10-27
+
 ### Fixed
+- Si la ventana abierta se cierra de golpe justo cuando la abres otra vez, la app ya
+  arranca en vez de quedarse sin ninguna ventana.
 - Abrir la app dos veces seguidas muy rápido ya no deja dos ventanas, y el aviso a la ventana abierta no se pierde durante el arranque.
 - Favoritos e historial dañados se apartan como `.corrupt` en vez de perderse.
 - Los fallos al guardar en segundo plano quedan registrados en el log.

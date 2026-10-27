@@ -81,34 +81,38 @@ class SingleInstanceGuard(QObject):
         if self._take_process_mutex() is False:
             # Otra instancia tiene el cerrojo, aunque todavía no esté
             # escuchando (doble clic rápido): se le avisa en cuanto pueda.
-            deadline = time.monotonic() + _NOTIFY_RETRY_S
-            while not self._notify_running_instance():
-                if time.monotonic() >= deadline:
-                    log.warning("La instancia abierta no atendió el aviso de activación")
-                    break
-                time.sleep(_NOTIFY_RETRY_STEP_S)
-            return False
+            if self._notify_with_retry():
+                return False
+            # Nadie atendió en todo el plazo: puede que quien creó el mutex
+            # muriera mientras tanto y solo lo mantenga vivo el handle de esta
+            # instancia. Se suelta y se vuelve a pedir; si sigue existiendo,
+            # la otra instancia está viva pero no atiende.
+            self._close_mutex()
+            if self._take_process_mutex() is False:
+                log.warning("La instancia abierta no atendió el aviso de activación")
+                return False
 
         if self._notify_running_instance():
             return False
 
-        # Nombre "fantasma" de un cierre en seco anterior (crash, kill): un
-        # segundo listen() sobre el mismo nombre sin este paso previo
-        # fallaría con AddressInUseError aunque no haya ningún proceso real
-        # detrás -- removeServer() ya comprueba que no haya un servidor de
-        # verdad escuchando antes de dejar reusar el nombre.
-        QLocalServer.removeServer(self._key)
         server = QLocalServer(self)
         server.newConnection.connect(self._on_new_connection)
         if not server.listen(self._key):
+            in_use = server.serverError() == QAbstractSocket.SocketError.AddressInUseError
             # Dos arranques simultáneos (doble clic rápido): los dos fallaron
             # el sondeo y el otro ganó el listen(). Se vuelve a sondear antes
             # de dar el cerrojo por inalcanzable.
-            if (
-                server.serverError() == QAbstractSocket.SocketError.AddressInUseError
-                and self._notify_running_instance()
-            ):
+            if in_use and self._notify_running_instance():
                 return False
+            # Nadie contesta: es un nombre "fantasma" de un cierre en seco
+            # anterior (en Unix el socket queda como fichero). removeServer()
+            # lo borra SIN comprobar si hay alguien escuchando, así que solo
+            # se llama ahora, tras confirmar que no hay nadie detrás.
+            if in_use:
+                QLocalServer.removeServer(self._key)
+                if server.listen(self._key):
+                    self._server = server
+                    return True
             # No se pudo escuchar por algo distinto de "ya hay una instancia"
             # (permisos, nombre no válido en este SO...) -- no tiene sentido
             # bloquear un arranque legítimo por un problema del cerrojo en
@@ -142,18 +146,39 @@ class SingleInstanceGuard(QObject):
         self._mutex = handle
         return ctypes.get_last_error() != _ERROR_ALREADY_EXISTS
 
-    def release(self) -> None:
-        """Libera el mutex y el servidor local; se puede llamar varias veces."""
-        if self._mutex is not None:
-            import ctypes
+    def _notify_with_retry(self) -> bool:
+        """Reintenta el aviso durante _NOTIFY_RETRY_S; True si se entregó."""
+        deadline = time.monotonic() + _NOTIFY_RETRY_S
+        while not self._notify_running_instance():
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(_NOTIFY_RETRY_STEP_S)
+        return True
 
-            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-            kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
-            kernel32.CloseHandle(self._mutex)
-            self._mutex = None
+    def _close_mutex(self) -> None:
+        if self._mutex is None:
+            return
+        import ctypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        kernel32.CloseHandle(self._mutex)
+        self._mutex = None
+
+    def release(self) -> None:
+        """
+        Libera el mutex, el servidor local y el socket del aviso; se puede
+        llamar varias veces. La instancia que se cierra tras avisar no lo
+        llama (ver ui/application.py): cerrar su socket justo después de
+        escribir haría perder el aviso (ver _notify_running_instance).
+        """
+        self._close_mutex()
         if self._server is not None:
             self._server.close()
             self._server = None
+        if self._probe is not None:
+            self._probe.abort()
+            self._probe = None
 
     def _notify_running_instance(self) -> bool:
         """True si había otra instancia escuchando y se le avisó."""
