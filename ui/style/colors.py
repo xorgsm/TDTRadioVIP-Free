@@ -16,11 +16,11 @@ from ui import palette
 ACCENT_PRESETS = {
     "Índigo": "#7c6cff",
     "Dorado": "#c9a227",
-    "Azul": "#5b9bd5",
-    "Violeta": "#a78bfa",
-    "Verde": "#65c46a",
-    "Coral": "#f472b6",
-    "Naranja": "#f0a04b",
+    "Azul": "#38bdf8",
+    "Violeta": "#b08aff",
+    "Verde": "#38e89c",
+    "Coral": "#ff70b7",
+    "Naranja": "#ffad42",
 }
 DEFAULT_ACCENT = palette.ACCENT
 

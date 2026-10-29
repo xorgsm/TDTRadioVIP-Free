@@ -324,7 +324,11 @@ class SettingsDialog(QDialog):
             self, "Eliminar perfil", f"¿Eliminar el perfil «{name}» y todos sus datos?"
         ) != QMessageBox.Yes:
             return
-        cfg.delete_profile(name)
+        try:
+            cfg.delete_profile(name)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Eliminar perfil", str(exc))
+            return
         self._reload_perfil_combo("Default")
 
     def get_settings(self) -> dict:

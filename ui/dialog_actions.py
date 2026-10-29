@@ -33,6 +33,7 @@ from ui.stats_dialog import StatsDialog
 from ui.stream_diagnostics_dialog import StreamDiagnosticsDialog
 from ui.style import build_style
 from ui.title_bar import update_edition_badge
+from ui.modal import run_modal
 
 
 class DialogActionsController:
@@ -42,7 +43,7 @@ class DialogActionsController:
         self.win = window
 
     def open_equalizer_dialog(self):
-        EqualizerDialog(self.win).exec()
+        run_modal(EqualizerDialog(self.win))
 
     def open_vpn_dialog(self):
         """VPN (edición VIP con licencia activada): ver el docstring de
@@ -127,10 +128,10 @@ class DialogActionsController:
 
     def open_recurring_dialog(self):
         win = self.win
-        RecurringRecordingsDialog(win, win.tv_channels_data).exec()
+        run_modal(RecurringRecordingsDialog(win, win.tv_channels_data))
 
     def open_scheduled_recordings_dialog(self):
-        ScheduledRecordingsDialog(self.win).exec()
+        run_modal(ScheduledRecordingsDialog(self.win, cancel_scheduled=self.win.tray.cancel_scheduled))
 
     def open_mosaic_view(self):
         win = self.win
@@ -158,13 +159,13 @@ class DialogActionsController:
             win.player.stop()
             win.equalizer.stop()
 
-        MosaicView(win, win.tv_channels_data).exec()
+        run_modal(MosaicView(win, win.tv_channels_data))
 
         if reanudar is not None:
             win.playback.play(*reanudar)
 
     def open_stats_dialog(self):
-        StatsDialog(self.win).exec()
+        run_modal(StatsDialog(self.win))
 
     def open_settings(self):
         win = self.win

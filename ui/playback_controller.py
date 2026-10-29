@@ -214,9 +214,9 @@ class PlaybackController:
         token = win._playback_token
 
         def _on_ready(pixmap):
-            win.now_logo.setPixmap(pixmap)
             if token != win._playback_token:
-                return
+                return  # logo de un canal anterior que llega tarde
+            win.now_logo.setPixmap(pixmap)
             color = dominant_color(pixmap)
             if color is not None:
                 win.now_logo.setStyleSheet(
@@ -446,6 +446,12 @@ class PlaybackController:
             win.equalizer.set_intensity(value / 100)
 
     def toggle_mute(self):
+        """Alterna el silencio desde fuera del botón (tecla M, barra de tareas)."""
+        self.win.mute_btn.setChecked(not self.win.mute_btn.isChecked())
+        self.apply_mute()
+
+    def apply_mute(self):
+        """Aplica el estado actual de mute_btn (el clic ya lo ha alternado)."""
         win = self.win
         muted = win.mute_btn.isChecked()
         win.player.set_muted(muted)
@@ -758,6 +764,11 @@ class PlaybackController:
         win._sleep_minutes_left = 0
         win.sleep_btn.setChecked(False)
         win.sleep_btn.setToolTip("Temporizador de apagado")
+        # Invalida reconexiones y auto-saltos ya programados: sin esto un
+        # reintento pendiente volvía a reproducir tras el apagado.
+        win._playback_token += 1
+        win._active_list = None
+        win._auto_skip_count = 0
         win.player.stop()
         win.equalizer.stop()
         self._set_play_button_state(paused=False)
@@ -786,6 +797,9 @@ class PlaybackController:
             win.current_type, win.current_name, win.current_url or "", win.current_logo or "",
             tvg_id=win.current_tvg_id or "", alternate_urls=win._current_alternate_urls,
         )
+        # El estado sale del almacenamiento y no del botón: con Ctrl+D el
+        # botón no se ha pulsado y su isChecked() sería el de antes.
+        win.fav_btn.setChecked(fav_store.is_favorite(win.favorites, win.current_type, win.current_name))
         self._update_favorite_button_icon()
         win.lists.refresh_favorites_tab()
         win.lists.mark_favorites_everywhere()

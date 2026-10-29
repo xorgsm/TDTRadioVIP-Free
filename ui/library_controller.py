@@ -24,6 +24,7 @@ from core import radio as radio_stations
 from ui.dialogs import AddEntryDialog, AddPublicTvListDialog, ExportPlaylistDialog, ImportPlaylistDialog, ManageChannelsDialog, M3UEditorDialog, RecordingsLibraryDialog
 from ui.fetch_worker import FetchWorker
 from ui.toast import show_toast
+from ui.modal import run_modal
 
 
 class LibraryController:
@@ -34,11 +35,11 @@ class LibraryController:
 
     def open_recordings_library(self):
         """Abre la biblioteca local usando la carpeta configurada actualmente."""
-        RecordingsLibraryDialog(self.win.recordings_dir, self.win).exec()
+        run_modal(RecordingsLibraryDialog(self.win.recordings_dir, self.win))
 
     def open_m3u_editor(self):
         """Abre el editor visual de listas personales M3U."""
-        M3UEditorDialog(self.win).exec()
+        run_modal(M3UEditorDialog(self.win))
 
     # ---------- Añadir / editar / eliminar manual ----------
 
@@ -76,16 +77,23 @@ class LibraryController:
         old_name = data["name"]
 
         if new_data["type"] == "tv":
+            # El diálogo solo edita nombre/URL/logo/grupo: el tvg_id (EPG) y
+            # los enlaces de respaldo se conservan del canal original.
+            original = next((c for c in win.tv_channels_data if c.name == old_name), None)
             channel = tv_channels.Channel(
-                name=new_data["name"], url=new_data["url"], logo=new_data["logo"], group=group
+                name=new_data["name"], url=new_data["url"], logo=new_data["logo"], group=group,
+                tvg_id=original.tvg_id if original else "",
+                alternate_urls=list(original.alternate_urls) if original else [],
             )
             tv_channels.update_custom_channel(old_name, channel)
             win.tv_channels_data = [channel if c.name == old_name else c for c in win.tv_channels_data]
             win.lists.refresh_group_filter()
             win.lists.populate_tv_list(win.tv_channels_data)
         else:
+            original = next((s for s in win.radio_stations_data if s.name == old_name), None)
             station = radio_stations.Station(
-                name=new_data["name"], url=new_data["url"], favicon=new_data["logo"], tags=group
+                name=new_data["name"], url=new_data["url"], favicon=new_data["logo"], tags=group,
+                alternate_urls=list(original.alternate_urls) if original else [],
             )
             radio_stations.update_custom_station(old_name, station)
             win.radio_stations_data = [station if s.name == old_name else s for s in win.radio_stations_data]

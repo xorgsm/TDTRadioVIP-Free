@@ -95,3 +95,33 @@ def test_profile_lookup_uses_canonical_spelling(monkeypatch, tmp_path):
         assert config.get_current_profile() == "Familia"
     finally:
         config._profile_dir_for.cache_clear()
+
+
+def test_session_profile_is_pinned_until_restart(monkeypatch, tmp_path):
+    _redirect_profiles(monkeypatch, tmp_path)
+    ajustes = {"active_profile": "Default"}
+    monkeypatch.setattr(config, "load_settings", lambda: dict(ajustes))
+    config.create_profile("Familia")
+    try:
+        assert config.pin_session_profile() == "Default"
+        ajustes["active_profile"] = "Familia"  # cambiado en Configuración
+
+        assert config.get_current_profile() == "Default"
+        assert config.get_profile_data_dir() == config._profile_dir_for("Default")
+    finally:
+        config._session_profile = None
+        config._profile_dir_for.cache_clear()
+
+
+def test_profile_in_use_cannot_be_deleted(monkeypatch, tmp_path):
+    _redirect_profiles(monkeypatch, tmp_path)
+    monkeypatch.setattr(config, "load_settings", lambda: {"active_profile": "Familia"})
+    config.create_profile("Familia")
+    try:
+        config.pin_session_profile()
+        with pytest.raises(ValueError):
+            config.delete_profile("Familia")
+        assert "Familia" in config.list_profiles()
+    finally:
+        config._session_profile = None
+        config._profile_dir_for.cache_clear()

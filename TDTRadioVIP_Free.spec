@@ -10,6 +10,11 @@ Compilar con:  pyinstaller TDTRadioVIP_Free.spec
 """
 import os, sys
 
+# Helper compartido con el otro .spec: quita del bundle lo que la app no usa
+# y regenera la cache de plugins de VLC (ver pyinstaller_slim.py).
+sys.path.insert(0, SPECPATH)
+from pyinstaller_slim import EXCLUDED_MODULES, regenerate_vlc_plugin_cache, slim_toc
+
 # Sin hidden_imports de pychromecast/zeroconf/libtorrent aquí a propósito:
 # ui/main_window.py solo los importa (dentro de sus métodos, no arriba del
 # módulo) cuando es_version_free es False, así que un Analysis normal no
@@ -89,7 +94,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=excludes,
+    excludes=excludes + EXCLUDED_MODULES,
     noarchive=False,
     optimize=0,
 )
@@ -120,8 +125,8 @@ exe = EXE(
 
 coll = COLLECT(
     exe,
-    a.binaries,
-    a.datas,
+    slim_toc(a.binaries),
+    slim_toc(a.datas),
     strip=False,
     upx=True,
     upx_exclude=[],
@@ -135,7 +140,7 @@ coll = COLLECT(
 # acceso bajo carga, y Qt lo carga igual aunque el código no use
 # QNetworkAccessManager/QSslSocket para nada. Se borra del todo tras el
 # COLLECT.
-_dist_root = os.path.join('dist', 'TDTRadioVIP_Free')
+_dist_root = os.path.join(DISTPATH, 'TDTRadioVIP_Free')
 _tls_dir = os.path.join(_dist_root, '_internal', 'PySide6', 'plugins', 'tls')
 if os.path.isdir(_tls_dir):
     import shutil
@@ -146,3 +151,5 @@ for _dll_name in ('libssl-3-x64.dll', 'libcrypto-3-x64.dll'):
     if os.path.isfile(_dll_path):
         os.remove(_dll_path)
         print(f'[TDTRadioVIP_Free] Quitado {_dll_name} (copia de OpenSSL de Qt, no usada)')
+
+regenerate_vlc_plugin_cache(VLC_DIR, _dist_root)

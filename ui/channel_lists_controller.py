@@ -12,6 +12,8 @@ con la reproducción, el cromado de ventana y el resto de secciones.
 
 Coder By X@R
 """
+from collections import OrderedDict
+
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtWidgets import QListWidget, QListWidgetItem
 
@@ -25,6 +27,15 @@ from ui.widgets import (
     ROLE_CUSTOM, ROLE_DATA, ROLE_FAV, ROLE_HEALTH, ROLE_LOGO, ROLE_LOGO_REQUESTED,
     ROLE_PLAYING, ChannelDelegate,
 )
+
+
+# Filas que conservan su logo decodificado a la vez. Cada fila guardaba su
+# QPixmap para siempre: al recorrer un catálogo de miles de canales la
+# memoria de logos crecía sin tope aunque LogoLoader limite su propia caché.
+# Una fila expulsada vuelve a pedir su logo al verse de nuevo (sale de la
+# caché en memoria de LogoLoader o del disco, sin red). Muy por encima de
+# las filas que caben en pantalla.
+MAX_ROWS_WITH_LOGO = 1024
 
 
 def _health_tooltip(health: dict | None) -> str:
@@ -43,8 +54,35 @@ class ChannelListsController:
 
     def __init__(self, window):
         self.win = window
+        # id(entrada) -> item, de la fila con logo más antigua a la más nueva.
+        # Guardar el item mantiene viva su entrada, así que el id no se reutiliza.
+        self._rows_with_logo: OrderedDict = OrderedDict()
 
     # ---------- Logos ----------
+
+    def _remember_row_logo(self, item) -> None:
+        clave = id(getattr(item, "entry", item))
+        self._rows_with_logo[clave] = item
+        self._rows_with_logo.move_to_end(clave)
+        while len(self._rows_with_logo) > MAX_ROWS_WITH_LOGO:
+            _, antiguo = self._rows_with_logo.popitem(last=False)
+            self._drop_row_logo(antiguo)
+
+    @staticmethod
+    def _drop_row_logo(item) -> None:
+        entry = getattr(item, "entry", None)
+        if entry is not None:
+            # Fila de un catálogo ChannelListModel; si la lista ya se repobló,
+            # la entrada no está en el modelo y se limpia directamente.
+            entry.pop(ROLE_LOGO, None)
+            entry.pop(ROLE_LOGO_REQUESTED, None)
+            item.model.set_entry_data(entry, ROLE_LOGO, None)
+            return
+        try:
+            item.setData(ROLE_LOGO, None)
+            item.setData(ROLE_LOGO_REQUESTED, False)
+        except RuntimeError:
+            pass  # QListWidgetItem de una lista ya vaciada
 
     def request_logo(self, url: str, item: QListWidgetItem, list_widget: QListWidget):
         if not url:
@@ -52,6 +90,7 @@ class ChannelListsController:
 
         def _on_ready(pixmap):
             item.setData(ROLE_LOGO, pixmap)
+            self._remember_row_logo(item)
             # No se repinta toda la lista por cada logo: con catálogos de
             # miles de entradas eso convertía una cola de red controlada en
             # miles de repintados completos. Las filas fuera de pantalla se
@@ -490,7 +529,7 @@ class ChannelListsController:
     def filter_current_list(self):
         win = self.win
         current_widget = win.stack.currentWidget()
-        text = win.search_box.text().strip().lower()
+        text = win.search_box.text().strip().casefold()
         if isinstance(current_widget, ChannelListView):
             self._filter_catalog(current_widget, text)
         elif isinstance(current_widget, QListWidget):
@@ -509,7 +548,7 @@ class ChannelListsController:
 
         def matches(entry):
             data = entry.get(ROLE_DATA) or {}
-            if text not in data.get("name", "").lower():
+            if text not in view.model().search_name(entry):
                 return False
             if sidebar_groups is not None and data.get("group") not in sidebar_groups:
                 return False
@@ -535,7 +574,7 @@ class ChannelListsController:
             for i in range(list_widget.count()):
                 item = list_widget.item(i)
                 data = item.data(ROLE_DATA) or {}
-                visible = text in data.get("name", "").lower()
+                visible = text in data.get("name", "").casefold()
                 if folder == "Sin carpeta":
                     visible = visible and not data.get("group")
                 elif folder not in (None, "Todas las carpetas"):

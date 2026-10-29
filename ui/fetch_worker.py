@@ -13,9 +13,10 @@ Coder By X@R
 import threading
 from typing import Iterable
 
-from PySide6.QtCore import QCoreApplication, QEventLoop, QThread, Qt, Signal, Slot
+from PySide6.QtCore import QThread, Qt, Signal, Slot
 
 from core.logger import get_logger
+from ui.event_pump import pump_events_without_input
 
 log = get_logger(__name__)
 
@@ -64,21 +65,19 @@ class ActiveWorkerRegistry:
             return True
 
 
-def process_events_during_shutdown() -> None:
-    """Procesa callbacks de limpieza sin aceptar acciones nuevas del usuario."""
-    application = QCoreApplication.instance()
-    if application is not None:
-        application.processEvents(
-            QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents
-        )
+# Procesa callbacks de limpieza sin aceptar acciones nuevas del usuario.
+process_events_during_shutdown = pump_events_without_input
 
 
 def shutdown_workers(workers: Iterable[QThread], wait_slice_ms: int = 50) -> None:
     """Solicita el cierre cooperativo de todos los hilos y espera su final."""
     active_workers = [worker for worker in workers if worker is not None]
     for worker in active_workers:
-        if isinstance(worker, FetchWorker):
-            worker.cancel()
+        # Los workers de descarga/conversión tienen su propio cancel() (que
+        # además mata yt-dlp/ffmpeg); el resto solo entiende la interrupción.
+        cancel = getattr(worker, "cancel", None)
+        if callable(cancel):
+            cancel()
         else:
             worker.requestInterruption()
 

@@ -21,7 +21,7 @@ APP_ORG = "CoderByXOR"
 # carpeta propia, para poder probarla junto a 7.5.11 sin modificar sus datos.
 APP_DATA_NAME = "TDTRadioVIP_7.6.0"
 LEGACY_APP_ORG = "CoderByXOR"
-APP_VERSION = "8.6.37"
+APP_VERSION = "8.6.39"
 # Correo al que el cliente envía su ID de equipo para pedir el código de
 # activación. Centralizado aquí para no tener que buscarlo por el código
 # si algún día cambia.
@@ -243,7 +243,28 @@ def _existing_profile_name(name: str) -> Optional[str]:
     )
 
 
+# Perfil fijado para esta sesión (ver pin_session_profile). Mientras es None
+# se lee el de los ajustes en cada llamada (arranque, splash, tests).
+_session_profile: Optional[str] = None
+
+
+def pin_session_profile() -> str:
+    """
+    Fija el perfil activo para el resto de la sesión. Se llama justo antes
+    de crear la ventana principal: cambiar de perfil en Configuración solo
+    guarda el del próximo arranque. Sin esto, favoritos, catálogo y
+    grabaciones de la sesión (cargados del perfil viejo) se guardaban en
+    los archivos del perfil nuevo en cuanto se tocaban.
+    """
+    global _session_profile
+    _session_profile = None
+    _session_profile = get_current_profile()
+    return _session_profile
+
+
 def get_current_profile() -> str:
+    if _session_profile is not None:
+        return _session_profile
     profile = load_settings().get("active_profile", DEFAULT_PROFILE)
     try:
         profile = _validate_profile_name(profile)
@@ -322,6 +343,8 @@ def rename_profile(current: str, new_name: str) -> str:
         raise ValueError("Perfil de origen inválido.")
     if current.casefold() == DEFAULT_PROFILE.casefold():
         raise ValueError("El perfil Default no se puede renombrar.")
+    if _session_profile is not None and current.casefold() == _session_profile.casefold():
+        raise ValueError("Es el perfil en uso: no se puede renombrar hasta reiniciar con otro perfil.")
     new_name = _validate_profile_name(new_name)
     if _existing_profile_name(new_name) is not None:
         raise ValueError("Ya existe un perfil con ese nombre.")
@@ -340,6 +363,8 @@ def delete_profile(name: str) -> None:
         raise ValueError("Perfil inexistente.")
     if name.casefold() == DEFAULT_PROFILE.casefold():
         raise ValueError("El perfil Default no se puede eliminar.")
+    if _session_profile is not None and name.casefold() == _session_profile.casefold():
+        raise ValueError("Es el perfil en uso: cambia de perfil y reinicia la app antes de eliminarlo.")
     path = _profile_dir_for(name)
     if path.exists():
         shutil.rmtree(path)
@@ -424,18 +449,6 @@ def get_font_paths() -> tuple[str, ...]:
     )
     return tuple(ruta for ruta in candidatos if os.path.isfile(ruta))
 
-
-@lru_cache(maxsize=1)
-def get_font_path() -> Optional[str]:
-    """
-    Ruta a la tipografía Inter empaquetada (resources/fonts/Inter-Variable.ttf),
-    o None si no se encuentra. Mismo patrón que get_icon_path()/get_ffmpeg_dir().
-    """
-    base_dir = getattr(
-        sys, "_MEIPASS", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    )
-    candidato = os.path.join(base_dir, "resources", "fonts", "Inter-Variable.ttf")
-    return candidato if os.path.isfile(candidato) else None
 
 
 def load_settings() -> dict:

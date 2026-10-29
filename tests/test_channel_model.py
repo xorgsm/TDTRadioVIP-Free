@@ -47,3 +47,22 @@ def test_channel_model_sort_keeps_roles_and_view_adapter_compatible():
     assert item.data(ROLE_DATA)["name"] == "Zulu"
     item.setData(ROLE_HEALTH, "slow")
     assert model.data(model.index(1, 0), ROLE_HEALTH) == "slow"
+
+
+def test_search_names_survive_sort_rename_and_reload():
+    app = _app()
+    model = ChannelListModel()
+    first, second = _entry("Straße"), _entry("Ágora")
+    model.set_entries([first, second])
+    model.sort_entries(lambda entry: entry[ROLE_DATA]["name"])
+    model.set_filter(lambda entry: "STRASSE".casefold() in model.search_name(entry))
+    assert model.rowCount() == 1
+    assert model.entry_at(0) is first
+    model.set_entry_data(first, ROLE_DATA, {"name": "Nueva"})
+    assert model.search_name(first) == "nueva"
+    model.set_filter(lambda entry: "strasse" in model.search_name(entry))
+    assert model.rowCount() == 0
+    model.set_entries([second])
+    assert model.search_name(first) == ""
+    assert model.search_name(second) == "ágora"
+    assert app is not None

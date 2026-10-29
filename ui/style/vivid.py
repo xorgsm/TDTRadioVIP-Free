@@ -1,25 +1,27 @@
 """
 Tipografía y color "vivo" del tema.
 
-Bloque QSS que `build_style` añade al final: títulos, menús y ventanas en
-serif (Playfair Display), botones de opciones más grandes y, solo en el
+Bloque QSS que `build_style` añade al final: títulos en Playfair Display,
+menús y formularios en Manrope, botones amplios y, solo en el
 tema oscuro, fondos con degradados tintados que siguen el color de acento
 y el color propio de cada sección.
 """
 
 from ui import palette
 
+BODY_FONT = "'Manrope', 'Inter', 'Segoe UI', sans-serif"
+
 DISPLAY_FONT = "'Playfair Display', 'Georgia', serif"
 
 # Tinte violeta del extremo oscuro de los degradados (el azul noche base
 # vira suavemente hacia él).
-_DEEP_BLUE = "#0b1d33"
-_DEEP_NAVY = "#0a1628"
-_DEEP_VIOLET = "#120f2a"
-_PLAYER_BLUE = "#16315a"
-_PLAYER_VIOLET = "#1b1240"
-_SECTION_GLOW_ALPHA = 120
-_SECTION_HOVER_ALPHA = 55
+_DEEP_BLUE = "#102f59"
+_DEEP_NAVY = "#101c3d"
+_DEEP_VIOLET = "#291747"
+_PLAYER_BLUE = "#164779"
+_PLAYER_VIOLET = "#391c61"
+_SECTION_GLOW_ALPHA = 110
+_SECTION_HOVER_ALPHA = 75
 
 _TITLE_SELECTORS = (
     "QLabel#sectionTitle",
@@ -48,7 +50,7 @@ def _titles_block() -> str:
 """
 
 
-# Menús desplegables y ventanas que se abren: letra serif, algo más grande.
+# Menús y formularios: sans-serif legible; serif reservada para títulos.
 _MENU_FONT_SELECTORS = (
     "QMenu",
     "QMenu::item",
@@ -74,12 +76,12 @@ def _menus_font_block() -> str:
     selectors = ",\n".join(_MENU_FONT_SELECTORS)
     return f"""
 {selectors} {{
-    font-family: {DISPLAY_FONT};
-    font-size: 11pt;
-    font-weight: 600;
+    font-family: {BODY_FONT};
+    font-size: 10pt;
+    font-weight: 500;
 }}
 QMenu::item {{
-    padding: 12px 20px;
+    padding: 9px 16px;
 }}
 """
 
@@ -150,6 +152,12 @@ QWidget#navTopBar {{
         stop:0 {shades['soft']}, stop:0.5 {_DEEP_NAVY}, stop:1 {_DEEP_VIOLET});
     border-bottom: 1px solid {shades['dark']};
 }}
+QFrame#homeHero {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 #164779, stop:0.55 #242c60, stop:1 #391c61);
+    border: 1px solid {palette.BORDER_STRONG};
+    border-radius: 20px;
+}}
 QFrame#playerFrame {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
         stop:0 {_PLAYER_BLUE}, stop:1 {_PLAYER_VIOLET});
@@ -186,7 +194,7 @@ QToolButton#navButton[uiVariant="{variant}"]:checked {{
 
 def vivid_block(shades: dict, theme: str, section_colors: dict) -> str:
     """QSS de tipografía, tamaño de botones y, en tema oscuro, degradados."""
-    block = _titles_block() + _menus_font_block() + _bigger_buttons_block()
+    block = _menus_font_block() + _titles_block() + _bigger_buttons_block()
     if theme != "light":
         block += _gradients_block(shades, section_colors)
     return block

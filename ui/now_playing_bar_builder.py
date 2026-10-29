@@ -183,7 +183,7 @@ def build_now_playing_bar(win) -> QFrame:
     win.mute_btn.setCheckable(True)
     win.mute_btn.setToolTip("Silenciar")
     win.mute_btn.setAccessibleName("Silenciar")
-    win.mute_btn.clicked.connect(win.playback.toggle_mute)
+    win.mute_btn.clicked.connect(win.playback.apply_mute)
     right_group.addWidget(win.mute_btn)
 
     win.now_controls_separator = make_separator()

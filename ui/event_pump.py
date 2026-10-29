@@ -1,6 +1,9 @@
-"""Bombeo de eventos de Qt durante esperas largas en el hilo de la interfaz."""
-from PySide6.QtCore import QEventLoop
-from PySide6.QtWidgets import QApplication
+"""Bombeo de eventos de Qt durante esperas largas en el hilo de la interfaz.
+
+Único sitio que lo hace: ui.fetch_worker.process_events_during_shutdown es
+esta misma función con otro nombre.
+"""
+from PySide6.QtCore import QCoreApplication, QEventLoop
 
 
 def pump_events_without_input() -> None:
@@ -11,4 +14,5 @@ def pump_events_without_input() -> None:
     cierre una grabación, el usuario no puede volver a pulsar "grabar" o
     cerrar la ventana a mitad de la parada y reentrar en el mismo código.
     """
-    QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+    if QCoreApplication.instance() is not None:
+        QCoreApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)

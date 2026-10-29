@@ -44,3 +44,36 @@ def parse_xml_safely(content: bytes) -> ET.Element:
     """Como ``ET.fromstring``, pero lanza ``ET.ParseError`` ante entidades."""
     _reject_entities(content)
     return ET.fromstring(content)
+
+
+_FEED_CHUNK = 1 << 20
+
+
+def iter_top_level_elements(content: bytes):
+    """
+    Recorre los hijos directos del raíz uno a uno, sin construir el árbol
+    completo, con la misma protección contra entidades que parse_xml_safely.
+
+    Cada elemento devuelto se vacía y se suelta del raíz en cuanto quien
+    llama pide el siguiente: una guía XMLTV de 35 MB pasaba de ~240 MB de
+    RAM con ET.fromstring a unos pocos MB así. Lanza ET.ParseError si el
+    documento está mal formado (puede ser tras haber devuelto elementos).
+    """
+    _reject_entities(content)
+    parser = ET.XMLPullParser(events=("start", "end"))
+    root = None
+    depth = 0
+    for offset in range(0, len(content), _FEED_CHUNK):
+        parser.feed(content[offset:offset + _FEED_CHUNK])
+        for event, element in parser.read_events():
+            if event == "start":
+                depth += 1
+                if root is None:
+                    root = element
+                continue
+            depth -= 1
+            if depth == 1:
+                yield element
+                element.clear()
+                root.clear()
+    parser.close()

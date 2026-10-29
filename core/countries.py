@@ -81,14 +81,3 @@ COUNTRIES: List[Tuple[str, str]] = [
 COUNTRIES.sort(key=lambda item: item[1])
 
 DEFAULT_COUNTRY = "ES"
-
-_BY_CODE = {code: name for code, name in COUNTRIES}
-
-
-def country_name(code: str) -> str:
-    """Nombre en español de un código, o el propio código si no está en la lista."""
-    return _BY_CODE.get((code or "").upper(), code or DEFAULT_COUNTRY)
-
-
-def is_known(code: str) -> bool:
-    return (code or "").upper() in _BY_CODE

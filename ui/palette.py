@@ -26,16 +26,14 @@ un estado local que no forma parte del sistema visual común.
 """
 
 # ── Fondos ───────────────────────────────────────────────────────────────
-# Escala navy del rediseño 7.5.8 (mockup ui-diseno/panel principal.pen):
-# base #0b0c0f y paneles #14161b, con los pasos superiores derivados en el
-# mismo matiz para conservar la jerarquía card < alt < hover.
-BG_ROOT = "#0b0c0f"
-BG_PANEL = "#14161b"
-BG_CARD = "#1a1d23"
-BG_PANEL_ALT = "#21252c"
-BG_HOVER = "#292e37"
-BORDER = "#23262d"
-BORDER_STRONG = "#343944"
+# Escala azul noche: superficies diferenciadas y acentos luminosos.
+BG_ROOT = "#0b152b"
+BG_PANEL = "#122440"
+BG_CARD = "#193354"
+BG_PANEL_ALT = "#244267"
+BG_HOVER = "#2c4b70"
+BORDER = "#31547c"
+BORDER_STRONG = "#527aa6"
 
 # ── Texto ────────────────────────────────────────────────────────────────
 TEXT_PRIMARY = "#f2efe6"
@@ -44,14 +42,14 @@ TEXT_SECONDARY = "#bcc9da"
 # pero caía a 4.19:1 sobre BG_PANEL_ALT y 3.90:1 sobre BG_HOVER -- los dos
 # fondos más claros del stack, donde este tono también se usa como texto
 # real (filas con estado hover). Ahora >=4.53:1 sobre los cinco fondos.
-TEXT_MUTED = "#a6b5c7"
+TEXT_MUTED = "#c3d2e5"
 # Aclarado desde #687c93 (contraste WCAG AA: 3.36:1 sobre BG_PANEL, 2.95:1
 # sobre BG_CARD -- por debajo del mínimo de 4.5:1 para texto normal, y se
 # usaba como texto real en estados vacíos y metadatos, no como decoración).
 # Ahora >=4.58:1 sobre BG_ROOT/BG_PANEL/BG_CARD.
-TEXT_DIM = "#8e9daf"
+TEXT_DIM = "#b9cce2"
 
-# ── Acento de marca (dorado por defecto) ────────────────────────────────
+# ── Acento de marca (índigo por defecto) ────────────────────────────────
 ACCENT = "#7c6cff"
 ACCENT_LIGHT = "#a095ff"
 ACCENT_LIGHTER = "#c4bcff"
@@ -61,16 +59,16 @@ ACCENT_LIGHTER = "#c4bcff"
 # debajo del mínimo de 4.5:1 -- y es justo el color de los mensajes de
 # error reales, mediaStatus/now_subtitle/splash/EPG). Ahora >=4.57:1 sobre
 # BG_PANEL, BG_ROOT y los fondos de la rejilla EPG.
-DANGER = "#f26f6c"
-SUCCESS = "#42c985"
+DANGER = "#ff8589"
+SUCCESS = "#4ce3a0"
 
 # ── Acentos secundarios por función ─────────────────────────────────────
 # Cada función tiene su propio color para no confundirse visualmente entre
 # sí (cast ≠ favorito ≠ grabando ≠ apagado programado).
-ACCENT_CAST = "#31c7b2"
-ACCENT_SLEEP = "#9b7bea"
-ACCENT_INFO = "#55a7e8"
-ACCENT_CATEGORY_ORANGE = "#f39a55"
+ACCENT_CAST = "#25f2cf"
+ACCENT_SLEEP = "#c0a0ff"
+ACCENT_INFO = "#4dccff"
+ACCENT_CATEGORY_ORANGE = "#ffae45"
 
 # ── Guía EPG (rejilla de programación) ──────────────────────────────────
 # Celda del programa en emisión ahora mismo vs. resto de celdas de la

@@ -177,7 +177,11 @@ class M3UEditorDialog(QDialog):
                 include.setCheckState(Qt.Checked)
                 self.table.setItem(row, 0, include)
                 self.table.setItem(row, 1, QTableWidgetItem(channel.group))
-                self.table.setItem(row, 2, QTableWidgetItem(channel.name))
+                name_item = QTableWidgetItem(channel.name)
+                # Metadatos que la tabla no muestra pero que el export debe
+                # conservar (sin ellos se perdían EPG y logos al exportar).
+                name_item.setData(Qt.UserRole, {"tvg_id": channel.tvg_id, "logo": channel.logo})
+                self.table.setItem(row, 2, name_item)
                 self.table.setItem(row, 3, QTableWidgetItem(channel.url))
                 status = QTableWidgetItem("Pendiente")
                 status.setFlags(Qt.ItemIsEnabled)
@@ -331,10 +335,15 @@ class M3UEditorDialog(QDialog):
         for row in range(self.table.rowCount()):
             if self.table.item(row, 0).checkState() != Qt.Checked:
                 continue
-            name = self.table.item(row, 2).text().strip()
+            name_item = self.table.item(row, 2)
+            name = name_item.text().strip()
             url = self.table.item(row, 3).text().strip()
             if name and url:
-                entries.append({"name": name, "url": url, "group": self.table.item(row, 1).text().strip()})
+                meta = name_item.data(Qt.UserRole) or {}
+                entries.append({
+                    "name": name, "url": url, "group": self.table.item(row, 1).text().strip(),
+                    "tvg_id": meta.get("tvg_id", ""), "logo": meta.get("logo", ""),
+                })
         if not entries:
             QMessageBox.information(self, "Lista vacía", "No hay canales marcados para exportar.")
             return

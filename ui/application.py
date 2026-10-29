@@ -6,7 +6,7 @@ import sys
 from PySide6.QtGui import QFont, QFontDatabase, QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from core.config import APP_VERSION, get_font_paths, get_icon_path, load_settings
+from core.config import APP_VERSION, get_font_paths, get_icon_path, load_settings, pin_session_profile
 from core.single_instance import SingleInstanceGuard
 from player.vlc_player import vlc_disponible_al_arrancar
 from ui.main_window import MainWindow
@@ -120,6 +120,7 @@ def run_vip() -> int:
         splash.setWindowIcon(app_icon)
         splash.exec()
         activated = splash.activated
+    pin_session_profile()
     window = MainWindow(activated=activated)
     window.setWindowIcon(app_icon)
     guard.bind_activation(lambda: _bring_existing_window_to_front(window))
@@ -133,6 +134,7 @@ def run_free() -> int:
     if created is None:
         return 0
     app, app_icon, guard = created
+    pin_session_profile()
     window = MainWindow(activated=True, es_version_free=True)
     window.setWindowIcon(app_icon)
     guard.bind_activation(lambda: _bring_existing_window_to_front(window))

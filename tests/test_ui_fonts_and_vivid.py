@@ -74,10 +74,10 @@ def test_app_font_is_rendered_without_hinting(qt_app):
 
 
 @pytest.mark.parametrize("theme", ["dark", "light"])
-def test_menus_and_dialogs_use_playfair_display(theme):
+def test_menus_and_dialogs_use_manrope(theme):
     style = build_style("#c9a227", theme)
     block = re.findall(r"QMenu,[^{]*\{[^}]*\}", style)[-1]
-    assert "'Playfair Display', 'Georgia', serif" in block
+    assert "'Manrope', 'Inter', 'Segoe UI', sans-serif" in block
     assert "QMenu::item" in block and "QDialog QLabel" in block
 
 

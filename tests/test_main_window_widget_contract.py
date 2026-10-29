@@ -73,7 +73,7 @@ FROZEN_EXPECTED_ATTRS = {
     "record_btn", "recorder", "recordings_dir", "retry_btn", "search_box",
     "section_title", "seek_back_btn", "seek_fwd_btn",
     "set_live_badge_visible", "settings",
-    "sleep_btn", "stack", "stop_btn", "title_bar", "tracks_btn",
+    "sleep_btn", "stack", "stop_btn", "title_bar", "tracks_btn", "tray",
     "tv_channels_data", "tv_list",
     "tv_view_toggle", "updates", "volume_slider", "window_chrome",
 }

@@ -31,7 +31,7 @@ import requests
 from core.config import get_app_data_dir
 from core.http_limits import MAX_EPG_BYTES, fetch_limited
 from core.json_store import read_json, remove_stale_temporaries, write_json_atomic
-from core.safe_xml import parse_xml_safely
+from core.safe_xml import iter_top_level_elements
 
 # (conexión, lectura) y plazo total: la guía puede pesar cientos de MB (tope de
 # 256 MB, unos 11 minutos a ~3 Mbit/s), así que el plazo solo corta los casos
@@ -209,6 +209,68 @@ def _read_cache(cache_path, epg_url: str, wanted=None, *, allow_incomplete: bool
     return entry or {}
 
 
+def _parse_xmltv(content: bytes, wanted: Optional[FrozenSet[str]]) -> Dict[str, List[Programme]]:
+    """
+    XMLTV -> guía indexada por clave, en una sola pasada incremental (ver
+    core.safe_xml.iter_top_level_elements): el árbol completo de una guía
+    pública pesaba en RAM varias veces el tamaño del XML aunque solo se
+    quisieran unos pocos canales.
+
+    Un <programme channel="X"> se registra bajo TODAS las claves de su
+    <channel>: su id y todos sus <display-name> (algunas guías, como
+    EPG_dobleM, listan media docena de variantes del mismo canal: "La 1",
+    "La 1 HD", "La 1 SD"...), para que un tvg-id de la lista M3U que
+    coincida con cualquiera de ellas encuentre la programación igualmente.
+    """
+    claves_por_id_crudo: Dict[str, set] = {}
+    guide: Dict[str, List[Programme]] = {}
+    # XMLTV declara los <channel> antes que los <programme>; si alguna guía
+    # no lo hace, sus programas esperan aquí a conocer todas las claves.
+    sin_canal: Dict[str, List[Programme]] = {}
+
+    def registrar(channel_id: str, programme: Programme) -> None:
+        claves = claves_por_id_crudo.get(channel_id) or {channel_key(channel_id)}
+        for clave in claves:
+            if clave and (wanted is None or clave in wanted):
+                guide.setdefault(clave, []).append(programme)
+
+    for element in iter_top_level_elements(content):
+        if element.tag == "channel":
+            raw_id = element.get("id", "")
+            if not raw_id:
+                continue
+            candidatos = {raw_id}
+            for nombre_el in element.findall("display-name"):
+                if nombre_el.text:
+                    candidatos.add(nombre_el.text)
+            claves = {channel_key(c) for c in candidatos}
+            claves.discard("")
+            if claves:
+                claves_por_id_crudo[raw_id] = claves
+        elif element.tag == "programme":
+            channel_id = element.get("channel", "")
+            title_el = element.find("title")
+            desc_el = element.find("desc")
+            programme = Programme(
+                channel_id=channel_id,
+                # Ojo: un <title></title> vacío devuelve None, no "". Ese None
+                # llegaría hasta la interfaz y rompería al pintar el texto.
+                title=(title_el.text or "") if title_el is not None else "",
+                start=element.get("start", ""),
+                stop=element.get("stop", ""),
+                description=(desc_el.text or "") if desc_el is not None else "",
+            )
+            if channel_id in claves_por_id_crudo:
+                registrar(channel_id, programme)
+            else:
+                sin_canal.setdefault(channel_id, []).append(programme)
+
+    for channel_id, programmes in sin_canal.items():
+        for programme in programmes:
+            registrar(channel_id, programme)
+    return guide
+
+
 def fetch_epg(
     epg_url: str,
     force_refresh: bool = False,
@@ -241,49 +303,10 @@ def fetch_epg(
             epg_url, max_bytes=MAX_EPG_BYTES,
             timeout=EPG_TIMEOUT, deadline=EPG_DEADLINE_SECONDS,
         )
-        root = parse_xml_safely(content)
+        guide = _parse_xmltv(content, wanted)
     except (requests.RequestException, ET.ParseError):
         return _read_cache(cache_path, epg_url, wanted, allow_incomplete=True)
-
-    # Antes de leer los <programme>, se recogen las claves normalizadas de
-    # cada <channel> -- su id Y todos sus <display-name> (algunas guías,
-    # como EPG_dobleM, listan media docena de variantes del mismo canal:
-    # "La 1", "La 1 HD", "La 1 SD"...). Un <programme channel="X"> se
-    # registra bajo TODAS esas claves, para que un tvg-id de la lista M3U
-    # que coincida con cualquiera de ellas (el id crudo o cualquier
-    # display-name) encuentre la programación igualmente.
-    claves_por_id_crudo: Dict[str, set] = {}
-    for ch_el in root.findall("channel"):
-        raw_id = ch_el.get("id", "")
-        if not raw_id:
-            continue
-        candidatos = {raw_id}
-        for nombre_el in ch_el.findall("display-name"):
-            if nombre_el.text:
-                candidatos.add(nombre_el.text)
-        claves = {channel_key(c) for c in candidatos}
-        claves.discard("")
-        if claves:
-            claves_por_id_crudo[raw_id] = claves
-
-    guide: Dict[str, List[Programme]] = {}
-    for prog in root.findall("programme"):
-        channel_id = prog.get("channel", "")
-        title_el = prog.find("title")
-        desc_el = prog.find("desc")
-        programme = Programme(
-            channel_id=channel_id,
-            # Ojo: un <title></title> vacío devuelve None, no "". Ese None
-            # llegaría hasta la interfaz y rompería al pintar el texto.
-            title=(title_el.text or "") if title_el is not None else "",
-            start=prog.get("start", ""),
-            stop=prog.get("stop", ""),
-            description=(desc_el.text or "") if desc_el is not None else "",
-        )
-        claves = claves_por_id_crudo.get(channel_id) or {channel_key(channel_id)}
-        for clave in claves:
-            if clave and (wanted is None or clave in wanted):
-                guide.setdefault(clave, []).append(programme)
+    del content
 
     if guide or wanted is not None:
         _prepare_guide(guide)

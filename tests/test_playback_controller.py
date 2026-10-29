@@ -514,3 +514,38 @@ def test_manual_recording_starts_and_schedules_alive_check(ctrl, win, timers, mo
     win.recorder.start.assert_called_once_with("https://stream.test/la1", "La 1", kind="radio")
     win.record_btn.setChecked.assert_called_with(True)
     assert len(timers) == 1
+
+
+# --------------------------------------------------------------------------
+# Atajos (tecla M / Ctrl+D / barra de tareas) y temporizador de apagado
+# --------------------------------------------------------------------------
+
+def test_toggle_mute_from_shortcut_flips_the_button_state(ctrl, win):
+    estado = {"checked": False}
+    win.mute_btn.isChecked.side_effect = lambda: estado["checked"]
+    win.mute_btn.setChecked.side_effect = lambda value: estado.update(checked=value)
+
+    ctrl.toggle_mute()
+    win.player.set_muted.assert_called_with(True)
+    ctrl.toggle_mute()
+    win.player.set_muted.assert_called_with(False)
+
+
+def test_toggle_favorite_takes_button_state_from_storage(ctrl, win):
+    _playing(win)
+    pc_module.fav_store.is_favorite.return_value = True
+
+    ctrl.toggle_favorite_current()
+
+    win.fav_btn.setChecked.assert_called_with(True)
+
+
+def test_sleep_timeout_cancels_a_pending_reconnection(ctrl, win, timers):
+    _playing(win)
+    win._playback_token = 5
+
+    ctrl.on_sleep_timeout()
+    ctrl._retry_current_stream(5)
+
+    win.player.play.assert_not_called()
+    assert win._active_list is None

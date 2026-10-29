@@ -317,3 +317,32 @@ def test_window_closing_during_stop_cleans_up_and_starts_nothing_else(win):
     assert _statuses() == {"Siguiente": "pending"}
     win.recorder.start.assert_not_called()
     win.record_btn.setChecked.assert_not_called()
+
+
+def test_cancelling_the_active_scheduled_recording_stops_ffmpeg(win):
+    rec = recording_schedule.ScheduledRecording(
+        tvg_id="la1", channel_name="La 1", channel_url="https://stream.test/la1",
+        title="Telediario", start="20261029210000", stop="20261029220000", status="recording",
+    )
+    recording_schedule.add_scheduled(rec)
+    win._scheduled_recording_active = rec
+    win.recorder.is_recording = True
+
+    TrayReminderController(win).cancel_scheduled(rec.tvg_id, rec.title, rec.start)
+
+    win.recorder.stop.assert_called_once()
+    assert win._scheduled_recording_active is None
+    assert recording_schedule.load_scheduled() == []
+
+
+def test_cancelling_a_pending_reservation_does_not_touch_the_recorder(win):
+    rec = recording_schedule.ScheduledRecording(
+        tvg_id="la1", channel_name="La 1", channel_url="https://stream.test/la1",
+        title="Telediario", start="20261029210000", stop="20261029220000",
+    )
+    recording_schedule.add_scheduled(rec)
+
+    TrayReminderController(win).cancel_scheduled(rec.tvg_id, rec.title, rec.start)
+
+    win.recorder.stop.assert_not_called()
+    assert recording_schedule.load_scheduled() == []

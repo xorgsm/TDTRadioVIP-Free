@@ -718,3 +718,21 @@ def test_populate_tv_list_uses_the_custom_names_it_is_given_instead_of_reading_t
 
     flags = {(e[ROLE_DATA])["name"]: e[ROLE_CUSTOM] for e in _entries(win.tv_list)}
     assert flags == {"Del disco": False, "Recibido": True}
+
+
+def test_rows_beyond_the_logo_limit_release_their_pixmap(ctrl, win, monkeypatch):
+    """Recorrer un catálogo grande no deja un logo vivo por cada fila vista:
+    las más antiguas lo sueltan y vuelven a pedirlo si se ven otra vez."""
+    monkeypatch.setattr(clm, "MAX_ROWS_WITH_LOGO", 3)
+    ctrl.populate_tv_list([_channel(f"C{i}", logo=f"https://logo/{i}") for i in range(5)])
+    items = _items(win.tv_list)
+
+    for i, item in enumerate(items):
+        item.setData(ROLE_LOGO_REQUESTED, True)
+        ctrl.request_logo(f"https://logo/{i}", item, win.tv_list)
+        win.logo_loader.load.call_args.args[1](f"pixmap-{i}")
+
+    entradas = _entries(win.tv_list)
+    assert [e.get(ROLE_LOGO) for e in entradas] == [None, None, "pixmap-2", "pixmap-3", "pixmap-4"]
+    assert not entradas[0].get(ROLE_LOGO_REQUESTED)
+    assert entradas[4][ROLE_LOGO_REQUESTED] is True

@@ -4,6 +4,33 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
 ## [Sin publicar]
 
+## [8.6.39] — 2026-10-29
+
+Incluye también los cambios de la 8.6.38.
+
+### Changed
+- Colores más vivos; menús y formularios en Manrope (8.6.38).
+
+### Performance
+- Menos RAM al arrancar: VLC ya no carga sus ~360 plugins al abrir la app.
+- Ejecutable más pequeño (~273 MB): fuera del paquete componentes de Qt y VLC
+  que la app no usa.
+- La guía EPG se lee sin cargar el XML entero (pico al refrescarla de 266 a 70 MB).
+- Logos guardados ya reducidos y como mucho 1024 en memoria en el catálogo.
+- Los diálogos se destruyen al cerrarse en vez de quedarse en memoria.
+- Búsqueda de catálogos con índice de nombres normalizados (8.6.38).
+
+### Fixed
+- Cancelar una grabación programada que ya estaba grabando detiene ffmpeg.
+- Cambiar de perfil ya no mezcla los datos del perfil anterior con los del nuevo:
+  se aplica al reiniciar, y el perfil en uso no se puede borrar ni renombrar.
+- Entrar en el modo PiP y pulsar Ctrl+6 ya no provocan un error.
+- La tecla M, el botón de silencio de la barra de tareas y Ctrl+D alternan de verdad.
+- El temporizador de apagado ya no vuelve a reproducir por una reconexión pendiente.
+- El logo de un canal anterior ya no sustituye al del canal actual.
+- Exportar desde el editor M3U o editar un canal propio conserva el `tvg-id`, el
+  logo y los enlaces de respaldo.
+
 ## [8.6.37] — 2026-10-27
 
 ### Fixed

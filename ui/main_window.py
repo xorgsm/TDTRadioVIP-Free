@@ -609,12 +609,18 @@ class MainWindow(QMainWindow):
         self._filtro_atajos, self._atajos = register_shortcuts(
             self,
             self.playback,
-            lambda indice: self.nav_group.button(indice).click(),
+            self._go_to_section,
             self.window_chrome.toggle_player_fullscreen,
         )
 
 
     # ---------- Navegación ----------
+
+    def _go_to_section(self, indice: int) -> None:
+        # En Free no existe el botón de Descargas: Ctrl+6 no hace nada.
+        boton = self.nav_group.button(indice)
+        if boton is not None:
+            boton.click()
 
     def showEvent(self, event):
         super().showEvent(event)

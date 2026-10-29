@@ -6,16 +6,20 @@ import random
 from collections import OrderedDict, deque
 from functools import lru_cache
 
+import requests
 from PySide6.QtCore import QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QStyle, QStyledItemDelegate, QWidget
 
 from core.config import get_app_data_dir
 from core.http_limits import MAX_LOGO_BYTES, fetch_limited
+from core.logger import get_logger
 from core.net_safety import is_safe_download_url
 from ui import palette
 from ui.fetch_worker import FetchWorker
 from ui.icons import icon_radio, icon_tv
+
+log = get_logger(__name__)
 
 ROLE_DATA = Qt.UserRole
 ROLE_LOGO = Qt.UserRole + 1
@@ -30,6 +34,8 @@ ROLE_LOGO_REQUESTED = Qt.UserRole + 6
 LOGO_TIMEOUT = (3.05, 6)
 LOGO_DEADLINE_SECONDS = 20
 LOGO_MAX_REDIRECTS = 3
+# Lado máximo con que se guarda/decodifica un logo (el mayor uso es 150 px).
+LOGO_MAX_SIDE = 256
 
 # Paleta de acento por categoría (Deportes, Infantiles, Noticias...). No es
 # un mapeo fijo nombre->color: con canales internacionales las categorías
@@ -159,17 +165,28 @@ def _download_logo_bytes(url: str) -> bytes:
 def _read_logo_image(url, cache_file):
     """Lee/descarga y decodifica fuera de la UI; nunca crea un QPixmap.
 
-    El límite de tamaño reduce el coste de convertir y redondear en la UI
-    logos de origen muy grandes. El archivo original se conserva en disco.
+    En disco se guarda ya reducido a LOGO_MAX_SIDE: un logo de origen de
+    miles de píxeles se decodificaba entero en cada arranque solo para
+    pintarlo a 54 px, y ocupaba en la caché varias veces lo necesario.
     """
     image = QImage(str(cache_file)) if cache_file.is_file() else QImage()
     if image.isNull():
-        image = QImage.fromData(_download_logo_bytes(url))
+        try:
+            data = _download_logo_bytes(url)
+        except requests.RequestException as exc:
+            # 404/429/timeouts de servidores de logos son normales; no
+            # merecen un traceback entero en el log por cada uno.
+            log.debug("Logo no disponible (%s): %s", url, exc)
+            return None
+        image = QImage.fromData(data)
         if image.isNull():
             return None
+        if max(image.width(), image.height()) > LOGO_MAX_SIDE:
+            image = image.scaled(LOGO_MAX_SIDE, LOGO_MAX_SIDE, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         image.save(str(cache_file), "PNG")
-    if max(image.width(), image.height()) > 256:
-        return image.scaled(256, 256, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+    elif max(image.width(), image.height()) > LOGO_MAX_SIDE:
+        # Caché antigua guardada a tamaño original.
+        image = image.scaled(LOGO_MAX_SIDE, LOGO_MAX_SIDE, Qt.KeepAspectRatio, Qt.SmoothTransformation)
     return image
 
 

@@ -19,8 +19,11 @@ def _format_xmltv(value: str) -> str:
 
 
 class ScheduledRecordingsDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, cancel_scheduled=recording_schedule.remove_scheduled):
         super().__init__(parent)
+        # Quien abre el diálogo pasa la cancelación que además detiene una
+        # grabación en curso (TrayReminderController.cancel_scheduled).
+        self._cancel_scheduled = cancel_scheduled
         set_surface(self, "dialog")
         self.setWindowTitle("Centro de grabaciones programadas")
         self.setMinimumSize(620, 420)
@@ -77,5 +80,5 @@ class ScheduledRecordingsDialog(QDialog):
         identity = item.data(Qt.UserRole) if item else None
         if not identity:
             return
-        recording_schedule.remove_scheduled(*identity)
+        self._cancel_scheduled(*identity)
         self._reload()

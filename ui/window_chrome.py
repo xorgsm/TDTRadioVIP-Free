@@ -300,16 +300,12 @@ class WindowChrome:
         win.statusBar().setVisible(False)
         # El PiP funciona como mini reproductor: conserva transporte y mute,
         # pero esconde acciones secundarias para no saturar la ventana.
-        # BUG CONOCIDO (preexistente, no introducido por este refactor): en
-        # la edición Free win.cast_btn es None (ver
-        # ui.now_playing_bar_builder.build_now_playing_bar), así que
-        # widget.isVisible() revienta con AttributeError al entrar en PiP.
-        # Pendiente de arreglar en un cambio aparte -- no se toca aquí para
-        # no mezclar un fix de comportamiento con un refactor puro.
+        # En Free win.cast_btn es None (ver
+        # ui.now_playing_bar_builder.build_now_playing_bar).
         win._pip_compact_visibility = {
             widget: widget.isVisible() for widget in (
                 win.fav_btn, win.cast_btn, win.record_btn, win.more_btn, win.volume_slider,
-            )
+            ) if widget is not None
         }
         for widget in win._pip_compact_visibility:
             widget.setVisible(False)

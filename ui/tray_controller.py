@@ -170,6 +170,28 @@ class TrayReminderController:
                 lambda f=output_file, rec=r: self.check_scheduled_recording_alive(f, rec),
             )
 
+    def cancel_scheduled(self, tvg_id: str, title: str, start: str) -> None:
+        """
+        Quita una reserva. Si es la que se está grabando ahora mismo, para
+        antes ffmpeg: sin la reserva, check_scheduled_recordings() ya no
+        encontraría su hora de fin y la grabación seguiría indefinidamente.
+        """
+        win = self.win
+        activa = win._scheduled_recording_active
+        es_la_activa = (
+            activa is not None
+            and (activa.tvg_id, activa.title, activa.start) == (tvg_id, title, start)
+        )
+        if es_la_activa and win.recorder.is_recording and not win.recorder.is_stopping:
+            finished_file, _ok = win.recorder.stop(on_wait=pump_events_without_input)
+            win._scheduled_recording_active = None
+            if not getattr(win, "_is_closing", False):
+                win.record_btn.setChecked(False)
+                win.record_btn.setGraphicsEffect(None)
+                if finished_file:
+                    win.statusBar().showMessage(f"Grabación cancelada; guardado lo grabado: {finished_file}", 8000)
+        recording_schedule.remove_scheduled(tvg_id, title, start)
+
     def check_scheduled_recording_alive(self, expected_file, rec: "recording_schedule.ScheduledRecording"):
         """Mismo chequeo tardío que PlaybackController._check_recording_alive
         (ver ese método para el porqué), aplicado a una grabación que

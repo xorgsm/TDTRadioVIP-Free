@@ -29,6 +29,7 @@ class ChannelListModel(QAbstractListModel):
         self._visible_rows: list[int] = []
         self._entry_rows: dict[int, int] = {}
         self._visible_positions: dict[int, int] = {}
+        self._search_names: dict[int, str] = {}
 
     def rowCount(self, parent=QModelIndex()):
         if parent.isValid():
@@ -46,10 +47,18 @@ class ChannelListModel(QAbstractListModel):
     def set_entries(self, entries: Iterable[dict]) -> None:
         self.beginResetModel()
         self._entries = list(entries)
+        self._search_names = {
+            id(entry): (entry.get(ROLE_DATA) or {}).get("name", "").casefold()
+            for entry in self._entries
+        }
         self._visible_rows = list(range(len(self._entries)))
         self._entry_rows = {id(entry): row for row, entry in enumerate(self._entries)}
         self._visible_positions = {row: row for row in self._visible_rows}
         self.endResetModel()
+
+    def search_name(self, entry: dict) -> str:
+        """Nombre normalizado una vez por carga, no por cada pulsación."""
+        return self._search_names.get(id(entry), "")
 
     def entries(self) -> tuple[dict, ...]:
         return tuple(self._entries)
@@ -97,6 +106,8 @@ class ChannelListModel(QAbstractListModel):
         if source_row < 0:
             return False
         entry[role] = value
+        if role == ROLE_DATA:
+            self._search_names[id(entry)] = (value or {}).get("name", "").casefold()
         visible_row = self._visible_positions.get(source_row, -1)
         if visible_row >= 0:
             model_index = self.index(visible_row, 0)

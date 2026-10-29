@@ -33,6 +33,7 @@ from ui.fetch_worker import (
 )
 from ui.onboarding import OnboardingDialog
 from ui.toast import show_toast
+from ui.modal import run_modal
 
 log = get_logger(__name__)
 
@@ -73,7 +74,7 @@ class AppLifecycle:
 
     def show_onboarding(self):
         win = self.win
-        OnboardingDialog(win).exec()
+        run_modal(OnboardingDialog(win))
         win.settings["onboarding_shown"] = True
         if not cfg.save_settings(win.settings):
             QMessageBox.warning(

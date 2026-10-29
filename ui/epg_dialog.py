@@ -32,8 +32,12 @@ SLOT_WIDTH = 132
 class EpgDialog(QDialog):
     channel_chosen = Signal(str)  # tvg_id del canal elegido
 
-    def __init__(self, channels, epg_guide: dict, parent=None):
+    def __init__(self, channels, epg_guide: dict, parent=None,
+                 cancel_scheduled=recording_schedule.remove_scheduled):
         super().__init__(parent)
+        # Ver ScheduledRecordingsDialog: la cancelación debe poder parar una
+        # grabación en curso.
+        self._cancel_scheduled = cancel_scheduled
         set_surface(self, "dialog")
         self.setObjectName("epgDialog")
         self.setWindowTitle("Guía de programación")
@@ -281,7 +285,7 @@ class EpgDialog(QDialog):
                 ))
         elif elegido is accion_grabacion:
             if tiene_grabacion:
-                recording_schedule.remove_scheduled(tvg_id, title or "", start)
+                self._cancel_scheduled(tvg_id, title or "", start)
             else:
                 nueva = recording_schedule.ScheduledRecording(
                     tvg_id=tvg_id, channel_name=channel_name or "", channel_url=channel_url or "",

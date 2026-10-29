@@ -109,3 +109,31 @@ def test_analysis_refuses_a_redirect_to_an_internal_destination(monkeypatch, pub
 
     assert resultado == {"https://cdn.example/lista": "Destino no permitido"}
     assert pedidas == ["https://cdn.example/lista"]
+
+
+@pytest.fixture
+def qapp():
+    from PySide6.QtWidgets import QApplication
+
+    return QApplication.instance() or QApplication([])
+
+
+def test_export_keeps_epg_id_and_logo(qapp, tmp_path, monkeypatch):
+    from ui.dialogs import m3u_editor
+    from ui.dialogs.m3u_editor import M3UEditorDialog
+
+    canales = parse_m3u(
+        '#EXTM3U\n#EXTINF:-1 tvg-id="la1.es" tvg-logo="https://logo/la1.png" '
+        'group-title="TDT",La 1\nhttps://example.test/la1\n'
+    )
+    destino = tmp_path / "salida.m3u"
+    monkeypatch.setattr(m3u_editor.QFileDialog, "getSaveFileName", lambda *a, **k: (str(destino), ""))
+    monkeypatch.setattr(m3u_editor.QMessageBox, "information", lambda *a, **k: None)
+    dialogo = M3UEditorDialog()
+    dialogo._populate(canales)
+
+    dialogo._export()
+
+    texto = destino.read_text(encoding="utf-8")
+    assert 'tvg-id="la1.es"' in texto
+    assert 'tvg-logo="https://logo/la1.png"' in texto

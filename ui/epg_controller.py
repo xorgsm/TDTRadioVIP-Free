@@ -15,6 +15,7 @@ from core import epg as epg_module
 from ui.epg_dialog import EpgDialog
 from ui.fetch_worker import FetchWorker
 from ui.nav_sections import NAV_TV
+from ui.modal import run_modal
 
 
 class EpgController:
@@ -106,9 +107,11 @@ class EpgController:
                 "has hecho, o espera unos segundos a que termine de cargar."
             )
             return
-        dialog = EpgDialog(win.tv_channels_data, win.epg_guide, win)
+        dialog = EpgDialog(
+            win.tv_channels_data, win.epg_guide, win, cancel_scheduled=win.tray.cancel_scheduled,
+        )
         dialog.channel_chosen.connect(self.tune_to_tvg_id)
-        dialog.exec()
+        run_modal(dialog)
 
     def now_on_air_entries(self, limit: int = 12) -> list:
         """
