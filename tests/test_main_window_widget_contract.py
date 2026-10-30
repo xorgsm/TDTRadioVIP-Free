@@ -69,6 +69,7 @@ FROZEN_EXPECTED_ATTRS = {
     "now_logo",
     "now_playing_bar", "now_subtitle", "now_title", "pip_btn", "play_btn",
     "playback", "player", "player_context_label", "player_frame", "player_header_bar",
+    "player_idle_view",
     "player_stack", "queue", "queue_btn", "radio_list", "radio_stations_data",
     "record_btn", "recorder", "recordings_dir", "retry_btn", "search_box",
     "section_title", "seek_back_btn", "seek_fwd_btn",

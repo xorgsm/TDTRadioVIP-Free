@@ -16,6 +16,7 @@ from core.http_limits import MAX_LOGO_BYTES, fetch_limited
 from core.logger import get_logger
 from core.net_safety import is_safe_download_url
 from ui import palette
+from ui.catalog_labels import humanize_group, split_name_tags
 from ui.fetch_worker import FetchWorker
 from ui.icons import icon_radio, icon_tv
 
@@ -56,6 +57,20 @@ CATEGORY_PALETTE = (
 
 
 @lru_cache(maxsize=256)
+@lru_cache(maxsize=4096)
+def _display_name(name: str) -> tuple[str, tuple[str, ...]]:
+    """Nombre para pintar sin las etiquetas [Geo-blocked]/[Not 24/7] del
+    catálogo, que pasan traducidas al subtítulo (ver ui/catalog_labels.py).
+    Cacheado: paint() se llama por cada fila visible en cada repintado."""
+    clean, tags = split_name_tags(name or "")
+    return clean, tuple(tags)
+
+
+@lru_cache(maxsize=1024)
+def _display_group(group: str) -> str:
+    return humanize_group(group)
+
+
 def _category_hex(clave: str) -> str:
     idx = int(hashlib.md5(clave.encode("utf-8")).hexdigest(), 16) % len(CATEGORY_PALETTE)
     return CATEGORY_PALETTE[idx]
@@ -499,7 +514,7 @@ class ChannelGridDelegate(QStyledItemDelegate):
         font.setBold(True)
         painter.setFont(font)
         elided = painter.fontMetrics().elidedText(
-            data.get("name", ""), Qt.ElideRight, int(name_rect.width())
+            _display_name(data.get("name", ""))[0], Qt.ElideRight, int(name_rect.width())
         )
         painter.setPen(QColor(palette.ACCENT_LIGHTER) if is_playing else QColor("#ffffff"))
         painter.drawText(name_rect, Qt.AlignHCenter | Qt.AlignTop, elided)
@@ -538,7 +553,12 @@ class ChannelDelegate(QStyledItemDelegate):
     LOGO_SIZE = 54
 
     def sizeHint(self, option, index):
-        return QSize(option.rect.width(), self.ROW_HEIGHT)
+        # Ancho mínimo, no el del viewport: en modo lista Qt estira cada
+        # fila al ancho visible, y con setUniformItemSizes el primer ancho
+        # devuelto se quedaba fijo -- al estrechar la ventana la fila seguía
+        # siendo más ancha que la lista y salía una barra horizontal con
+        # los nombres cortados.
+        return QSize(1, self.ROW_HEIGHT)
 
     # ---------- capas de la tarjeta ----------
 
@@ -727,7 +747,8 @@ class ChannelDelegate(QStyledItemDelegate):
         name_font.setBold(True)
         painter.setFont(name_font)
         name_rect = QRectF(text_rect.left(), text_rect.top() + 10, text_rect.width(), 22)
-        elided = painter.fontMetrics().elidedText(data.get("name", ""), Qt.ElideRight, int(name_rect.width()))
+        display_name, name_tags = _display_name(data.get("name", ""))
+        elided = painter.fontMetrics().elidedText(display_name, Qt.ElideRight, int(name_rect.width()))
         # sombra sutil bajo el texto: un toque de profundidad barato, coherente
         # con el resto de la tarjeta.
         painter.setPen(QColor(0, 0, 0, 90))
@@ -756,7 +777,12 @@ class ChannelDelegate(QStyledItemDelegate):
         # "subtitle" (bitrate, fecha...) y nunca "group", y Favoritos solo
         # rellena "group" (la carpeta) y nunca "subtitle" -- ninguno de los
         # dos cambia de comportamiento con el orden invertido.
-        subtitle = data.get("subtitle") or data.get("group") or ""
+        # El group-title del catálogo llega en inglés y a veces combinado
+        # ("General;Public"): se muestra traducido; el valor real (para el
+        # color de categoría y los filtros) no cambia.
+        subtitle = data.get("subtitle") or (_display_group(data["group"]) if data.get("group") else "")
+        if name_tags:
+            subtitle = " · ".join(([subtitle] if subtitle else []) + list(name_tags))
         if subtitle:
             sub_font = QFont(painter.font())
             sub_font.setPointSize(8.5)

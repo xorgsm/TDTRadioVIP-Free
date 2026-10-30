@@ -3,14 +3,14 @@ reproducción) de MainWindow. Extraído de ui/main_window.py.
 """
 from PySide6.QtCore import QSize, Qt, QTimer
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QSlider,
+    QFrame, QHBoxLayout, QLabel, QPushButton, QSlider,
     QVBoxLayout,
 )
 
 from ui import icons as app_icons
 from ui import palette
 from ui.player_menus import open_more_controls_menu, open_tracks_menu
-from ui.visual import make_separator, set_variant
+from ui.visual import ElidedLabel, make_separator, set_variant
 
 
 def build_now_playing_bar(win) -> QFrame:
@@ -31,12 +31,10 @@ def build_now_playing_bar(win) -> QFrame:
 
     text_col = QVBoxLayout()
     text_col.setSpacing(2)
-    win.now_title = QLabel("Nada en reproducción")
+    win.now_title = ElidedLabel("Nada en reproducción")
     win.now_title.setObjectName("nowTitle")
-    win.now_title.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
-    win.now_subtitle = QLabel("Elige un canal o una emisora")
+    win.now_subtitle = ElidedLabel("Elige un canal o una emisora")
     win.now_subtitle.setObjectName("nowSubtitle")
-    win.now_subtitle.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
     text_col.addWidget(win.now_title)
     text_col.addWidget(win.now_subtitle)
     info_row.addLayout(text_col, stretch=1)

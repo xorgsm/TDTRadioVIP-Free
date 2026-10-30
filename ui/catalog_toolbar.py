@@ -38,13 +38,16 @@ def build_top_bar(win) -> QVBoxLayout:
     # ventanas estrechas. 110px cubre el título más largo ("Televisión")
     # con el tamaño de fuente actual; si aun así falta sitio, se elide
     # con "…" en vez de recortarse sin avisar.
-    win.section_title.setMinimumWidth(90)
-    win.section_title.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+    # Minimum: nunca por debajo de su texto completo -- antes, con 90px,
+    # "Televisión" se cortaba en "Televisió" a 860px. El hueco lo cede
+    # el stretch de la fila.
+    win.section_title.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
     title_row.addWidget(win.section_title)
 
     win.catalog_count_label = QLabel()
     win.catalog_count_label.setObjectName("catalogCount")
-    win.catalog_count_label.setMaximumWidth(110)
+    # Sin máximo fijo: con 110px "325 CANALES" salía como "325 CANAL".
+    win.catalog_count_label.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
     win.catalog_count_label.hide()
     title_row.addWidget(win.catalog_count_label)
     title_row.addStretch(1)

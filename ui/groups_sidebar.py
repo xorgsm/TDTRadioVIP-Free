@@ -20,8 +20,16 @@ from PySide6.QtWidgets import (
     QAbstractItemView, QLabel, QListWidget, QListWidgetItem, QMenu, QVBoxLayout, QWidget,
 )
 
+from ui.catalog_labels import humanize_group
+
 ROLE_GROUP = Qt.UserRole + 71
-ALL_LABEL = "(Todos)"
+ALL_LABEL = "Todos"
+# Ancho normal y ancho en ventanas estrechas (ver set_compact): a 860px
+# los 220px del panel dejaban la lista de canales en ~300px y cortaban
+# título, contador y nombres.
+WIDTH_FULL = 220
+WIDTH_COMPACT = 176
+MULTI_SELECT_HINT = "Ctrl/Shift + clic para elegir varios grupos"
 
 
 class GroupsSidebar(QWidget):
@@ -38,7 +46,7 @@ class GroupsSidebar(QWidget):
         self._updating = False
         self.setObjectName("groupsSidebar")
         self.setProperty("uiSurface", "sidebar")
-        self.setFixedWidth(220)
+        self.setFixedWidth(WIDTH_FULL)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 20, 12, 14)
@@ -48,12 +56,16 @@ class GroupsSidebar(QWidget):
         heading.setObjectName("libraryHeading")
         layout.addWidget(heading)
 
-        hint = QLabel("Ctrl/Shift + clic para elegir varios")
-        hint.setObjectName("libSectionTitle")
-        hint.setWordWrap(True)
-        layout.addWidget(hint)
+        # La ayuda de selección múltiple iba como texto fijo bajo el
+        # encabezado, ocupando dos líneas en cada visita; ahora es tooltip.
+        heading.setToolTip(MULTI_SELECT_HINT)
         layout.addSpacing(4)
         self.group_list = QListWidget()
+        self.group_list.setToolTip(MULTI_SELECT_HINT)
+        # En el ancho compacto los nombres largos se acortan con "…"; el
+        # texto completo con su contador queda en el tooltip de cada fila.
+        self.group_list.setTextElideMode(Qt.ElideRight)
+        self.group_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.group_list.setObjectName("groupsSidebarList")
         self.group_list.setFrameShape(QListWidget.NoFrame)
         self.group_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -89,6 +101,9 @@ class GroupsSidebar(QWidget):
         if menu.exec(self.group_list.viewport().mapToGlobal(pos)) == delete_action:
             self._on_delete_groups(names)
 
+    def set_compact(self, compact: bool) -> None:
+        self.setFixedWidth(WIDTH_COMPACT if compact else WIDTH_FULL)
+
     # ---------- Poblado ----------
 
     def set_groups(self, counts: Dict[str, int]):
@@ -108,8 +123,13 @@ class GroupsSidebar(QWidget):
             self.group_list.addItem(item_all)
             rows_by_name = {}
             for name in sorted(counts, key=lambda g: -counts[g]):
-                item = QListWidgetItem(f"{name}  ({counts[name]})")
+                # Se muestra traducido ("Undefined" -> "Sin categoría",
+                # "General;Public" -> "General · Público"); ROLE_GROUP
+                # conserva el nombre real, que es el que filtra.
+                label = f"{humanize_group(name)}  ({counts[name]})"
+                item = QListWidgetItem(label)
                 item.setData(ROLE_GROUP, name)
+                item.setToolTip(label)
                 self.group_list.addItem(item)
                 rows_by_name[name] = self.group_list.count() - 1
             rows = [rows_by_name[n] for n in previous if n in rows_by_name] if previous else []

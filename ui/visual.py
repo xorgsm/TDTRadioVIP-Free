@@ -1,7 +1,8 @@
 """Helpers visuales compartidos, sin lógica de negocio."""
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QFrame, QGraphicsDropShadowEffect, QWidget
+from PySide6.QtWidgets import QFrame, QGraphicsDropShadowEffect, QLabel, QSizePolicy, QWidget
 
 
 VALID_VARIANTS = frozenset({
@@ -57,6 +58,43 @@ def set_surface(widget: QWidget, surface: str) -> str:
     safe = surface if surface in VALID_SURFACES else "default"
     _set_dynamic(widget, "uiSurface", safe)
     return safe
+
+
+class ElidedLabel(QLabel):
+    """
+    QLabel de una línea que acorta su texto con "…" al ancho disponible
+    en vez de recortarlo a mitad de letra ("Nada en reproducci"). text()
+    sigue devolviendo el texto completo, que además va al tooltip cuando
+    no cabe.
+    """
+
+    def __init__(self, text: str = "", parent=None):
+        super().__init__(parent)
+        self._full_text = ""
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.setText(text)
+
+    def setText(self, text: str) -> None:  # noqa: N802 - API de Qt
+        self._full_text = text or ""
+        self._apply_elide()
+
+    def text(self) -> str:
+        return self._full_text
+
+    def resizeEvent(self, event):  # noqa: N802 - API de Qt
+        super().resizeEvent(event)
+        self._apply_elide()
+
+    def _apply_elide(self) -> None:
+        width = self.contentsRect().width()
+        # Antes del primer layout el ancho aún es 0: se deja el texto entero
+        # para que sizeHint() calcule bien la altura.
+        shown = (
+            self.fontMetrics().elidedText(self._full_text, Qt.ElideRight, width)
+            if width > 0 else self._full_text
+        )
+        QLabel.setText(self, shown)
+        self.setToolTip(self._full_text if shown != self._full_text else "")
 
 
 def make_separator() -> QFrame:

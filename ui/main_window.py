@@ -57,6 +57,9 @@ from ui.widgets import ChannelDelegate, ChannelGridDelegate, LogoLoader
 from ui.nav_sections import NAV_HOME
 
 DEFAULT_DOWNLOADS_DIRNAME = "TDT Radio VIP"
+# Por debajo de este ancho de ventana el panel de grupos de TV pasa a su
+# ancho compacto (ver GroupsSidebar.set_compact).
+GROUPS_SIDEBAR_COMPACT_BELOW = 1100
 
 # ---------------------------------------------------------------------------
 # Mapa de responsabilidades extraídas de MainWindow (refactor de
@@ -571,6 +574,15 @@ class MainWindow(QMainWindow):
             self.home.update_home_compact(event.size().width())
         if obj is getattr(self, "nav_top", None) and event.type() == QEvent.Resize:
             update_nav_top_compact(self, event.size().width())
+            # nav_top ocupa todo el ancho de la ventana: sirve también de
+            # referencia para estrechar el panel de grupos de TV.
+            compact = event.size().width() < GROUPS_SIDEBAR_COMPACT_BELOW
+            if hasattr(self, "groups_sidebar"):
+                self.groups_sidebar.set_compact(compact)
+            if compact != getattr(self, "_catalog_header_compact", False):
+                self._catalog_header_compact = compact
+                if hasattr(self, "catalog"):
+                    self.catalog.update_catalog_count()
         result = self.window_chrome.event_filter(obj, event)
         if result is None:
             return super().eventFilter(obj, event)

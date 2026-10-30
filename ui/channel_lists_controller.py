@@ -22,6 +22,7 @@ from core import epg as epg_module
 from core import favorites as fav_store
 from core import radio as radio_stations
 from core.stream_health_store import StreamHealthStore, is_health_stale, matches_health_filter
+from ui.catalog_labels import humanize_group
 from ui.channel_model import ChannelListView
 from ui.widgets import (
     ROLE_CUSTOM, ROLE_DATA, ROLE_FAV, ROLE_HEALTH, ROLE_LOGO, ROLE_LOGO_REQUESTED,
@@ -220,7 +221,10 @@ class ChannelListsController:
             # ChannelDelegate.paint, que prioriza "subtitle" sobre "group";
             # el punto de color de la categoría sale de "group").
             epg_now = self._epg_now_text(ch.tvg_id)
-            subtitle = f"{ch.group} · {epg_now}" if ch.group and epg_now else (epg_now or ch.group)
+            # La categoría se muestra traducida ("Public;Weather" ->
+            # "Público · Tiempo"); "group" conserva el valor real.
+            group_label = humanize_group(ch.group) if ch.group else ""
+            subtitle = f"{group_label} · {epg_now}" if group_label and epg_now else (epg_now or group_label)
             data = {
                 "type": "tv", "name": ch.name, "url": ch.url,
                 "logo": ch.logo, "tvg_id": ch.tvg_id, "group": ch.group,
@@ -309,7 +313,7 @@ class ChannelListsController:
         def update_entry(item):
             data = item.get(ROLE_DATA) or {}
             epg_now = self._epg_now_text(data.get("tvg_id", ""))
-            group = data.get("group") or ""
+            group = humanize_group(data["group"]) if data.get("group") else ""
             subtitle = f"{group} · {epg_now}" if group and epg_now else (epg_now or group)
             if data.get("subtitle") == subtitle:
                 return False

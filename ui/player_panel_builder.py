@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 
 from player.vlc_player import VLCPlayer
 from ui.now_playing_bar_builder import build_now_playing_bar
+from ui.player_idle_view import PlayerIdleView
 from ui.radio_hero import RadioHeroWidget
 from ui.visual import set_variant
 
@@ -79,6 +80,18 @@ def build_player_panel(win) -> QWidget:
     win.player.meta_changed.connect(win.equalizer.set_now_playing)
     win.player_stack.addWidget(win.player)
     win.player_stack.addWidget(win.equalizer)
+    # Mientras no suena nada se muestra la vista de reposo en vez del
+    # lienzo negro de libVLC (ver ui/player_idle_view.py). play() cambia
+    # a player/equalizer como siempre; stop_playback() vuelve aquí.
+    win.player_idle_view = PlayerIdleView(
+        on_activate=lambda entry: win.home.activate_home_entry(entry),
+        on_search=lambda: win.dialogs.open_command_palette(),
+    )
+    # Inicio ya se pobló antes de construir este panel (on_nav_changed en
+    # _build_ui), así que la primera carga del historial se hace aquí.
+    win.player_idle_view.refresh(win.history, win.favorites)
+    win.player_stack.addWidget(win.player_idle_view)
+    win.player_stack.setCurrentWidget(win.player_idle_view)
     frame_layout.addWidget(win.player_stack, stretch=1)
 
     layout.addWidget(win.player_frame, stretch=1)

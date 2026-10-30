@@ -4,6 +4,22 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
 ## [Sin publicar]
 
+## [8.6.40] — 2026-10-30
+
+### Added
+- Vista de reposo del reproductor: sin nada en reproducción, el área de vídeo
+  ofrece volver a la última emisión, buscar (Ctrl+K) y hasta cuatro recientes o
+  favoritos, en lugar del rectángulo negro.
+
+### Changed
+- Categorías del catálogo de TV en español ("Sin categoría", "General · Público")
+  y etiquetas [Geo-blocked] / [Not 24/7] traducidas en el subtítulo.
+- En Inicio, la tarjeta de reproducción solo aparece mientras suena algo.
+
+### Fixed
+- A 860 × 580 ya no se cortan el título de la sección, el contador de canales,
+  "Ahora suena" ni los nombres de canal (sin scroll horizontal).
+
 ## [8.6.39] — 2026-10-29
 
 Incluye también los cambios de la 8.6.38.

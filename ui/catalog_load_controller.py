@@ -285,11 +285,17 @@ class CatalogLoadController:
         win = self.win
         if not hasattr(win, "catalog_count_label"):
             return
+        # En ventanas estrechas solo la cifra: "325 CANALES" junto al título
+        # y la Guía no cabía y cortaba "Televisión" (ver
+        # MainWindow.eventFilter). El texto completo queda en el tooltip.
+        compact = getattr(win, "_catalog_header_compact", False)
         if win._current_nav_id == NAV_TV:
-            win.catalog_count_label.setText(f"{len(win.tv_channels_data)} CANALES")
+            total, unidad = len(win.tv_channels_data), "CANALES"
         elif win._current_nav_id == NAV_RADIO:
-            win.catalog_count_label.setText(f"{len(win.radio_stations_data)} EMISORAS")
+            total, unidad = len(win.radio_stations_data), "EMISORAS"
         else:
             win.catalog_count_label.hide()
             return
+        win.catalog_count_label.setText(str(total) if compact else f"{total} {unidad}")
+        win.catalog_count_label.setToolTip(f"{total} {unidad.lower()}")
         win.catalog_count_label.show()

@@ -60,23 +60,31 @@ class HomeController:
     def _refresh_home_now_playing(self):
         """Sincroniza la tarjeta de portada con el reproductor real."""
         win = self.win
+        self._refresh_player_idle_view()
         if not hasattr(win, "home_now_title"):
             return
+        # Sin nada en reproducción, "Volver a…" y Buscar ya los ofrece la
+        # vista de reposo del área de emisión: la tarjeta de portada solo
+        # aparece mientras suena algo (Pausar/Continuar y ventana flotante).
+        win.home_now_card.setVisible(bool(win.current_url))
         if not win.current_url:
-            recent = win.history[0] if win.history and win.history[0].get("url") else None
-            win.home_now_title.setText(recent.get("name", "Última emisión") if recent else "¿Qué te apetece escuchar?")
-            win.home_now_subtitle.setText(
-                "Vuelve a tu última emisión en directo." if recent
-                else "Encuentra tu canal o emisora con Ctrl+K"
-            )
-            win.home_resume_btn.setText("Volver a escuchar" if recent else "Buscar")
-            win.home_float_btn.setVisible(False)
             return
         kind = "TV en directo" if win.current_type == "tv" else "Radio online"
         win.home_now_title.setText(win.current_name or "Reproduciendo")
         win.home_now_subtitle.setText(kind)
         win.home_resume_btn.setText("Pausar" if win.player.is_playing() else "Continuar")
         win.home_float_btn.setVisible(True)
+
+    def _refresh_player_idle_view(self):
+        """Sin nada en reproducción, el área de emisión muestra la vista de
+        reposo (ui/player_idle_view.py) con el historial y favoritos al día,
+        en lugar del lienzo negro de libVLC."""
+        win = self.win
+        idle = getattr(win, "player_idle_view", None)
+        if idle is None or win.current_url:
+            return
+        idle.refresh(win.history, win.favorites)
+        win.player_stack.setCurrentWidget(idle)
 
     def refresh_home_page(self):
         """Puebla las 4 filas de carrusel de Inicio (Continuar viendo/
