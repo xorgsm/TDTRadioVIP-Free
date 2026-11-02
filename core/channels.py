@@ -19,6 +19,7 @@ import requests
 from core.config import get_app_data_dir, get_profile_data_dir
 from core.http_limits import MAX_PLAYLIST_BYTES, fetch_limited
 from core.json_store import read_json, write_json_atomic
+from core.net_safety import redirect_validator_for
 
 # (conexión, lectura): una conexión que no abre en pocos segundos suele ser DNS,
 # VPN o proxy y no mejora esperando; el plazo total corta servidores que
@@ -160,7 +161,10 @@ def read_playlist_source(source: str, timeout: float = 15) -> str:
     OSError si no se puede leer -- quien llama decide cómo avisar."""
     if source.lower().startswith(("http://", "https://")):
         return decode_playlist(
-            fetch_limited(source, max_bytes=MAX_PLAYLIST_BYTES, timeout=timeout)
+            fetch_limited(
+                source, max_bytes=MAX_PLAYLIST_BYTES, timeout=timeout,
+                validate_url=redirect_validator_for(source),
+            )
         )
     return decode_playlist(Path(source).read_bytes())
 
@@ -231,6 +235,7 @@ def fetch_tv_channels(playlist_url: str, force_refresh: bool = False) -> List[Ch
         content = fetch_limited(
             playlist_url, max_bytes=MAX_PLAYLIST_BYTES,
             timeout=PLAYLIST_TIMEOUT, deadline=PLAYLIST_DEADLINE_SECONDS,
+            validate_url=redirect_validator_for(playlist_url),
         )
         channels = parse_m3u(decode_playlist(content))
         if channels:

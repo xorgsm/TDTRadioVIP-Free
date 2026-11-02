@@ -31,6 +31,7 @@ import requests
 from core.config import get_app_data_dir
 from core.http_limits import MAX_EPG_BYTES, fetch_limited
 from core.json_store import read_json, remove_stale_temporaries, write_json_atomic
+from core.net_safety import redirect_validator_for
 from core.safe_xml import iter_top_level_elements
 
 # (conexión, lectura) y plazo total: la guía puede pesar cientos de MB (tope de
@@ -302,6 +303,7 @@ def fetch_epg(
         content = fetch_limited(
             epg_url, max_bytes=MAX_EPG_BYTES,
             timeout=EPG_TIMEOUT, deadline=EPG_DEADLINE_SECONDS,
+            validate_url=redirect_validator_for(epg_url),
         )
         guide = _parse_xmltv(content, wanted)
     except (requests.RequestException, ET.ParseError):

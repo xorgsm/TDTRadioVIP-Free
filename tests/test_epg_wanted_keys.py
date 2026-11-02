@@ -3,6 +3,7 @@ fetch_epg(wanted_keys=...): la guía y su caché solo conservan los canales
 que la app usa. La guía pública completa pesaba 256 MB en disco y se
 parseaba entera en cada arranque.
 """
+import ipaddress
 import json
 import os
 import time
@@ -11,7 +12,7 @@ from unittest.mock import Mock
 import pytest
 
 from _fake_http import fake_response
-from core import epg
+from core import epg, net_safety
 from core.epg import fetch_epg
 from core.json_store import remove_stale_temporaries
 
@@ -164,3 +165,24 @@ def test_epg_download_has_separate_timeouts_and_a_total_deadline(app_dir, get, m
     assert connect <= 5 and read <= 20
     # holgado: 256 MB por un enlace de ~3 Mbit/s tardan unos 11 minutos
     assert 600 <= captured["deadline"] <= 1800
+
+
+def test_epg_download_validates_server_redirects(app_dir, get, monkeypatch):
+    captured = {}
+    real = epg.fetch_limited
+
+    def spy(*args, **kwargs):
+        captured.update(kwargs)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(epg, "fetch_limited", spy)
+
+    fetch_epg(URL, wanted_keys={"la1"})
+    monkeypatch.setattr(
+        net_safety, "_resolve",
+        lambda host: [ipaddress.ip_address("127.0.0.1" if host == "127.0.0.1" else "93.184.216.34")],
+    )
+
+    validate = captured["validate_url"]
+    assert validate(URL) is True
+    assert validate("http://127.0.0.1:8080/admin") is False

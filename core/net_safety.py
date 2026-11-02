@@ -100,6 +100,14 @@ def is_safe_download_url(url: object) -> bool:
     return host_is_reachable_target(host, allow_private=True)
 
 
+def redirect_validator_for(user_url: str):
+    """Validador para fetch_limited() con una URL que configuró el usuario
+    (lista M3U, guía EPG): esa URL se respeta tal cual -- hay quien usa un
+    proxy IPTV en 127.0.0.1 --, pero las redirecciones que mande el servidor
+    no pueden llevar la petición al propio equipo ni a metadatos de nube."""
+    return lambda url: url == user_url or is_safe_download_url(url)
+
+
 def is_playable_stream_url(url: object) -> bool:
     """True si `url` es una emision que el reproductor puede abrir: un esquema
     de streaming conocido o una ruta local con letra de unidad.

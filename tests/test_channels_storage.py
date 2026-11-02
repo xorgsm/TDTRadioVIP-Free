@@ -5,6 +5,7 @@ fallos consecutivos -- incluidos archivos de perfil corruptos.
 
 requests.get se sustituye con monkeypatch -- ningún test toca la red.
 """
+import ipaddress
 import json
 from unittest.mock import Mock
 
@@ -12,7 +13,7 @@ import pytest
 import requests
 
 from _fake_http import fake_response
-from core import channels
+from core import channels, net_safety
 from core.channels import Channel
 
 M3U = """#EXTM3U
@@ -510,3 +511,27 @@ def test_dedupe_does_not_repeat_urls_the_original_already_lists_as_alternates():
     result = channels.dedupe_channels([original, Channel("la 1", "u1"), Channel("LA 1", "u2")])
 
     assert result[0].alternate_urls == ["u1", "u2"]
+
+
+def test_playlist_download_validates_server_redirects(dirs, monkeypatch):
+    """Un servidor de listas no debe poder redirigir la descarga al propio
+    equipo (servicios en 127.0.0.1, metadatos de nube)."""
+    captured = {}
+    real = channels.fetch_limited
+
+    def spy(*args, **kwargs):
+        captured.update(kwargs)
+        return real(*args, **kwargs)
+
+    _mock_get(monkeypatch)
+    monkeypatch.setattr(channels, "fetch_limited", spy)
+
+    channels.fetch_tv_channels(URL)
+    monkeypatch.setattr(
+        net_safety, "_resolve",
+        lambda host: [ipaddress.ip_address("127.0.0.1" if host == "127.0.0.1" else "93.184.216.34")],
+    )
+
+    validate = captured["validate_url"]
+    assert validate(URL) is True
+    assert validate("http://127.0.0.1:8080/admin") is False

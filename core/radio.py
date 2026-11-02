@@ -9,7 +9,7 @@ from typing import List
 import requests
 
 from core.config import get_app_data_dir, get_profile_data_dir
-from core.json_store import write_json_atomic
+from core.json_store import read_json, write_json_atomic
 
 CUSTOM_FILE = "radio_stations_custom.json"
 # Emisoras de la lista PÚBLICA (Radio-Browser) ocultas a mano por el
@@ -256,14 +256,16 @@ def _failcount_path():
 
 
 def _load_failcounts() -> dict:
-    path = _failcount_path()
-    if not path.exists():
+    # read_json cubre también un archivo que no es UTF-8 (antes lanzaba
+    # UnicodeDecodeError, que no se capturaba).
+    data = read_json(_failcount_path(), {})
+    if not isinstance(data, dict):
         return {}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except (json.JSONDecodeError, OSError, TypeError):
-        return {}
+    # Solo contadores enteros de verdad (bool es subclase de int, fuera):
+    # un valor raro haría que record_channel_failure() lanzara TypeError
+    # desde el manejo de errores de reproducción. Mismo criterio que
+    # core.channels._load_failcounts.
+    return {nombre: n for nombre, n in data.items() if type(n) is int}
 
 
 def _save_failcounts(counts: dict) -> None:

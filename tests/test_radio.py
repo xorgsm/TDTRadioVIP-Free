@@ -521,3 +521,42 @@ def test_reset_channel_failures_is_a_noop_when_name_not_present(tmp_path, monkey
 
 def test_reset_channel_failures_with_empty_name_is_a_noop():
     radio.reset_channel_failures("")  # no debe lanzar ni tocar disco
+
+
+# --------------------------------------------------------------------------
+# Fallos consecutivos (mismo contrato que core.channels)
+# --------------------------------------------------------------------------
+
+def test_record_and_reset_station_failures(tmp_path, monkeypatch):
+    monkeypatch.setattr(radio, "get_profile_data_dir", lambda: tmp_path)
+    assert radio.record_channel_failure("") == 0
+    assert radio.record_channel_failure("A") == 1
+    assert radio.record_channel_failure("A") == 2
+    radio.reset_channel_failures("A")
+    radio.reset_channel_failures("No existe")
+    assert radio.record_channel_failure("A") == 1
+
+
+@pytest.mark.parametrize("contenido", [
+    b"{no es json",
+    b"\xff\xfe basura no utf-8",
+    json.dumps(["no", "dict"]).encode(),
+])
+def test_record_station_failure_with_corrupt_file_starts_from_zero(tmp_path, monkeypatch, contenido):
+    monkeypatch.setattr(radio, "get_profile_data_dir", lambda: tmp_path)
+    (tmp_path / radio.FAILCOUNT_FILE).write_bytes(contenido)
+
+    assert radio.record_channel_failure("A") == 1
+
+
+def test_record_station_failure_ignores_non_numeric_stored_count(tmp_path, monkeypatch):
+    """Un contador guardado con un tipo raro no puede hacer reventar el
+    manejo de errores de reproducción (se llama desde PlaybackController)."""
+    monkeypatch.setattr(radio, "get_profile_data_dir", lambda: tmp_path)
+    (tmp_path / radio.FAILCOUNT_FILE).write_text(
+        json.dumps({"A": "tres", "B": 2, "C": True}), encoding="utf-8"
+    )
+
+    assert radio.record_channel_failure("A") == 1
+    assert radio.record_channel_failure("B") == 3
+    assert radio.record_channel_failure("C") == 1

@@ -4,6 +4,19 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
 ## [Sin publicar]
 
+## [8.6.41] — 2026-11-02
+
+### Security
+- Listas M3U y guía EPG: la URL configurada se respeta (también un proxy IPTV
+  local), pero las redirecciones del servidor ya no pueden llevar la descarga al
+  propio equipo ni a metadatos de nube.
+- Instalador: ya no ejecuta como administrador desinstaladores antiguos
+  registrados en HKCU.
+
+### Fixed
+- Radio: un archivo de contadores de fallos con un valor no numérico ya no
+  provoca un error al fallar una emisora.
+
 ## [8.6.40] — 2026-10-30
 
 ### Added
