@@ -4,6 +4,12 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
 ## [Sin publicar]
 
+## [8.6.42] — 2026-11-02
+
+### Changed
+- Comprobación interna de destinos de red reorganizada para la nueva protección
+  de descargas de la edición completa; sin cambios visibles en la edición Free.
+
 ## [8.6.41] — 2026-11-02
 
 ### Security

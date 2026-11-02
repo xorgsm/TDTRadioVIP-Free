@@ -49,29 +49,35 @@ def _resolve(host: str) -> list:
     return [ipaddress.ip_address(info[4][0].split("%")[0]) for info in infos]
 
 
-def host_is_reachable_target(host: str, *, allow_private: bool) -> bool:
-    """True si ninguna dirección a la que resuelve `host` está prohibida.
+def allowed_addresses(host: str, *, allow_private: bool) -> list:
+    """Las direcciones a las que resuelve `host`, o [] si alguna está
+    prohibida o no resuelve. Quien se conecte después debe usar estas IP y
+    no volver a resolver el nombre: un segundo DNS podría dar otra.
 
     Con `allow_private=False` (actualizaciones) tampoco se admiten las
-    redes privadas. Un host que no resuelve se rechaza.
+    redes privadas.
     """
     try:
         addresses = _resolve(host)
     except (OSError, ValueError):
-        return False
-    if not addresses:
-        return False
+        return []
     for ip in addresses:
         if _ip_is_never_allowed(ip):
             log.warning("Destino rechazado: %s resuelve a %s", host, ip)
-            return False
+            return []
         if allow_private or ip.is_global:
             continue
         if any(ip in network for network in _VPN_FAKE_IP_NETWORKS):
             continue
         log.warning("Destino rechazado (red privada): %s resuelve a %s", host, ip)
-        return False
-    return True
+        return []
+    return addresses
+
+
+def host_is_reachable_target(host: str, *, allow_private: bool) -> bool:
+    """True si ninguna dirección a la que resuelve `host` está prohibida.
+    Un host que no resuelve se rechaza."""
+    return bool(allowed_addresses(host, allow_private=allow_private))
 
 
 def is_safe_https_url(url: object, *, allow_private: bool = False) -> bool:
