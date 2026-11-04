@@ -1,10 +1,10 @@
 """
-Tema oscuro 'Coder By X@R' v2 (navy + dorado) para TDT & Radio VIP.
+Tema "Continuidad" de TDT & Radio VIP: tinta de plató y un color de
+identidad por sección.
 
-Este paquete sustituye al antiguo módulo único ui/style.py (1293 líneas,
-por encima del límite de 800 del proyecto), repartido en: `colors`
-(paleta y utilidades de color), `qss_base` (plantilla QSS) y `builder`
-(composición final). Los imports existentes `from ui.style import X`
+Paquete repartido en: `colors` (acentos y utilidades de color), `qss_base`
+y `qss_surfaces` (plantillas QSS con tokens) y `builder` (composición
+final). Los imports existentes `from ui.style import X`
 siguen funcionando gracias a estas reexportaciones.
 """
 
@@ -12,7 +12,6 @@ from ui.style.builder import build_style
 from ui.style.colors import (
     ACCENT_PRESETS,
     DEFAULT_ACCENT,
-    LIGHT_THEME_COLORS,
     accent_shades,
     normalize_accent,
 )
@@ -22,7 +21,6 @@ __all__ = [
     "ACCENT_PRESETS",
     "DARK_STYLE",
     "DEFAULT_ACCENT",
-    "LIGHT_THEME_COLORS",
     "accent_shades",
     "build_style",
     "normalize_accent",

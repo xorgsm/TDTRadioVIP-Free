@@ -189,6 +189,6 @@ class ChannelMenuController:
             win.fav_btn.setChecked(fav_store.is_favorite(win.favorites, data.get("type"), data.get("name")))
             win.fav_btn.setIcon(
                 app_icons.icon_favorite(
-                    palette.ACCENT, size=18, filled=win.fav_btn.isChecked()
+                    palette.ACCENT_FAVORITE, size=18, filled=win.fav_btn.isChecked()
                 )
             )

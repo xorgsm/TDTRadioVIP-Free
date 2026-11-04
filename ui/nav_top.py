@@ -15,6 +15,7 @@ from ui.nav_sections import (
     NAV_DOWNLOAD, NAV_FAV, NAV_HIST, NAV_HOME, NAV_RADIO, NAV_TOP_HEIGHT,
     NAV_TV, SECTION_COLORS, SECTION_VARIANTS,
 )
+from ui.style.colors import readable_on_surface
 from ui.visual import set_variant
 
 
@@ -29,16 +30,15 @@ def build_nav_top(win) -> QWidget:
     win.nav_group = QButtonGroup()
     win.nav_group.setExclusive(True)
 
-    # Cada icono conserva el color de su sección como señal secundaria;
-    # el estado activo usa una superficie común para no convertir toda
-    # la navegación en un bloque de color distinto en cada pantalla.
+    # Cada icono lleva el color de su sección; la pestaña activa se vuelve
+    # un bloque de ese color, con el icono en tinta para que se lea encima.
     nav_icon_builders = {
-        NAV_HOME: (app_icons.icon_home, SECTION_COLORS[NAV_HOME]),
-        NAV_TV: (app_icons.icon_tv, SECTION_COLORS[NAV_TV]),
-        NAV_RADIO: (app_icons.icon_radio, SECTION_COLORS[NAV_RADIO]),
-        NAV_FAV: (app_icons.icon_favorite, SECTION_COLORS[NAV_FAV]),
-        NAV_HIST: (app_icons.icon_history, SECTION_COLORS[NAV_HIST]),
-        NAV_DOWNLOAD: (app_icons.icon_download, SECTION_COLORS[NAV_DOWNLOAD]),
+        NAV_HOME: (app_icons.icon_home, readable_on_surface(SECTION_COLORS[NAV_HOME])),
+        NAV_TV: (app_icons.icon_tv, readable_on_surface(SECTION_COLORS[NAV_TV])),
+        NAV_RADIO: (app_icons.icon_radio, readable_on_surface(SECTION_COLORS[NAV_RADIO])),
+        NAV_FAV: (app_icons.icon_favorite, readable_on_surface(SECTION_COLORS[NAV_FAV])),
+        NAV_HIST: (app_icons.icon_history, readable_on_surface(SECTION_COLORS[NAV_HIST])),
+        NAV_DOWNLOAD: (app_icons.icon_download, readable_on_surface(SECTION_COLORS[NAV_DOWNLOAD])),
     }
     nav_defs = [
         (NAV_HOME, "Inicio"),
@@ -67,8 +67,8 @@ def build_nav_top(win) -> QWidget:
         btn.setIconSize(QSize(22, 22))
         btn.setIcon(builder(inactive_color, size=24))
         btn.toggled.connect(
-            lambda _checked, b=btn, f=builder, c=inactive_color: b.setIcon(
-                f(c, size=24)
+            lambda checked, b=btn, f=builder, c=inactive_color: b.setIcon(
+                f(palette.INK if checked else c, size=24)
             )
         )
         win.nav_group.addButton(btn, nav_id)

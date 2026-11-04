@@ -70,3 +70,41 @@ def test_idle_view_volver_reproduce_la_ultima_entrada(qapp):
     view.resume_btn.click()
     assert played and played[0]["name"] == "Canal [Geo-blocked]"
     assert "Geo-blocked" not in view.resume_btn.text()
+
+
+def _idle_view_in(qapp, width, height, entries):
+    # Dentro de un padre sin layout, como en player_stack: el padre impone
+    # la geometría aunque sea menor que el mínimo de la vista.
+    from PySide6.QtWidgets import QWidget
+
+    from ui.player_idle_view import PlayerIdleView
+    parent = QWidget()
+    parent.resize(width, height)
+    view = PlayerIdleView(on_activate=lambda e: None, on_search=lambda: None, parent=parent)
+    view.refresh(entries, [])
+    view.setGeometry(0, 0, width, height)
+    parent.show()
+    qapp.processEvents()
+    return parent, view
+
+
+def _visible_quick_buttons(view):
+    items = (view._quick_layout.itemAt(i).widget() for i in range(view._quick_layout.count()))
+    return [w for w in items if w is not None and not w.isHidden()]
+
+
+def test_idle_view_sin_espacio_no_comprime_los_accesos_rapidos(qapp):
+    entries = [_e(f"Serie larga {i} (2005) S02 - S02E1{i}") for i in range(5)]
+    parent, view = _idle_view_in(qapp, 560, 400, entries)
+    for btn in _visible_quick_buttons(view):
+        assert btn.height() >= btn.sizeHint().height()
+    for label in (view.title, view.subtitle):
+        if not label.isHidden():
+            assert label.height() >= label.heightForWidth(label.width())
+
+
+def test_idle_view_con_espacio_muestra_todo(qapp):
+    entries = [_e(f"Canal {i}") for i in range(5)]
+    parent, view = _idle_view_in(qapp, 840, 700, entries)
+    assert not view.icon_label.isHidden()
+    assert len(_visible_quick_buttons(view)) == 4

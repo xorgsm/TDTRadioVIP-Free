@@ -28,7 +28,8 @@ from PySide6.QtWidgets import (
 
 from ui import palette
 from ui.icons import icon_radio, icon_tv
-from ui.style import ACCENT_PRESETS, accent_shades
+from ui.style import ACCENT_PRESETS
+from ui.style.colors import hex_to_rgba
 from ui.visual import set_visual_state
 
 CARD_WIDTH = 128
@@ -37,40 +38,35 @@ CARD_LOGO_SIZE = 96
 _PRESET_VALUES = list(ACCENT_PRESETS.values())
 
 
-def _gradient_colors_for_name(name: str) -> tuple[str, str, str]:
-    """Deriva un degradado determinista del nombre del canal/emisora --
-    mismo nombre, mismo color siempre, incluso entre reinicios de la app.
+def _color_for_name(name: str) -> str:
+    """Deriva un color determinista del nombre del canal/emisora -- mismo
+    nombre, mismo color siempre, incluso entre reinicios de la app.
     hash() de Python no vale para esto: su semilla se aleatoriza por
     proceso (PYTHONHASHSEED), así que el mismo nombre daría un color
     distinto cada vez que arrancara la app. hashlib.md5 es estable.
     """
     digest = hashlib.md5(name.encode("utf-8")).hexdigest()
     index = int(digest[:8], 16) % len(_PRESET_VALUES)
-    base = _PRESET_VALUES[index]
-    shades = accent_shades(base)
-    return shades["light"], shades["dark"], shades["lighter"]
+    return _PRESET_VALUES[index]
 
 
 def _card_stylesheet(name: str) -> str:
-    """Hoja de estilo autocontenida por tarjeta: fondo degradado (base) +
-    hover + foco, todo derivado del mismo nombre. Autocontenida a
-    propósito (no depende de las reglas globales QFrame#carouselCard de
-    ui/style.py, que se retiran en este mismo cambio) para no depender de
-    cómo Qt combine hojas de estilo locales y globales para el mismo
-    selector.
-    """
-    light, dark, lighter = _gradient_colors_for_name(name)
+    """Hoja de estilo autocontenida por tarjeta: fondo + hover + foco, todo
+    derivado del mismo nombre. El fondo es translúcido para que el tinte
+    funcione igual sobre el tema oscuro y sobre el claro."""
+    color = _color_for_name(name)
     return (
         "QFrame#carouselCard {"
-        f"background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {light}, stop:1 {dark});"
+        f"background-color: {hex_to_rgba(color, 44)};"
         "border: 1px solid transparent;"
         "border-radius: 14px;"
         "}"
         "QFrame#carouselCard:hover {"
-        f"border: 1px solid {lighter};"
+        f"background-color: {hex_to_rgba(color, 76)};"
+        f"border: 1px solid {color};"
         "}"
         "QFrame#carouselCard:focus {"
-        f"border: 2px solid {lighter};"
+        f"border: 2px solid {color};"
         "}"
     )
 
@@ -199,7 +195,7 @@ class Carousel(QWidget):
         self.scroll.setFrameShape(QFrame.NoFrame)
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.scroll.setFixedHeight(190)
+        self.scroll.setFixedHeight(214)
 
         self._inner = QWidget()
         self._row = QHBoxLayout(self._inner)

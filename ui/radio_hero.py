@@ -47,10 +47,9 @@ class RadioHeroWidget(QWidget):
         self.cover.setAlignment(Qt.AlignCenter)
         self.cover.setStyleSheet(
             f"QLabel#radioHeroCover {{"
-            f"  background: qlineargradient(x1:0, y1:0, x2:1, y2:1,"
-            f"    stop:0 {palette.BG_CARD}, stop:1 {palette.BG_ROOT});"
-            f"  border: 1px solid {palette.BORDER};"
-            f"  border-radius: 24px;"
+            f"  background-color: {palette.ACCENT_CATEGORY_ORANGE};"
+            f"  border: none;"
+            f"  border-radius: 14px;"
             f"}}"
         )
         layout.addWidget(self.cover, alignment=Qt.AlignHCenter)
@@ -63,8 +62,7 @@ class RadioHeroWidget(QWidget):
         self.station_label = QLabel()
         self.station_label.setAlignment(Qt.AlignCenter)
         self.station_label.setStyleSheet(
-            f"color: {palette.ACCENT}; font-weight: 800; font-size: 12pt; "
-            f"letter-spacing: 1.5px;"
+            f"color: {palette.ACCENT_CATEGORY_ORANGE}; font-weight: 800; font-size: 13pt;"
         )
         layout.addWidget(self.station_label)
 
@@ -129,7 +127,7 @@ class RadioHeroWidget(QWidget):
         """Nota musical dorada -- mismo lenguaje visual que el resto de la
         app cuando no hay logo real que mostrar (ver widgets.rounded_pixmap
         / los placeholders de carousel.py)."""
-        self.cover.setPixmap(app_icons.icon_music_note(palette.ACCENT, size=52).pixmap(52, 52))
+        self.cover.setPixmap(app_icons.icon_music_note(palette.INK, size=52).pixmap(52, 52))
 
     def _on_logo_ready(self, pixmap, token: int):
         if token != self._logo_token:

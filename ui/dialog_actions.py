@@ -206,9 +206,16 @@ class DialogActionsController:
             new_accent = win.settings.get("accent_color", palette.ACCENT)
             new_theme = win.settings.get("theme_mode", "dark")
             if new_accent != old_accent or new_theme != old_theme:
+                palette.apply_theme(new_theme)
                 app = QApplication.instance()
                 if app is not None:
                     app.setStyleSheet(build_style(new_accent, new_theme))
+            if new_theme != old_theme:
+                # Los iconos ya pintados conservan los colores del tema anterior.
+                QMessageBox.information(
+                    win, "Tema cambiado",
+                    "Cierra y vuelve a abrir la aplicación para que se aplique del todo."
+                )
 
             new_card_size = int(win.settings.get("catalog_card_size", 168))
             if new_card_size != old_card_size:

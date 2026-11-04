@@ -31,7 +31,7 @@ def build_more_menu_button(win) -> QToolButton:
     btn = QToolButton()
     btn.setObjectName("navButton")
     btn.setToolTip("Más opciones")
-    btn.setText("Más ▾")
+    btn.setText("Más")
     btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
     btn.setCursor(Qt.PointingHandCursor)
     btn.setIconSize(QSize(20, 20))

@@ -7,6 +7,9 @@ from PySide6.QtWidgets import QFrame, QGraphicsDropShadowEffect, QLabel, QSizePo
 
 VALID_VARIANTS = frozenset({
     "default",
+    "home",
+    "favorite",
+    "history",
     "primary",
     "secondary",
     "ghost",
@@ -26,7 +29,7 @@ VALID_VARIANTS = frozenset({
     "unactivated",
 })
 
-VALID_STATES = frozenset({"default", "active", "loading", "empty", "error"})
+VALID_STATES = frozenset({"default", "active", "loading", "empty", "error", "tv", "radio"})
 VALID_SURFACES = frozenset({"default", "dialog", "floating", "sidebar", "mediaPanel", "homeSectionCard"})
 
 

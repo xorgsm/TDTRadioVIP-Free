@@ -46,7 +46,7 @@ from ui.channel_model import ChannelListView
 from ui.event_pump import pump_events_without_input
 from ui.toast import show_toast
 from ui.visual import make_glow
-from ui.widgets import ROLE_DATA, dominant_color
+from ui.widgets import ROLE_DATA
 
 
 logger = logging.getLogger(__name__)
@@ -89,7 +89,6 @@ class PlaybackController:
         win.equalizer.stop()
         win._playback_failed = False
         win.retry_btn.setVisible(False)
-        win.now_subtitle.setStyleSheet("")
 
         if item_type == "tv":
             win.player_stack.setCurrentWidget(win.player)
@@ -120,21 +119,10 @@ class PlaybackController:
         icon = "TV" if item_type == "tv" else "FM"
         win.now_title.setText(f"{icon} · {name}")
         win.now_subtitle.setText("TV en directo" if item_type == "tv" else "Radio online")
-        # Borde de color en el logo de "reproduciendo ahora" según el tipo
-        # de contenido -- mismo azul/naranja que ya usan TV/Radio en el
-        # barra de navegación y las tarjetas, para que se note de un vistazo qué se está
-        # escuchando sin tener que leer el subtítulo.
-        tipo_accent = palette.ACCENT_INFO if item_type == "tv" else palette.ACCENT_CATEGORY_ORANGE
-        win.now_logo.setStyleSheet(
-            f"background-color: {palette.BG_PANEL_ALT}; border-radius: 10px; "
-            f"border: 2px solid {tipo_accent};"
-        )
-        # El logo tarda en llegar (descarga/caché en segundo plano, ver
-        # LogoLoader) -- en cuanto esté, update_now_logo() intenta afinar
-        # este mismo borde con un color sacado del propio logo (ver más
-        # abajo). Hasta entonces, o si el logo no da un color válido, se
-        # queda el azul/naranja fijo de arriba.
-        self.update_now_logo(logo, tipo_accent)
+        # El rótulo toma el azul/naranja de TV/Radio para que se note de un
+        # vistazo qué se está escuchando sin tener que leer el subtítulo.
+        self._set_rotulo_on_air()
+        self.update_now_logo(logo)
         self._set_play_button_state(paused=True)
         self._pulse_now_playing()
         # Se desactivan hasta confirmar (_confirm_playback_ok) si el
@@ -194,37 +182,30 @@ class PlaybackController:
                 return station.tags
         return ""
 
-    def update_now_logo(self, url: str, tipo_accent: str):
-        """
-        tipo_accent: color de reserva (azul TV / naranja radio) ya puesto
-        por play() antes de llamar aquí -- si el logo no tiene un color
-        de acento válido (dominant_color() devuelve None: logo en blanco
-        y negro, sin logo, etc.) se deja tal cual, no hay nada más que
-        hacer.
-        """
+    def update_now_logo(self, url: str):
+        """Icono del tipo de contenido hasta que llegue el logo, si lo hay."""
         win = self.win
-        win.now_logo.clear()
+        icon = app_icons.icon_tv if win.current_type == "tv" else app_icons.icon_radio
+        win.now_logo.setPixmap(icon(palette.ON_VIDEO, size=26).pixmap(26, 26))
         if not url:
             return
 
         # Token capturado ANTES de la carga asíncrona del logo: si el
         # usuario cambia de canal mientras se descarga/lee de caché, este
-        # callback no debe teñir el logo del canal NUEVO con el color del
-        # viejo cuando por fin llegue.
+        # callback no debe poner el logo viejo en el canal NUEVO cuando por
+        # fin llegue.
         token = win._playback_token
 
         def _on_ready(pixmap):
             if token != win._playback_token:
                 return  # logo de un canal anterior que llega tarde
             win.now_logo.setPixmap(pixmap)
-            color = dominant_color(pixmap)
-            if color is not None:
-                win.now_logo.setStyleSheet(
-                    f"background-color: {palette.BG_PANEL_ALT}; border-radius: 10px; "
-                    f"border: 2px solid {color.name()};"
-                )
 
         win.logo_loader.load(url, _on_ready, size=44)
+
+    def _set_rotulo_on_air(self):
+        win = self.win
+        win.now_rotulo.set_state("tv" if win.current_type == "tv" else "radio")
 
     def _pulse_now_playing(self):
         """
@@ -284,7 +265,7 @@ class PlaybackController:
         win.retry_btn.setVisible(True)
         self._update_seek_buttons_enabled(False)
         win.now_subtitle.setText(f"⚠ {message}")
-        win.now_subtitle.setStyleSheet(f"color: {palette.DANGER};")
+        win.now_rotulo.set_state("error")
         name = win.current_name or "el canal seleccionado"
         win.lists.mark_playing_everywhere()
 
@@ -344,7 +325,7 @@ class PlaybackController:
         win.now_subtitle.setText(
             f"Reconectando… intento {self._recovery_attempts}/{self.MAX_STREAM_RETRIES}"
         )
-        win.now_subtitle.setStyleSheet("")
+        self._set_rotulo_on_air()
         win.player.stop()
         win.player.play(win.current_url)
         win.player.set_volume(win.volume_slider.value())
@@ -419,7 +400,7 @@ class PlaybackController:
         win.set_live_badge_visible(False)
         win.now_title.setText("Nada en reproducción")
         win.now_subtitle.setText("Elige un canal o una emisora")
-        win.now_subtitle.setStyleSheet("")
+        win.now_rotulo.set_state("default")
         win.retry_btn.setVisible(False)
         win._playback_failed = False
         win._playback_token += 1
@@ -427,8 +408,7 @@ class PlaybackController:
         win._active_item = None
         self._update_seek_buttons_enabled(False)
         win._auto_skip_count = 0
-        win.now_logo.clear()
-        win.now_logo.setStyleSheet(f"background-color: {palette.BG_PANEL_ALT}; border-radius: 10px;")
+        win.now_logo.setPixmap(app_icons.icon_play(palette.TEXT_DIM, 22).pixmap(22, 22))
         win.current_type = None
         win.current_name = None
         win.current_url = None
@@ -455,11 +435,11 @@ class PlaybackController:
         win = self.win
         muted = win.mute_btn.isChecked()
         win.player.set_muted(muted)
-        # "muted" pinta el icono con palette.BG_ROOT, igual que
+        # "muted" pinta el icono con palette.INK, igual que
         # #muteButton[uiVariant="info"]:checked en ui/style.py sobre el
         # fondo palette.ACCENT_INFO -- mismo patrón que cast_btn/sleep_btn
         # en main_window.py.
-        win.mute_btn.setIcon(app_icons.icon_speaker(palette.BG_ROOT if muted else palette.ACCENT_INFO, muted=muted))
+        win.mute_btn.setIcon(app_icons.icon_speaker(palette.INK if muted else palette.ACCENT_INFO, muted=muted))
         win.mute_btn.setToolTip("Activar sonido" if muted else "Silenciar")
         win._taskbar.update_mute_state(muted)
         if win.current_type == "radio":
@@ -705,7 +685,7 @@ class PlaybackController:
         menu.setStyleSheet(
             f"QMenu {{ background-color: {palette.BG_PANEL}; color: {palette.TEXT_PRIMARY}; "
             f"border: 1px solid {palette.BORDER}; }}"
-            f"QMenu::item:selected {{ background-color: {acento}; color: {palette.BG_ROOT}; }}"
+            f"QMenu::item:selected {{ background-color: {acento}; color: {palette.INK}; }}"
         )
         menu.addAction("60 minutos", lambda: self.iniciar_sleep(60))
         menu.addAction("90 minutos", lambda: self.iniciar_sleep(90))
@@ -807,7 +787,7 @@ class PlaybackController:
     def _update_favorite_button_icon(self) -> None:
         checked = self.win.fav_btn.isChecked()
         self.win.fav_btn.setIcon(
-            app_icons.icon_favorite(palette.ACCENT, size=18, filled=checked)
+            app_icons.icon_favorite(palette.ACCENT_FAVORITE, size=18, filled=checked)
         )
         self.win.fav_btn.setToolTip(
             "Quitar de favoritos" if checked else "Añadir a favoritos"
@@ -818,7 +798,7 @@ class PlaybackController:
         """Muestra pausa si está reproduciendo, play en cualquier otro estado."""
         action = "Pausar" if paused else "Reproducir"
         self.win.play_btn.setIcon(
-            app_icons.icon_play(palette.BG_ROOT, size=22, paused=paused)
+            app_icons.icon_play(palette.INK, size=22, paused=paused)
         )
         self.win.play_btn.setToolTip(action)
         self.win.play_btn.setAccessibleName(action)

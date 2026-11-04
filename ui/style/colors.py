@@ -10,33 +10,17 @@ import re
 from ui import palette
 
 # Nombre visible -> color base, para el selector de Configuración.
-# "Dorado" es el que llevaba la app desde siempre; el resto son los mismos
-# tonos ya usados en categorías/ecualizador, reutilizados aquí para no
-# meter colores nuevos que no encajen con el resto.
 ACCENT_PRESETS = {
-    "Índigo": "#7c6cff",
-    "Dorado": "#c9a227",
-    "Azul": "#38bdf8",
-    "Violeta": "#b08aff",
-    "Verde": "#38e89c",
-    "Coral": "#ff70b7",
-    "Naranja": "#ffad42",
+    "Magenta": "#ff2d78",
+    "Azul": "#4d94ff",
+    "Turquesa": "#19e3c2",
+    "Verde": "#3de68f",
+    "Lima": "#c8f031",
+    "Amarillo": "#ffd02e",
+    "Naranja": "#ff8a1f",
+    "Violeta": "#b794ff",
 }
 DEFAULT_ACCENT = palette.ACCENT
-
-LIGHT_THEME_COLORS = {
-    palette.BG_ROOT: "#f4f7fb",
-    palette.BG_PANEL: "#e7edf5",
-    palette.BG_CARD: "#ffffff",
-    palette.BG_PANEL_ALT: "#dbe4f0",
-    palette.BG_HOVER: "#ced9e8",
-    palette.BORDER: "#c5d0de",
-    palette.BORDER_STRONG: "#aebdce",
-    palette.TEXT_PRIMARY: "#172437",
-    palette.TEXT_SECONDARY: "#34465d",
-    palette.TEXT_MUTED: "#5f7188",
-    palette.TEXT_DIM: "#73849a",
-}
 
 _HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
@@ -61,6 +45,12 @@ def _blend(hexcolor: str, target: tuple, ratio: float) -> str:
     r, g, b = _hex_to_rgb(hexcolor)
     tr, tg, tb = target
     return _rgb_to_hex((r + (tr - r) * ratio, g + (tg - g) * ratio, b + (tb - b) * ratio))
+
+
+def hex_to_rgba(hexcolor: str, alpha: int) -> str:
+    """'#rrggbb' -> 'rgba(r, g, b, alpha)' (alpha 0-255, como pide QSS)."""
+    r, g, b = _hex_to_rgb(hexcolor)
+    return f"rgba({r}, {g}, {b}, {alpha})"
 
 
 def normalize_accent(value: object) -> str:
@@ -92,30 +82,43 @@ def _contrast_ratio(first: str, second: str) -> float:
     return (lighter + 0.05) / (darker + 0.05)
 
 
-def accent_shades(accent: object) -> dict[str, str]:
+def readable_on_surface(color: str) -> str:
+    """Un color vivo, oscurecido si hace falta, para un icono sobre el panel
+    del tema activo (WCAG pide 3:1 a los elementos gráficos)."""
+    while _contrast_ratio(color, palette.BG_PANEL) < 3.0:
+        color = _blend(color, (0, 0, 0), 0.10)
+    return color
+
+
+def accent_shades(accent: object, theme: str = "dark") -> dict[str, str]:
     """
-    A partir de un color de acento, calcula los mismos tonos derivados que
-    antes estaban fijos al dorado (base, claro, más claro, oscuro) — se
-    usan tanto en el CSS como en el código Python que pinta a mano
-    (tarjeta "reproduciendo ahora", icono de PiP activo...).
+    A partir de un color de acento, calcula sus tonos derivados -- se usan
+    tanto en el QSS como en el código Python que pinta a mano (tarjeta
+    "reproduciendo ahora", icono de PiP activo...).
     """
     base = normalize_accent(accent)
-    dark_text = palette.BG_ROOT
-    light_text = "#ffffff"
     on_accent = max(
-        (dark_text, light_text),
+        (palette.INK, "#ffffff"),
         key=lambda text_color: _contrast_ratio(base, text_color),
     )
+    surface = palette.tone("BG_CARD", theme)
+    dark = _blend(base, (0, 0, 0), 0.30)
+    # El acento usado como texto: en tema claro se oscurece hasta leerse,
+    # porque un amarillo o un lima puros no contrastan sobre fondo claro.
+    text = base
+    if theme == "light":
+        text = dark
+        while _contrast_ratio(text, surface) < 4.5:
+            text = _blend(text, (0, 0, 0), 0.10)
 
     return {
         "base": base,
         "light": _blend(base, (255, 255, 255), 0.25),
         "lighter": _blend(base, (255, 255, 255), 0.50),
-        "dark": _blend(base, (0, 0, 0), 0.30),
+        "dark": dark,
         "hover": _blend(base, (255, 255, 255), 0.14),
         "pressed": _blend(base, (0, 0, 0), 0.18),
-        "soft": _blend(base, _hex_to_rgb(palette.BG_CARD), 0.72),
+        "soft": _blend(base, _hex_to_rgb(surface), 0.72),
         "on_accent": on_accent,
+        "text": text,
     }
-
-

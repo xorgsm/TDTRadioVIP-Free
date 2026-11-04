@@ -3,7 +3,8 @@
 from collections.abc import Callable, Iterable
 
 from PySide6.QtCore import QAbstractListModel, QModelIndex, QRect, Qt
-from PySide6.QtWidgets import QListView
+from PySide6.QtGui import QPainter
+from PySide6.QtWidgets import QListView, QListWidget
 
 from ui.widgets import (
     ROLE_DATA,
@@ -152,6 +153,23 @@ class ChannelListItem:
 
     def isHidden(self):
         return self.model.row_for_entry(self.entry) < 0
+
+
+class EmptyStateListWidget(QListWidget):
+    """Lista que orienta al usuario cuando no tiene nada que enseñar."""
+
+    empty_text = ""
+
+    def paintEvent(self, event):  # noqa: N802 - API de Qt
+        super().paintEvent(event)
+        if self.count() == 0 and self.empty_text:
+            painter = QPainter(self.viewport())
+            painter.setPen(self.palette().text().color())
+            painter.drawText(
+                self.viewport().rect().adjusted(32, 0, -32, 0),
+                Qt.AlignCenter | Qt.TextWordWrap,
+                self.empty_text,
+            )
 
 
 class ChannelListView(QListView):

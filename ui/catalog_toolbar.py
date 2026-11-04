@@ -143,6 +143,7 @@ def build_top_bar(win) -> QVBoxLayout:
     # filtros debajo; las tres opciones inferiores ya caben incluso en
     # el ancho mínimo del panel central.
     filters_row.addWidget(win.search_box)
+    filter_options_row.addStretch(1)
     filters_row.addLayout(filter_options_row)
 
     bar.addLayout(title_row)
@@ -191,7 +192,7 @@ def toggle_grid_view(win, checked: bool) -> None:
         # fondo el color de acento claro -- mismo criterio que ya usan
         # los botones de la barra de navegación superior (ver nav_icon_builders
         # en ui.nav_top).
-        win.tv_view_toggle.setIcon(app_icons.icon_list_view(palette.BG_ROOT))
+        win.tv_view_toggle.setIcon(app_icons.icon_list_view(palette.INK))
         win.tv_view_toggle.setToolTip("Ver catálogo en lista")
     else:
         win.tv_view_toggle.setIcon(app_icons.icon_grid_view(palette.TEXT_DIM))

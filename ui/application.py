@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import sys
 
+from PySide6.QtCore import QTranslator
 from PySide6.QtGui import QFont, QFontDatabase, QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from core.config import APP_VERSION, get_font_paths, get_icon_path, load_settings, pin_session_profile
 from core.single_instance import SingleInstanceGuard
 from player.vlc_player import vlc_disponible_al_arrancar
+from ui import palette
 from ui.main_window import MainWindow
 from ui.style import DEFAULT_ACCENT, build_style
 
@@ -30,8 +32,8 @@ def _bring_existing_window_to_front(window) -> None:
 
 def _register_app_font() -> None:
     """
-    Registra las tipografías empaquetadas en resources/fonts/ (Manrope,
-    Playfair Display e Inter, ver core.get_font_paths) para Qt. Es la fuente del mockup original del
+    Registra las tipografías empaquetadas en resources/fonts/ (Figtree y
+    Bricolage Grotesque, ver core.get_font_paths) para Qt. Es la fuente del mockup original del
     rediseño 7.5.8 (ver ui/palette.py); antes del empaquetado, ui/style.py
     solo podía usar 'Segoe UI' porque Inter no estaba instalada en el
     sistema. Si por lo que sea no está disponible (build sin recursos,
@@ -42,8 +44,26 @@ def _register_app_font() -> None:
         QFontDatabase.addApplicationFont(font_path)
 
 
+class _StandardButtonsTranslator(QTranslator):
+    """Botones estándar de Qt (Cancelar, Sí, Guardar...) en español. La
+    interfaz ya está escrita en español: solo faltan los textos que pone Qt."""
+
+    TEXTS = {
+        "OK": "Aceptar", "Cancel": "Cancelar", "Save": "Guardar", "Close": "Cerrar",
+        "Yes": "Sí", "No": "No", "Apply": "Aplicar", "Open": "Abrir",
+        "Discard": "Descartar", "Reset": "Restablecer", "Retry": "Reintentar",
+    }
+
+    def translate(self, context, source_text, disambiguation=None, n=-1):  # noqa: ARG002
+        # None, no "": una cadena vacía es una traducción válida para Qt y
+        # dejaría sin texto todo lo demás (Copiar y Pegar de los menús...).
+        if context != "QPlatformTheme":
+            return None
+        return self.TEXTS.get(source_text.replace("&", ""))
+
+
 def _apply_font_rendering(app: QApplication) -> None:
-    """Desactiva el hinting de la fuente de la app: con Manrope (variable)
+    """Desactiva el hinting de la fuente de la app: con las fuentes variables
     el hinting por defecto colapsa el ancho de los espacios en tamaños
     pequeños ("loqueestabas") y el texto se lee peor."""
     font = app.font()
@@ -68,9 +88,12 @@ def _create_application(instance_key: str) -> tuple[QApplication, QIcon, SingleI
     app.aboutToQuit.connect(guard.release)
     app.setApplicationName("TDT & Radio VIP")
     app.setApplicationVersion(APP_VERSION)
+    app._standard_buttons_translator = _StandardButtonsTranslator(app)
+    app.installTranslator(app._standard_buttons_translator)
     _register_app_font()
     _apply_font_rendering(app)
     settings = load_settings()
+    palette.apply_theme(settings.get("theme_mode", "dark"))
     app.setStyleSheet(build_style(
         settings.get("accent_color", DEFAULT_ACCENT),
         settings.get("theme_mode", "dark"),

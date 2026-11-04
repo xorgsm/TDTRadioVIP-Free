@@ -12,7 +12,7 @@ def _apply_menu_style(win, menu: QMenu) -> None:
     menu.setStyleSheet(
         f"QMenu {{ background-color: {palette.BG_PANEL}; color: {palette.TEXT_PRIMARY}; "
         f"border: 1px solid {palette.BORDER}; }}"
-        f"QMenu::item:selected {{ background-color: {acento}; color: {palette.BG_ROOT}; }}"
+        f"QMenu::item:selected {{ background-color: {acento}; color: {palette.INK}; }}"
     )
 
 

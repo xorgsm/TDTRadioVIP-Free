@@ -80,7 +80,7 @@ else:
 
 FUENTES_DIR = os.path.join("resources", "fonts")
 if os.path.isdir(FUENTES_DIR):
-    # Manrope, Playfair Display e Inter, con sus licencias OFL.
+    # Figtree y Bricolage Grotesque, con sus licencias OFL.
     datas.append((FUENTES_DIR, FUENTES_DIR))
 else:
     print("[TDTRadioVIP] Aviso: no hay resources/fonts; se compila con la tipografía del sistema.")

@@ -4,6 +4,28 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
 ## [Sin publicar]
 
+## [9.0.0] — 2026-11-04
+
+Rediseño completo de la interfaz. No cambia ninguna función ni el formato de
+los datos guardados.
+
+### Changed
+- Nueva identidad visual: fondo oscuro neutro y un color fijo por sección.
+- Tipografías Bricolage Grotesque y Figtree, que sustituyen a Playfair Display,
+  Manrope e Inter.
+- "Ahora suena" es un rótulo azul para TV, naranja para radio y coral si falla.
+- El acento predeterminado pasa a magenta. Quien tenía el violeta anterior cambia
+  solo; un acento elegido a mano se respeta.
+
+### Added
+- Favoritos e Historial explican qué hacer cuando están vacíos.
+- Los botones estándar de los diálogos aparecen en español.
+
+### Fixed
+- Tema claro completo: filas, iconos y avisos ya siguen el tema.
+- Vista de reposo: se adapta a la altura disponible sin cortar el texto.
+- Configuración ya no se desborda en horizontal.
+
 ## [8.6.42] — 2026-11-02
 
 ### Changed

@@ -26,7 +26,7 @@ class SettingsDialog(QDialog):
         set_surface(self, "dialog")
         self.setWindowTitle("Configuración")
         self.setMinimumWidth(480)
-        self.resize(560, 640)
+        self.resize(640, 680)
         self.settings = dict(settings)
 
         root = QVBoxLayout(self)
@@ -43,6 +43,7 @@ class SettingsDialog(QDialog):
         # dejaba encogerlo ni ver las últimas secciones.
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setFrameShape(QFrame.NoFrame)
         content = QWidget()
         content_layout = QVBoxLayout(content)
@@ -139,8 +140,7 @@ class SettingsDialog(QDialog):
         form_apariencia.addRow("Reproducción:", self.resume_last_check)
 
         self.fullscreen_autohide_check = QCheckBox(
-            "Ocultar cabecera y controles en pantalla completa "
-            "(aparecen al mover el ratón)"
+            "Ocultar controles en pantalla completa"
         )
         self.fullscreen_autohide_check.setChecked(
             bool(self.settings.get("fullscreen_autohide_ui", True))

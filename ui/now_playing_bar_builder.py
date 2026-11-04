@@ -10,7 +10,19 @@ from PySide6.QtWidgets import (
 from ui import icons as app_icons
 from ui import palette
 from ui.player_menus import open_more_controls_menu, open_tracks_menu
-from ui.visual import ElidedLabel, make_separator, set_variant
+from ui.visual import ElidedLabel, make_separator, set_variant, set_visual_state
+
+
+class NowRotulo(QFrame):
+    """Bloque con el logo y el nombre de lo que suena."""
+
+    def set_state(self, state: str) -> None:
+        """Estado "tv", "radio", "error" o "default". Las etiquetas cambian
+        de color con un selector del padre: Qt no las recalcula por sí solo."""
+        set_visual_state(self, state)
+        for label in self.findChildren(QLabel):
+            label.style().unpolish(label)
+            label.style().polish(label)
 
 
 def build_now_playing_bar(win) -> QFrame:
@@ -18,16 +30,24 @@ def build_now_playing_bar(win) -> QFrame:
     bar.setObjectName("nowPlayingBar")
     bar.setFixedHeight(142)
     outer = QVBoxLayout(bar)
-    outer.setContentsMargins(16, 16, 16, 16)
-    outer.setSpacing(12)
+    outer.setContentsMargins(12, 12, 12, 12)
+    outer.setSpacing(10)
     win._now_bar_layout = outer
 
     info_row = QHBoxLayout()
+    # El rótulo: logo y nombre sobre un bloque del color de lo que suena (ver
+    # PlaybackController, que le pone el estado "tv", "radio" o "error").
+    win.now_rotulo = NowRotulo()
+    win.now_rotulo.setObjectName("nowRotulo")
+    rotulo_row = QHBoxLayout(win.now_rotulo)
+    rotulo_row.setContentsMargins(4, 4, 12, 4)
+    rotulo_row.setSpacing(10)
     win.now_logo = QLabel()
-    win.now_logo.setFixedSize(50, 50)
-    win.now_logo.setStyleSheet(f"background-color: {palette.BG_PANEL_ALT}; border-radius: 12px;")
+    win.now_logo.setObjectName("nowLogo")
+    win.now_logo.setFixedSize(44, 44)
     win.now_logo.setAlignment(Qt.AlignCenter)
-    info_row.addWidget(win.now_logo)
+    win.now_logo.setPixmap(app_icons.icon_play(palette.TEXT_DIM, 22).pixmap(22, 22))
+    rotulo_row.addWidget(win.now_logo)
 
     text_col = QVBoxLayout()
     text_col.setSpacing(2)
@@ -37,7 +57,8 @@ def build_now_playing_bar(win) -> QFrame:
     win.now_subtitle.setObjectName("nowSubtitle")
     text_col.addWidget(win.now_title)
     text_col.addWidget(win.now_subtitle)
-    info_row.addLayout(text_col, stretch=1)
+    rotulo_row.addLayout(text_col, stretch=1)
+    info_row.addWidget(win.now_rotulo, stretch=1)
 
     # El volumen vivía en la fila de botones de abajo, donde con muchos
     # botones + separadores no queda sitio de sobra: con ventana
@@ -74,7 +95,7 @@ def build_now_playing_bar(win) -> QFrame:
     win.fav_btn = QPushButton()
     win.fav_btn.setObjectName("ctrlButton")
     win.fav_btn.setIconSize(QSize(15, 15))
-    win.fav_btn.setIcon(app_icons.icon_favorite(palette.ACCENT, size=18))
+    win.fav_btn.setIcon(app_icons.icon_favorite(palette.ACCENT_FAVORITE, size=18))
     win.fav_btn.setToolTip("Añadir a favoritos")
     win.fav_btn.setAccessibleName("Añadir a favoritos")
     win.fav_btn.setCheckable(True)
@@ -96,11 +117,11 @@ def build_now_playing_bar(win) -> QFrame:
         win.cast_btn.setAccessibleName("Enviar a Chromecast o TV")
         win.cast_btn.clicked.connect(win.casting.on_cast_live_clicked)
         win.cast_btn.toggled.connect(
-            # "checked" pinta el icono con palette.BG_ROOT, igual que
+            # "checked" pinta el icono con palette.INK, igual que
             # #castButton[uiVariant="cast"]:checked en ui/style.py sobre
             # el fondo palette.ACCENT_CAST -- ver comentario equivalente
             # en tv_btn más arriba.
-            lambda checked: win.cast_btn.setIcon(app_icons.icon_cast(palette.BG_ROOT if checked else palette.ACCENT_CAST))
+            lambda checked: win.cast_btn.setIcon(app_icons.icon_cast(palette.INK if checked else palette.ACCENT_CAST))
         )
         win.cast_btn.setVisible(win.activated)
         left_group.addWidget(win.cast_btn)
@@ -133,7 +154,7 @@ def build_now_playing_bar(win) -> QFrame:
     center_group.addSpacing(4)
     win.play_btn = QPushButton()
     win.play_btn.setObjectName("playCircle")
-    win.play_btn.setIcon(app_icons.icon_play(palette.BG_ROOT, size=22))
+    win.play_btn.setIcon(app_icons.icon_play(palette.INK, size=22))
     win.play_btn.setIconSize(QSize(19, 19))
     win.play_btn.setToolTip("Reproducir")
     win.play_btn.setAccessibleName("Reproducir")
@@ -227,10 +248,10 @@ def build_now_playing_bar(win) -> QFrame:
     win.sleep_btn.setAccessibleName("Temporizador de apagado")
     win.sleep_btn.clicked.connect(win.playback.on_sleep_btn_clicked)
     win.sleep_btn.toggled.connect(
-        # Mismo motivo que cast_btn: palette.BG_ROOT es el "color" que
+        # Mismo motivo que cast_btn: palette.INK es el "color" que
         # usa #sleepButton[uiVariant="sleep"]:checked en ui/style.py
         # sobre el fondo palette.ACCENT_SLEEP.
-        lambda checked: win.sleep_btn.setIcon(app_icons.icon_moon(palette.BG_ROOT if checked else palette.ACCENT_SLEEP))
+        lambda checked: win.sleep_btn.setIcon(app_icons.icon_moon(palette.INK if checked else palette.ACCENT_SLEEP))
     )
 
     win.queue_btn = QPushButton()
@@ -271,8 +292,8 @@ def build_now_playing_bar(win) -> QFrame:
 def update_now_playing_bar_compact(win, width: int) -> None:
     """Adapta la barra de reproducción sin solapar controles."""
     compact = width < 390
-    margin = 14 if compact else 16
-    win._now_bar_layout.setContentsMargins(margin, 16, margin, 16)
+    margin = 8 if compact else 12
+    win._now_bar_layout.setContentsMargins(margin, 12, margin, 12)
     win.now_logo.setVisible(not compact)
     win.volume_slider.setFixedWidth(56 if compact else 108)
     # En directo no aportan nada; en contenido posicionable reaparecen

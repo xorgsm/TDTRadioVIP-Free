@@ -47,12 +47,12 @@ LOGO_MAX_SIDE = 256
 CATEGORY_PALETTE = (
     palette.ACCENT_CAST,  # verde azulado
     palette.ACCENT_INFO,  # azul cielo
-    "#a78bfa",  # lavanda
-    "#f472b6",  # rosa
-    "#65c46a",  # verde
+    palette.ACCENT_HISTORY,  # lavanda
+    palette.ACCENT_HOME,  # rosa
+    palette.SUCCESS,  # verde
     palette.ACCENT_CATEGORY_ORANGE,  # naranja
-    "#7dd3fc",  # celeste
-    "#c084fc",  # violeta
+    palette.ACCENT_DOWNLOAD,  # lima
+    palette.ACCENT_FAVORITE,  # amarillo
 )
 
 
@@ -75,6 +75,12 @@ def _category_hex(clave: str) -> str:
     idx = int(hashlib.md5(clave.encode("utf-8")).hexdigest(), 16) % len(CATEGORY_PALETTE)
     return CATEGORY_PALETTE[idx]
 
+
+
+def _accent_tint(alpha: int) -> QColor:
+    color = QColor(palette.ACCENT)
+    color.setAlpha(alpha)
+    return color
 
 def category_color(name: str) -> QColor:
     """
@@ -118,44 +124,7 @@ def rounded_pixmap(pixmap: QPixmap, size: int, radius: int) -> QPixmap:
     return rounded
 
 
-def dominant_color(pixmap: QPixmap) -> QColor | None:
-    """
-    Color representativo y "vistoso" de un pixmap (normalmente el logo de
-    un canal/emisora), para el acento dinámico de "reproduciendo ahora"
-    -- ver PlaybackController.update_now_logo(). Ignora píxeles
-    transparentes y los casi blancos/negros/grises (el fondo típico de un
-    logo en PNG) para no acabar con un gris apagado como "color de marca"
-    del canal; si tras filtrar no queda ningún píxel de color, devuelve
-    None y quien llama decide un color de reserva.
 
-    Sin librerías de imagen adicionales (Pillow/numpy no son dependencia
-    del proyecto): se reduce el pixmap a un tamaño pequeño y se recorren
-    sus píxeles a mano vía QImage -- barato para un logo de unos 50px.
-    """
-    if pixmap.isNull():
-        return None
-    imagen = pixmap.toImage().scaled(
-        24, 24, Qt.IgnoreAspectRatio, Qt.SmoothTransformation
-    ).convertToFormat(QImage.Format_ARGB32)
-
-    suma_r = suma_g = suma_b = 0
-    total = 0
-    for y in range(imagen.height()):
-        for x in range(imagen.width()):
-            color = imagen.pixelColor(x, y)
-            if color.alpha() < 128:
-                continue  # transparente: no es "el logo", es el hueco alrededor
-            _h, s, v, _a = color.getHsvF()
-            if s < 0.15 or v < 0.12 or v > 0.95:
-                continue  # gris / negro / blanco casi puro: mal color de acento
-            suma_r += color.red()
-            suma_g += color.green()
-            suma_b += color.blue()
-            total += 1
-
-    if total == 0:
-        return None
-    return QColor(suma_r // total, suma_g // total, suma_b // total)
 
 
 def _download_logo_bytes(url: str) -> bytes:
@@ -444,11 +413,11 @@ class ChannelGridDelegate(QStyledItemDelegate):
         card_path.addRoundedRect(rect, radius, radius)
 
         if is_playing:
-            fill, border = QColor(58, 46, 20, 225), QColor(233, 195, 96, 170)
+            fill, border = _accent_tint(56), QColor(palette.ACCENT)
         elif is_hover:
-            fill, border = QColor(34, 40, 52, 210), QColor(255, 255, 255, 50)
+            fill, border = QColor(palette.BG_HOVER), QColor(palette.BORDER_STRONG)
         else:
-            fill, border = QColor(20, 25, 34, 190), QColor(255, 255, 255, 18)
+            fill, border = QColor(palette.BG_CARD), QColor(palette.BG_CARD)
 
         painter.setPen(Qt.NoPen)
         painter.setBrush(fill)
@@ -459,7 +428,7 @@ class ChannelGridDelegate(QStyledItemDelegate):
         # (ChannelDelegate), como una franja horizontal en vez de vertical
         # para encajar mejor con una tarjeta cuadrada. Solo si no está
         # sonando ni en hover: esos dos estados ya tienen su propio
-        # lenguaje visual (halo dorado / resalte gris) y no deben competir
+        # lenguaje visual (tinte de acento / resalte) y no deben competir
         # con el de categoría.
         categoria = data.get("group") or ""
         if categoria and not is_playing and not is_hover:
@@ -478,23 +447,17 @@ class ChannelGridDelegate(QStyledItemDelegate):
         painter.setBrush(Qt.NoBrush)
         painter.drawRoundedRect(rect, radius, radius)
 
-        if is_playing:
-            self._draw_glow(painter, rect, radius, QColor("#e9c360"))
-
         logo_size = min(rect.width(), rect.height()) * self.LOGO_RATIO
         logo_rect = QRectF(rect.center().x() - logo_size / 2, rect.top() + 14, logo_size, logo_size)
         if isinstance(logo, QPixmap) and not logo.isNull():
             painter.drawPixmap(logo_rect.toRect(), logo)
-            ring = QColor(233, 195, 96, 150) if is_playing else QColor(255, 255, 255, 30)
+            ring = QColor(palette.ACCENT) if is_playing else QColor(palette.BORDER)
             painter.setPen(QPen(ring, 1.2))
             painter.setBrush(Qt.NoBrush)
             painter.drawRoundedRect(logo_rect, 10, 10)
         else:
-            placeholder = QLinearGradient(logo_rect.topLeft(), logo_rect.bottomRight())
-            placeholder.setColorAt(0, QColor(40, 47, 61, 230))
-            placeholder.setColorAt(1, QColor(22, 27, 36, 230))
             painter.setPen(Qt.NoPen)
-            painter.setBrush(placeholder)
+            painter.setBrush(QColor(palette.BG_PANEL_ALT))
             painter.drawRoundedRect(logo_rect, 10, 10)
             icon_size = int(logo_size * 0.45)
             icon_pixmap = (
@@ -516,27 +479,18 @@ class ChannelGridDelegate(QStyledItemDelegate):
         elided = painter.fontMetrics().elidedText(
             _display_name(data.get("name", ""))[0], Qt.ElideRight, int(name_rect.width())
         )
-        painter.setPen(QColor(palette.ACCENT_LIGHTER) if is_playing else QColor("#ffffff"))
+        painter.setPen(QColor(palette.ACCENT_LIGHTER) if is_playing else QColor(palette.TEXT_PRIMARY))
         painter.drawText(name_rect, Qt.AlignHCenter | Qt.AlignTop, elided)
 
         if is_fav:
             star_rect = QRectF(rect.right() - 26, rect.top() + 4, 20, 20)
-            painter.setPen(QColor(palette.ACCENT))
+            painter.setPen(QColor(palette.ACCENT_FAVORITE))
             star_font = QFont(painter.font())
             star_font.setPointSize(11)
             painter.setFont(star_font)
             painter.drawText(star_rect, Qt.AlignCenter, "★")
 
         painter.restore()
-
-    @staticmethod
-    def _draw_glow(painter: QPainter, rect: QRectF, radius: float, color: QColor):
-        painter.setBrush(Qt.NoBrush)
-        for grow, alpha in ((5, 20), (3, 36)):
-            glow_color = QColor(color)
-            glow_color.setAlpha(alpha)
-            painter.setPen(QPen(glow_color, 1.4))
-            painter.drawRoundedRect(rect.adjusted(-grow, -grow, grow, grow), radius + grow, radius + grow)
 
 
 class ChannelDelegate(QStyledItemDelegate):
@@ -562,25 +516,6 @@ class ChannelDelegate(QStyledItemDelegate):
 
     # ---------- capas de la tarjeta ----------
 
-    @staticmethod
-    def _draw_shadow(painter: QPainter, rect: QRectF, radius: float):
-        """Sombra por capas: 3 rectángulos descendentes en opacidad, para
-        simular un blur barato sin depender de QGraphicsDropShadowEffect."""
-        painter.setPen(Qt.NoPen)
-        for dy, alpha in ((6, 14), (4, 22), (2, 32)):
-            painter.setBrush(QColor(0, 0, 0, alpha))
-            painter.drawRoundedRect(rect.translated(0, dy), radius, radius)
-
-    @staticmethod
-    def _draw_glow(painter: QPainter, rect: QRectF, radius: float, color: QColor, layers=((7, 16), (4, 28), (2, 48))):
-        """Halo exterior: varios trazos crecientes en tamaño y decrecientes
-        en opacidad alrededor del borde, para simular un glow suave."""
-        painter.setBrush(Qt.NoBrush)
-        for grow, alpha in layers:
-            glow_color = QColor(color)
-            glow_color.setAlpha(alpha)
-            painter.setPen(QPen(glow_color, 1.6))
-            painter.drawRoundedRect(rect.adjusted(-grow, -grow, grow, grow), radius + grow, radius + grow)
 
     @staticmethod
     def _draw_now_playing_badge(painter: QPainter, logo_rect: QRectF):
@@ -590,7 +525,7 @@ class ChannelDelegate(QStyledItemDelegate):
         badge_rect = QRectF(
             logo_rect.right() - size * 0.7, logo_rect.bottom() - size * 0.7, size, size
         )
-        painter.setPen(QPen(QColor(15, 19, 27, 230), 2))
+        painter.setPen(QPen(QColor(palette.BG_CARD), 2))
         painter.setBrush(QColor(palette.ACCENT))
         painter.drawEllipse(badge_rect)
 
@@ -602,7 +537,7 @@ class ChannelDelegate(QStyledItemDelegate):
         base_y = badge_rect.bottom() - size * 0.22
         max_h = size * 0.42
         painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor("#0a0e14"))
+        painter.setBrush(QColor(palette.INK))
         for h_frac in bar_heights:
             bar_h = max_h * h_frac
             painter.drawRoundedRect(QRectF(x, base_y - bar_h, bar_w, bar_h), bar_w / 2, bar_w / 2)
@@ -625,84 +560,34 @@ class ChannelDelegate(QStyledItemDelegate):
         logo = index.data(ROLE_LOGO)
 
         # ---- sombra suave bajo la tarjeta (siempre, da profundidad) ----
-        self._draw_shadow(painter, rect, radius)
-
-        # ---- cristal: relleno degradado + brillo superior, recortado a la
-        #      forma redondeada para que el brillo no se salga del borde ----
         card_path = QPainterPath()
         card_path.addRoundedRect(rect, radius, radius)
 
         if is_playing:
-            top_c, bottom_c = QColor(58, 46, 20, 215), QColor(30, 23, 8, 230)
-            border_c = QColor(233, 195, 96, 150)
+            fill_c, border_c = _accent_tint(56), QColor(palette.ACCENT)
         elif is_hover:
-            top_c, bottom_c = QColor(42, 50, 66, 190), QColor(22, 27, 36, 205)
-            border_c = QColor(255, 255, 255, 45)
+            fill_c, border_c = QColor(palette.BG_HOVER), QColor(palette.BORDER_STRONG)
         else:
-            top_c, bottom_c = QColor(27, 34, 47, 130), QColor(15, 19, 27, 150)
-            border_c = QColor(255, 255, 255, 16)
+            fill_c, border_c = QColor(palette.BG_CARD), QColor(palette.BG_CARD)
 
-        fill = QLinearGradient(rect.topLeft(), rect.bottomLeft())
-        fill.setColorAt(0, top_c)
-        fill.setColorAt(1, bottom_c)
-
-        painter.save()
-        painter.setClipPath(card_path)
-        painter.fillPath(card_path, fill)
-        # brillo: franja de cristal en la mitad superior, más clara a la
-        # izquierda y desvanecida hacia la derecha/abajo.
-        shine = QLinearGradient(rect.left(), rect.top(), rect.right() * 0.7, rect.top() + rect.height() * 0.6)
-        shine.setColorAt(0.0, QColor(255, 255, 255, 26))
-        shine.setColorAt(1.0, QColor(255, 255, 255, 0))
-        painter.fillRect(QRectF(rect.left(), rect.top(), rect.width(), rect.height() * 0.6), shine)
-        painter.restore()
-
+        painter.fillPath(card_path, fill_c)
         painter.setPen(QPen(border_c, 1))
         painter.setBrush(Qt.NoBrush)
         painter.drawRoundedRect(rect, radius, radius)
 
-        # ---- halo dorado si es la que está sonando; si no, una franja fina
-        # del color de su categoría (o carpeta, en Favoritos) siempre
-        # visible en el borde izquierdo -- antes ese color solo se veía en
-        # el puntito junto al subtítulo; con esto se identifica la
-        # categoría de un vistazo en toda la fila, no solo leyendo el texto ----
-        categoria = data.get("group") or ""
-        if is_playing:
-            self._draw_glow(painter, rect, radius, QColor("#e9c360"))
-            accent = QRectF(rect.left() + 2, rect.top() + 8, 4, rect.height() - 16)
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(QColor(233, 195, 96, 70))
-            painter.drawRoundedRect(accent.adjusted(-3, -3, 3, 3), 4, 4)
-            painter.setBrush(QColor(palette.ACCENT_LIGHTER))
-            painter.drawRoundedRect(accent, 2, 2)
-        else:
-            if categoria:
-                cat_color = category_color(categoria)
-                accent = QRectF(rect.left() + 2, rect.top() + 10, 3, rect.height() - 20)
-                painter.setPen(Qt.NoPen)
-                cat_color.setAlpha(210 if is_hover else 150)
-                painter.setBrush(cat_color)
-                painter.drawRoundedRect(accent, 1.5, 1.5)
-            if is_hover:
-                glow_color = category_color(categoria) if categoria else QColor(255, 255, 255)
-                self._draw_glow(painter, rect, radius, glow_color, layers=((4, 10), (2, 18)))
-
-        # ---- logo (o placeholder de cristal a juego con la tarjeta) ----
+        # ---- logo (o placeholder del color de su categoría) ----
         logo_rect = QRectF(
             rect.left() + 14, rect.center().y() - self.LOGO_SIZE / 2, self.LOGO_SIZE, self.LOGO_SIZE
         )
         if isinstance(logo, QPixmap) and not logo.isNull():
             painter.drawPixmap(logo_rect.toRect(), logo)
-            ring = QColor(233, 195, 96, 150) if is_playing else QColor(255, 255, 255, 30)
+            ring = QColor(palette.ACCENT) if is_playing else QColor(palette.BORDER)
             painter.setPen(QPen(ring, 1.3))
             painter.setBrush(Qt.NoBrush)
             painter.drawRoundedRect(logo_rect, 10, 10)
         else:
-            ph_fill = QLinearGradient(logo_rect.topLeft(), logo_rect.bottomRight())
-            ph_fill.setColorAt(0, QColor(40, 47, 61, 230))
-            ph_fill.setColorAt(1, QColor(22, 27, 36, 230))
             painter.setPen(Qt.NoPen)
-            painter.setBrush(ph_fill)
+            painter.setBrush(QColor(palette.BG_PANEL_ALT))
             painter.drawRoundedRect(logo_rect, 10, 10)
             category_name = data.get("group") or ""
             if category_name:
@@ -710,12 +595,9 @@ class ChannelDelegate(QStyledItemDelegate):
                 # base: da una pista visual de a qué categoría pertenece el
                 # canal incluso antes de que cargue su logo real.
                 tint = category_color(category_name)
-                tint.setAlpha(75)
+                tint.setAlpha(120)
                 painter.setBrush(tint)
                 painter.drawRoundedRect(logo_rect, 10, 10)
-            painter.setPen(QPen(QColor(255, 255, 255, 22), 1))
-            painter.setBrush(Qt.NoBrush)
-            painter.drawRoundedRect(logo_rect, 10, 10)
             # Mismo icono dibujado que el resto de la app (ui/icons.py), con
             # el mismo color que su equivalente en el menú lateral.
             icon_size = int(self.LOGO_SIZE * 0.5)
@@ -749,24 +631,20 @@ class ChannelDelegate(QStyledItemDelegate):
         name_rect = QRectF(text_rect.left(), text_rect.top() + 10, text_rect.width(), 22)
         display_name, name_tags = _display_name(data.get("name", ""))
         elided = painter.fontMetrics().elidedText(display_name, Qt.ElideRight, int(name_rect.width()))
-        # sombra sutil bajo el texto: un toque de profundidad barato, coherente
-        # con el resto de la tarjeta.
-        painter.setPen(QColor(0, 0, 0, 90))
-        painter.drawText(name_rect.translated(0, 1), Qt.AlignVCenter | Qt.AlignLeft, elided)
-        painter.setPen(QColor(palette.ACCENT_LIGHTER) if is_playing else QColor("#ffffff"))
+        painter.setPen(QColor(palette.ACCENT_LIGHTER) if is_playing else QColor(palette.TEXT_PRIMARY))
         painter.drawText(name_rect, Qt.AlignVCenter | Qt.AlignLeft, elided)
 
         # Punto de salud persistente: la comprobación se guarda aparte y
         # no dispara ninguna llamada de red al pintar una fila.
         health_colors = {
-            "stable": QColor("#48c78e"),
-            "slow": QColor("#f4c95d"),
-            "down": QColor("#ef6b73"),
-            "restricted": QColor("#ef6b73"),
+            "stable": QColor(palette.SUCCESS),
+            "slow": QColor(palette.WARNING),
+            "down": QColor(palette.DANGER),
+            "restricted": QColor(palette.DANGER),
         }
         if health_status in health_colors:
             health_rect = QRectF(name_rect.right() - 8, name_rect.center().y() - 4, 8, 8)
-            painter.setPen(QPen(QColor(10, 14, 20, 210), 1))
+            painter.setPen(QPen(QColor(palette.BG_CARD), 1))
             painter.setBrush(health_colors[health_status])
             painter.drawEllipse(health_rect)
 
@@ -808,13 +686,10 @@ class ChannelDelegate(QStyledItemDelegate):
             elided_sub = painter.fontMetrics().elidedText(subtitle, Qt.ElideRight, int(text_sub_rect.width()))
             painter.drawText(text_sub_rect, Qt.AlignVCenter | Qt.AlignLeft, elided_sub)
 
-        # ---- estrella de favorito, con un halo dorado tenue detrás ----
+        # ---- estrella de favorito ----
         if is_fav:
             star_rect = QRectF(rect.right() - 26, rect.center().y() - 11, 20, 22)
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(QColor(201, 162, 39, 45))
-            painter.drawEllipse(star_rect.adjusted(-4, -4, 4, 4))
-            painter.setPen(QColor(palette.ACCENT))
+            painter.setPen(QColor(palette.ACCENT_FAVORITE))
             star_font = QFont(painter.font())
             star_font.setPointSize(12)
             painter.setFont(star_font)

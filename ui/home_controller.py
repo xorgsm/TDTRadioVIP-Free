@@ -45,7 +45,7 @@ class HomeController:
         margin = 14 if very_compact else 22
         win._home_hero_layout.setContentsMargins(margin, margin - 4, margin, margin - 4)
         win._home_hero_layout.setSpacing(6 if very_compact else 10)
-        win.home_greeting.setStyleSheet("font-size: 15pt;" if very_compact else "")
+        win.home_greeting.setStyleSheet("font-size: 18pt;" if very_compact else "")
 
     def home_resume_or_search(self):
         win = self.win

@@ -20,7 +20,6 @@ API_PUBLICA = [
     "ACCENT_PRESETS",
     "DARK_STYLE",
     "DEFAULT_ACCENT",
-    "LIGHT_THEME_COLORS",
     "accent_shades",
     "build_style",
     "normalize_accent",

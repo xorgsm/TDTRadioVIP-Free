@@ -55,6 +55,8 @@ class NavigationController:
         win._current_nav_id = nav_id
         win.stack.setCurrentIndex(nav_id)
         win.section_title.setText(SECTION_TITLES[nav_id])
+        # En Inicio el bloque de portada ya hace de título.
+        win.section_title.setVisible(nav_id != NAV_HOME)
         win.section_title.setStyleSheet("")
         set_variant(win.section_title, SECTION_VARIANTS[nav_id])
         win.catalog.update_catalog_count()

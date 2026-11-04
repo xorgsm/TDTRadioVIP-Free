@@ -24,11 +24,11 @@ from ui import palette
 from ui.catalog_labels import split_name_tags
 from ui.visual import set_variant
 
-# Umbrales de la vista según el espacio del área de emisión: a 860×580
-# solo caben título y botones; el icono, la explicación y los accesos
-# rápidos aparecen cuando hay sitio (ver _apply_size).
-ICON_MIN_HEIGHT = 380
-DETAILS_MIN_HEIGHT = 300
+# El icono, la explicación y los accesos rápidos solo aparecen si caben
+# a su altura natural (ver _fit_to_height). Antes se decidía con umbrales
+# fijos de altura, que no contaban con la fuente, el escalado de Windows ni
+# el número de filas: con poco alto Qt comprimía las filas y el texto salía
+# cortado por arriba y por abajo.
 SEARCH_TEXT_MIN_WIDTH = 360
 # Accesos rápidos visibles a la vez: más de cuatro convierte la vista de
 # reposo en un segundo catálogo, que ya existe en TV/Radio/Favoritos.
@@ -71,7 +71,6 @@ class PlayerIdleView(QWidget):
         self._on_search = on_search
         self._resume_entry = None
         self._resume_name = ""
-        self._has_quick_entries = False
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(28, 24, 28, 24)
@@ -80,6 +79,7 @@ class PlayerIdleView(QWidget):
 
         column = QVBoxLayout()
         column.setSpacing(10)
+        self._column = column
 
         self.icon_label = QLabel()
         self.icon_label.setObjectName("playerIdleIcon")
@@ -138,6 +138,7 @@ class PlayerIdleView(QWidget):
         # Ancho de lectura acotado: en un panel de reproductor ancho, los
         # accesos rápidos estirados de borde a borde se leen peor.
         holder = QWidget()
+        self._holder = holder
         holder.setLayout(column)
         holder.setMaximumWidth(420)
         holder.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
@@ -152,14 +153,6 @@ class PlayerIdleView(QWidget):
 
     def _apply_size(self) -> None:
         width, height = self.width(), self.height()
-        self.icon_label.setVisible(height >= ICON_MIN_HEIGHT)
-        roomy = height >= DETAILS_MIN_HEIGHT
-        self.subtitle.setVisible(roomy)
-        self.quick_heading.setVisible(roomy and self._has_quick_entries)
-        for i in range(self._quick_layout.count()):
-            widget = self._quick_layout.itemAt(i).widget()
-            if widget is not None:
-                widget.setVisible(roomy)
         wide = width >= SEARCH_TEXT_MIN_WIDTH
         self.search_btn.setText("Buscar" if wide else "")
         if self._resume_name:
@@ -170,6 +163,42 @@ class PlayerIdleView(QWidget):
             self.resume_btn.setText(self.resume_btn.fontMetrics().elidedText(
                 f"Volver a {self._resume_name}", Qt.ElideRight, btn_width - 64
             ))
+        # Después del texto de los botones: su ancho no cambia la altura,
+        # pero así la medida usa ya el texto definitivo.
+        self._fit_to_height(width, height)
+
+    def _fit_to_height(self, width: int, height: int) -> None:
+        """
+        Muestra lo más completo que quepa sin comprimir nada. Se renuncia,
+        por este orden, al icono (decorativo), a los accesos rápidos de uno
+        en uno empezando por el último y a la explicación; título y botones
+        quedan siempre.
+        """
+        quick = [
+            w for w in (self._quick_layout.itemAt(i).widget() for i in range(self._quick_layout.count()))
+            if w is not None
+        ]
+        margins = self.layout().contentsMargins()
+        available = height - margins.top() - margins.bottom()
+        # Título y explicación ajustan línea: su sizeHint supone un ancho
+        # estrecho, así que se mide con el ancho real de la columna.
+        column_width = min(self._holder.maximumWidth(), width - margins.left() - margins.right())
+        layouts = [(True, len(quick), True)]
+        layouts += [(False, n, True) for n in range(len(quick), -1, -1)]
+        layouts.append((False, 0, False))
+        for icon, shown, details in layouts:
+            self.icon_label.setVisible(icon)
+            self.subtitle.setVisible(details)
+            self.quick_heading.setVisible(shown > 0)
+            for i, widget in enumerate(quick):
+                widget.setVisible(i < shown)
+            self._quick_layout.invalidate()
+            self._column.invalidate()
+            if self._column.heightForWidth(column_width) <= available:
+                break
+        # La columna ocupa el ancho medido: centrada, se quedaría en su
+        # sizeHint y el título partiría en más líneas de las calculadas.
+        self._holder.setMinimumWidth(column_width)
 
     # ---------- Poblado ----------
 
@@ -182,7 +211,7 @@ class PlayerIdleView(QWidget):
         if recent:
             self.subtitle.setText("Retoma lo último que pusiste o elige otra emisión.")
             self.resume_btn.setToolTip(f"Volver a {self._resume_name}")
-            self.resume_btn.setIcon(app_icons.icon_play(palette.BG_ROOT, 18))
+            self.resume_btn.setIcon(app_icons.icon_play(palette.INK, 18))
             self.resume_btn.setVisible(True)
         else:
             self.subtitle.setText("Elige un canal o una emisora, o búscalo con Ctrl+K.")
@@ -195,7 +224,6 @@ class PlayerIdleView(QWidget):
         entries = pick_quick_entries(history, favorites, exclude=recent)
         for entry in entries:
             self._quick_layout.addWidget(self._make_quick_button(entry))
-        self._has_quick_entries = bool(entries)
         self._apply_size()
 
     def _make_quick_button(self, entry: dict) -> QToolButton:

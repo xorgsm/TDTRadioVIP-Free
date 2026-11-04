@@ -66,7 +66,7 @@ FROZEN_EXPECTED_ATTRS = {
     "home_recommended_carousel", "home_resume_btn", "library",
     "library_sidebar", "library_toggle_btn", "lists", "live_badge", "logo_loader",
     "more_btn", "more_menu_btn", "mute_btn", "nav_group", "nav_top", "navigation", "now_controls_separator",
-    "now_logo",
+    "now_logo", "now_rotulo",
     "now_playing_bar", "now_subtitle", "now_title", "pip_btn", "play_btn",
     "playback", "player", "player_context_label", "player_frame", "player_header_bar",
     "player_idle_view",

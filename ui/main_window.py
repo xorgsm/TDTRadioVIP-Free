@@ -35,9 +35,9 @@ from ui.nav_top import (
 from ui.navigation_controller import NavigationController
 from ui.now_playing_bar_builder import update_now_playing_bar_compact
 from ui.player_panel_builder import build_player_panel
-from ui.title_bar import build_title_bar
+from ui.title_bar import build_ident_strip, build_title_bar
 from ui.channel_lists_controller import ChannelListsController
-from ui.channel_model import ChannelListModel, ChannelListView
+from ui.channel_model import ChannelListModel, ChannelListView, EmptyStateListWidget
 from ui.epg_controller import EpgController
 from ui.groups_sidebar import GroupsSidebar
 from ui.library_controller import LibraryController
@@ -327,6 +327,7 @@ class MainWindow(QMainWindow):
 
         self.title_bar = build_title_bar(self)
         raiz_v.addWidget(self.title_bar)
+        raiz_v.addWidget(build_ident_strip())
 
         # La barra de navegación vive como fila propia del layout vertical
         # (no como columna del QHBoxLayout de más abajo): en el modelo v8
@@ -447,6 +448,10 @@ class MainWindow(QMainWindow):
         self.radio_list = self._make_list(model=self.radio_model)
         self.fav_list = self._make_list(reorderable=True)
         self.hist_list = self._make_list()
+        self.fav_list.empty_text = (
+            "Aún no hay favoritos aquí.\nMarca la estrella de un canal o una emisora para tenerlos a mano."
+        )
+        self.hist_list.empty_text = "Aún no hay historial.\nLo que veas o escuches aparecerá aquí."
         # Descargas (Torrents/Soulseek/audio/Podcasts) no está incluido en
         # la versión free -- ver el comentario junto a self._cast_session
         # sobre por qué el import va aquí dentro y no arriba del módulo.
@@ -525,7 +530,7 @@ class MainWindow(QMainWindow):
         self.playback.play("radio", title, url)
 
     def _make_list(self, reorderable: bool = False, model=None) -> QListWidget:
-        lst = ChannelListView() if model is not None else QListWidget()
+        lst = ChannelListView() if model is not None else EmptyStateListWidget()
         lst.setObjectName("channelList")
         lst.setItemDelegate(self.delegate)
         if model is not None:

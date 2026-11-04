@@ -2,10 +2,22 @@
 controles de ventana). Extraído de ui/main_window.py.
 """
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
 
 from core import config as cfg
 from ui.visual import set_variant
+
+
+IDENT_STRIP_HEIGHT = 3
+
+
+def build_ident_strip() -> QFrame:
+    """Franja con los colores de identidad de todas las secciones, bajo la
+    barra de título: la firma de la aplicación."""
+    strip = QFrame()
+    strip.setObjectName("identStrip")
+    strip.setFixedHeight(IDENT_STRIP_HEIGHT)
+    return strip
 
 
 def build_title_bar(win) -> QWidget:
