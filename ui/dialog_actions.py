@@ -176,6 +176,7 @@ class DialogActionsController:
         old_accent = win.settings.get("accent_color", palette.ACCENT)
         old_theme = win.settings.get("theme_mode", "dark")
         old_card_size = int(win.settings.get("catalog_card_size", 168))
+        old_compact_rows = bool(win.settings.get("catalog_compact_rows", False))
         old_profile = win.settings.get("active_profile", "Default")
         dialog = SettingsDialog(win.settings, win)
         if dialog.exec() == QDialog.Accepted:
@@ -224,6 +225,12 @@ class DialogActionsController:
                     grid_size = QSize(new_card_size, new_card_size)
                     win.tv_list.setGridSize(grid_size)
                     win.radio_list.setGridSize(grid_size)
+
+            new_compact_rows = bool(win.settings.get("catalog_compact_rows", False))
+            if new_compact_rows != old_compact_rows:
+                win.delegate.set_compact(new_compact_rows)
+                for lista in (win.tv_list, win.radio_list, win.fav_list, win.hist_list):
+                    lista.doItemsLayout()
 
             new_tv_url = win.settings.get("tv_playlist_url") or tv_channels.playlist_url_for(
                 win.settings.get("tv_country_code", "ES")

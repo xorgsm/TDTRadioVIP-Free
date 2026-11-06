@@ -135,6 +135,10 @@ class SettingsDialog(QDialog):
         self.card_size_combo.setCurrentIndex(max(0, card_index))
         form_apariencia.addRow("Tarjetas del catálogo:", self.card_size_combo)
 
+        self.compact_rows_check = QCheckBox("Filas compactas en las listas de canales")
+        self.compact_rows_check.setChecked(bool(self.settings.get("catalog_compact_rows", False)))
+        form_apariencia.addRow("Listas:", self.compact_rows_check)
+
         self.resume_last_check = QCheckBox("Reanudar el último canal o emisora al iniciar")
         self.resume_last_check.setChecked(bool(self.settings.get("resume_last_stream", False)))
         form_apariencia.addRow("Reproducción:", self.resume_last_check)
@@ -339,6 +343,7 @@ class SettingsDialog(QDialog):
         self.settings["recordings_dir"] = self.rec_dir_input.text().strip() or self.settings.get("recordings_dir")
         self.settings["theme_mode"] = self.theme_combo.currentData() or "dark"
         self.settings["catalog_card_size"] = self.card_size_combo.currentData() or 168
+        self.settings["catalog_compact_rows"] = self.compact_rows_check.isChecked()
         self.settings["resume_last_stream"] = self.resume_last_check.isChecked()
         self.settings["fullscreen_autohide_ui"] = self.fullscreen_autohide_check.isChecked()
         self.settings["automatic_backups_enabled"] = self.auto_backup_check.isChecked()

@@ -505,6 +505,28 @@ class ChannelDelegate(QStyledItemDelegate):
     # pantalla sin sacrificar el logo, el estado de salud o el subtítulo.
     ROW_HEIGHT = 84
     LOGO_SIZE = 54
+    NAME_TOP = 10
+    NAME_HEIGHT = 22
+    SUBTITLE_TOP = 35
+    SUBTITLE_HEIGHT = 16
+    HEALTH_STATES = ("stable", "slow", "down", "restricted")
+
+    @classmethod
+    def _name_width(cls, width: float, health_status) -> float:
+        """Ancho para el nombre, sin el hueco del punto de salud."""
+        return width - 12 if health_status in cls.HEALTH_STATES else width
+
+    def set_compact(self, compact: bool) -> None:
+        """Filas compactas para catálogos largos: casi la mitad de canales
+        más por pantalla, con el mismo nombre, subtítulo y estado. Son
+        atributos de instancia; la vista debe recolocar sus filas después
+        porque usa setUniformItemSizes."""
+        self.ROW_HEIGHT = 56 if compact else type(self).ROW_HEIGHT
+        self.LOGO_SIZE = 34 if compact else type(self).LOGO_SIZE
+        self.NAME_TOP = 4 if compact else type(self).NAME_TOP
+        self.NAME_HEIGHT = 20 if compact else type(self).NAME_HEIGHT
+        self.SUBTITLE_TOP = 24 if compact else type(self).SUBTITLE_TOP
+        self.SUBTITLE_HEIGHT = 15 if compact else type(self).SUBTITLE_HEIGHT
 
     def sizeHint(self, option, index):
         # Ancho mínimo, no el del viewport: en modo lista Qt estira cada
@@ -628,9 +650,13 @@ class ChannelDelegate(QStyledItemDelegate):
         name_font.setPointSize(11)
         name_font.setBold(True)
         painter.setFont(name_font)
-        name_rect = QRectF(text_rect.left(), text_rect.top() + 10, text_rect.width(), 22)
+        name_rect = QRectF(
+            text_rect.left(), text_rect.top() + self.NAME_TOP, text_rect.width(), self.NAME_HEIGHT
+        )
         display_name, name_tags = _display_name(data.get("name", ""))
-        elided = painter.fontMetrics().elidedText(display_name, Qt.ElideRight, int(name_rect.width()))
+        elided = painter.fontMetrics().elidedText(
+            display_name, Qt.ElideRight, int(self._name_width(name_rect.width(), health_status))
+        )
         painter.setPen(QColor(palette.ACCENT_LIGHTER) if is_playing else QColor(palette.TEXT_PRIMARY))
         painter.drawText(name_rect, Qt.AlignVCenter | Qt.AlignLeft, elided)
 
@@ -666,7 +692,10 @@ class ChannelDelegate(QStyledItemDelegate):
             sub_font.setPointSize(8.5)
             sub_font.setBold(False)
             painter.setFont(sub_font)
-            sub_rect = QRectF(text_rect.left(), text_rect.top() + 35, text_rect.width(), 16)
+            sub_rect = QRectF(
+                text_rect.left(), text_rect.top() + self.SUBTITLE_TOP,
+                text_rect.width(), self.SUBTITLE_HEIGHT,
+            )
 
             dot_offset = 0
             if data.get("group"):

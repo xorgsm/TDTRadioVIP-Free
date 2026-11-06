@@ -439,6 +439,7 @@ class MainWindow(QMainWindow):
     def _build_content_stack(self) -> QStackedWidget:
         self.stack = QStackedWidget()
         self.delegate = ChannelDelegate()
+        self.delegate.set_compact(bool(self.settings.get("catalog_compact_rows", False)))
         self.grid_delegate = ChannelGridDelegate()
         self.grid_delegate.CARD_SIZE = int(self.settings.get("catalog_card_size", 168))
 

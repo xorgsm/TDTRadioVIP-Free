@@ -4,6 +4,14 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
 ## [Sin publicar]
 
+## [9.1.0] — 2026-11-06
+
+### Added
+- Filas compactas en las listas de canales, activables en Configuración > Apariencia.
+
+### Fixed
+- El punto de estado de un canal ya no tapa el final de los nombres largos.
+
 ## [9.0.0] — 2026-11-04
 
 Rediseño completo de la interfaz. No cambia ninguna función ni el formato de

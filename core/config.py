@@ -21,7 +21,7 @@ APP_ORG = "CoderByXOR"
 # carpeta propia, para poder probarla junto a 7.5.11 sin modificar sus datos.
 APP_DATA_NAME = "TDTRadioVIP_7.6.0"
 LEGACY_APP_ORG = "CoderByXOR"
-APP_VERSION = "9.0.0"
+APP_VERSION = "9.1.0"
 # Correo al que el cliente envía su ID de equipo para pedir el código de
 # activación. Centralizado aquí para no tener que buscarlo por el código
 # si algún día cambia.
@@ -57,6 +57,7 @@ DEFAULT_SETTINGS = {
     # sesiones para que la interfaz no vuelva siempre al modo lista.
     "catalog_grid_view": False,
     "catalog_card_size": 168,
+    "catalog_compact_rows": False,
     "catalog_sort_tv": "source",
     "catalog_sort_radio": "source",
     "catalog_filters": {},
