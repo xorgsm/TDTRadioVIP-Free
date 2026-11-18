@@ -23,13 +23,23 @@ def _path():
     return get_profile_data_dir() / HISTORY_FILE
 
 
+def _contador(entrada: dict) -> int:
+    """play_count de una entrada; un valor ausente o malformado (p. ej. de un
+    backup importado a mano) cuenta como 1 reproducción."""
+    valor = entrada.get("play_count", 1)
+    if isinstance(valor, int) and not isinstance(valor, bool) and valor >= 1:
+        return valor
+    return 1
+
+
 def load_history() -> List[dict]:
     """Carga el historial; si el JSON está dañado, conserva una copia recuperable."""
     data = read_json(_path(), [])
     if not isinstance(data, list):
         return []
     return [
-        e for e in data
+        {**e, "play_count": _contador(e)} if "play_count" in e else e
+        for e in data
         if isinstance(e, dict) and e.get("type") and e.get("name")
     ]
 
@@ -64,7 +74,7 @@ def add_entry(
         (e for e in history if e.get("type") == item_type and e.get("name") == name),
         None,
     )
-    play_count = (previo.get("play_count", 1) if previo else 0) + 1
+    play_count = (_contador(previo) if previo else 0) + 1
     previo = previo or {}
 
     history = [
@@ -102,5 +112,5 @@ def top_played(history: List[dict] = None, limit: int = 10) -> List[dict]:
     """
     if history is None:
         history = load_history()
-    ordenado = sorted(history, key=lambda e: e.get("play_count", 1), reverse=True)
+    ordenado = sorted(history, key=_contador, reverse=True)
     return ordenado[:limit]

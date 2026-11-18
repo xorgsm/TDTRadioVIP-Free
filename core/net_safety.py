@@ -106,12 +106,67 @@ def is_safe_download_url(url: object) -> bool:
     return host_is_reachable_target(host, allow_private=True)
 
 
+def _resolver(allow_private: bool):
+    """Resolutor para http_limits: las IP (texto) a las que puede conectarse un
+    host con esta política, o [] si debe rechazarse. Quien conecta lo usa en
+    lugar del DNS, así la validación y la conexión comparten UNA resolución."""
+    return lambda host: [
+        str(ip) for ip in allowed_addresses(host, allow_private=allow_private)
+    ]
+
+
+# http_limits conecta contra la IP que devuelve `.resolve` en vez de volver a
+# resolver el nombre (rebinding de DNS). Un validador sin `.resolve` sigue
+# funcionando, solo que sin esa protección.
+is_safe_download_url.resolve = _resolver(allow_private=True)
+is_safe_https_url.resolve = _resolver(allow_private=False)
+
+
+def _canonical_host(host: str) -> str:
+    """Forma comparable de un nombre: requests lo pasa a IDNA y urllib3 le
+    quita el punto final, así que la URL del usuario y el host que ve el
+    transporte pueden diferir solo en eso."""
+    host = host.lower().rstrip(".")
+    try:
+        return host.encode("idna").decode("ascii")
+    except UnicodeError:
+        return host
+
+
 def redirect_validator_for(user_url: str):
     """Validador para fetch_limited() con una URL que configuró el usuario
     (lista M3U, guía EPG): esa URL se respeta tal cual -- hay quien usa un
     proxy IPTV en 127.0.0.1 --, pero las redirecciones que mande el servidor
     no pueden llevar la petición al propio equipo ni a metadatos de nube."""
-    return lambda url: url == user_url or is_safe_download_url(url)
+    try:
+        exempt_host = _canonical_host(urlsplit(user_url).hostname or "")
+    except ValueError:
+        exempt_host = ""
+
+    # La exención vale solo para la PRIMERA petición, la que el usuario
+    # configuró: cualquier redirección, aunque apunte al mismo nombre o a la
+    # misma URL, vuelve a la política normal, o un DNS hostil podría darle
+    # entonces 127.0.0.1. El validador se llama antes de cada petición, así que
+    # su primera llamada es la inicial y las demás ya no la heredan.
+    on_user_url = True
+    first_request = True
+
+    def validator(url: str) -> bool:
+        nonlocal on_user_url, first_request
+        on_user_url = first_request and url == user_url
+        first_request = False
+        return url == user_url or is_safe_download_url(url)
+
+    def resolve(host: str) -> list:
+        if on_user_url and exempt_host and _canonical_host(host) == exempt_host:
+            try:
+                return [str(ip) for ip in _resolve(host)]
+            except (OSError, ValueError):
+                return []
+        return is_safe_download_url.resolve(host)
+
+    validator.resolve = resolve
+    return validator
 
 
 def is_playable_stream_url(url: object) -> bool:

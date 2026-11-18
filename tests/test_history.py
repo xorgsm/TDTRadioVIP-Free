@@ -276,3 +276,39 @@ def test_add_entry_does_not_raise_when_disk_write_fails(monkeypatch, tmp_path):
 
     result = history.add_entry("tv", "La 1")
     assert [e["name"] for e in result] == ["La 1"]
+
+
+# --------------------------------------------------------------------------
+# entradas importadas con play_count malformado
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("malo", [None, "2", -5, 3.7, True, [1]])
+def test_add_entry_survives_malformed_imported_play_count(monkeypatch, tmp_path, malo):
+    _redirect(monkeypatch, tmp_path)
+    path = tmp_path / history.HISTORY_FILE
+    path.write_text(
+        json.dumps([{"type": "tv", "name": "La 1", "play_count": malo}]),
+        encoding="utf-8",
+    )
+
+    result = history.add_entry("tv", "La 1")
+
+    assert result[0]["name"] == "La 1"
+    assert isinstance(result[0]["play_count"], int) and result[0]["play_count"] >= 1
+
+
+def test_top_played_survives_malformed_play_counts(monkeypatch, tmp_path):
+    _redirect(monkeypatch, tmp_path)
+    path = tmp_path / history.HISTORY_FILE
+    path.write_text(
+        json.dumps([
+            {"type": "tv", "name": "A", "play_count": "9"},
+            {"type": "tv", "name": "B", "play_count": None},
+            {"type": "tv", "name": "C", "play_count": 4},
+        ]),
+        encoding="utf-8",
+    )
+
+    result = history.top_played()
+
+    assert result[0]["name"] == "C"

@@ -30,7 +30,7 @@ from ui import palette
 from ui.icons import icon_radio, icon_tv
 from ui.style import ACCENT_PRESETS
 from ui.style.colors import hex_to_rgba
-from ui.visual import set_visual_state
+from ui.visual import plain_label, set_visual_state
 
 CARD_WIDTH = 128
 CARD_LOGO_SIZE = 96
@@ -101,7 +101,7 @@ class CarouselCard(QFrame):
         self.logo_label.setPixmap(placeholder_builder(placeholder_color, size=36).pixmap(36, 36))
         layout.addWidget(self.logo_label, alignment=Qt.AlignHCenter)
 
-        name_label = QLabel(entry.get("name", ""))
+        name_label = plain_label(entry.get("name", ""))
         self.name_label = name_label
         name_label.setObjectName("carouselName")
         name_label.setWordWrap(True)
@@ -113,7 +113,7 @@ class CarouselCard(QFrame):
         # "Radio online" -- lo usa el panel "Ahora en antena" de Inicio
         # para enseñar qué programa está emitiendo cada canal ahora mismo,
         # en vez de solo repetir el tipo de contenido.
-        kind_label = QLabel(entry.get("subtitle") or ("TV en directo" if is_tv else "Radio online"))
+        kind_label = plain_label(entry.get("subtitle") or ("TV en directo" if is_tv else "Radio online"))
         self.kind_label = kind_label
         kind_label.setObjectName("carouselMeta")
         kind_label.setAlignment(Qt.AlignHCenter)

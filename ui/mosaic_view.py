@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 from core.channels import Channel
 from player.vlc_player import VLCPlayer
 from ui import palette
-from ui.visual import set_surface
+from ui.visual import plain_label, set_surface
 
 MAX_TILES = 4
 
@@ -117,7 +117,7 @@ class _MosaicTile(QWidget):
         self.player.installEventFilter(self)
         layout.addWidget(self.player, stretch=1)
 
-        self.nombre_label = QLabel(channel.name)
+        self.nombre_label = plain_label(channel.name)
         self.nombre_label.setAlignment(Qt.AlignCenter)
         self.nombre_label.setStyleSheet(
             f"background-color: {palette.BG_PANEL}; color: {palette.TEXT_PRIMARY}; "

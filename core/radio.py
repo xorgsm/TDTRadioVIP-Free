@@ -101,18 +101,25 @@ def fetch_radio_stations(country_code: str = "ES", limit: int = 250, force_refre
         except (requests.RequestException, ValueError):
             continue  # este espejo falla: probar el siguiente
 
-        stations = dedupe_stations([
-            Station(
-                name=(s.get("name") or "").strip() or "Sin nombre",
-                url=s.get("url_resolved") or s.get("url", ""),
-                favicon=s.get("favicon", ""),
-                tags=s.get("tags", ""),
-                bitrate=s.get("bitrate", 0) or 0,
-                country=s.get("country", ""),
-            )
-            for s in raw
-            if s.get("url_resolved") or s.get("url")
-        ])
+        # Un 200 con un objeto de error o con elementos que no son diccionarios
+        # tampoco sirve: se trata como espejo caído en vez de romper la carga.
+        if not isinstance(raw, list):
+            continue
+        try:
+            stations = dedupe_stations([
+                Station(
+                    name=str(s.get("name") or "").strip() or "Sin nombre",
+                    url=s.get("url_resolved") or s.get("url", ""),
+                    favicon=s.get("favicon", ""),
+                    tags=s.get("tags", ""),
+                    bitrate=s.get("bitrate", 0) or 0,
+                    country=s.get("country", ""),
+                )
+                for s in raw
+                if isinstance(s, dict) and (s.get("url_resolved") or s.get("url"))
+            ])
+        except (AttributeError, TypeError):
+            continue
         if stations:
             try:
                 write_json_atomic(cache_path, [asdict(s) for s in stations])

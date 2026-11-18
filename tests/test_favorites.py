@@ -350,3 +350,37 @@ def test_complete_favorite_does_not_rewrite_the_file_when_nothing_changes(monkey
     favorites.complete_favorite("tv", "La 1", tvg_id="la1")
 
     assert saves == []
+
+
+# --------------------------------------------------------------------------
+# entradas importadas con folder / alternate_urls malformados
+# --------------------------------------------------------------------------
+
+def test_get_folders_survives_malformed_imported_folder(monkeypatch, tmp_path):
+    _redirect(monkeypatch, tmp_path)
+    (tmp_path / favorites.FAVORITES_FILE).write_text(
+        json.dumps([
+            {"type": "tv", "name": "A", "folder": ["Noticias"]},
+            {"type": "tv", "name": "B", "folder": 7},
+            {"type": "tv", "name": "C", "folder": "Deportes"},
+        ]),
+        encoding="utf-8",
+    )
+
+    assert favorites.get_folders() == ["Deportes"]
+
+
+def test_load_favorites_normalizes_malformed_alternate_urls(monkeypatch, tmp_path):
+    _redirect(monkeypatch, tmp_path)
+    (tmp_path / favorites.FAVORITES_FILE).write_text(
+        json.dumps([
+            {"type": "tv", "name": "A", "alternate_urls": "http://x"},
+            {"type": "tv", "name": "B", "alternate_urls": ["http://ok", 3]},
+            {"type": "tv", "name": "C", "alternate_urls": ["http://ok"]},
+        ]),
+        encoding="utf-8",
+    )
+
+    result = favorites.load_favorites()
+
+    assert [f["alternate_urls"] for f in result] == [[], [], ["http://ok"]]

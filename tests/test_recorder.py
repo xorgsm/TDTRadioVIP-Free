@@ -445,11 +445,13 @@ def test_stop_escalates_to_terminate_when_graceful_stop_does_not_respond(tmp_pat
     rec.current_log = None
     rec._log_fh = None
 
-    rec.stop()
+    archivo, ok = rec.stop()
 
     assert fake.terminated is True
     assert fake.killed is False
     assert rec.process is None
+    assert archivo == tmp_path / "grabacion.mp4"
+    assert ok is False  # terminate() no deja a ffmpeg escribir el final del MP4
 
 
 def test_stop_escalates_to_kill_when_terminate_does_not_respond(tmp_path):
@@ -501,7 +503,7 @@ def test_stop_falls_back_to_kill_when_wait_until_raises_unexpectedly(tmp_path, m
     assert fake.killed is True
     assert rec.process is None
     assert archivo == tmp_path / "grabacion.mp4"
-    assert ok is True
+    assert ok is False  # cierre forzado: el MP4 no tiene su índice final
 
 
 # --------------------------------------------------------------------------
@@ -513,3 +515,15 @@ def test_is_recording_reflects_process_state(tmp_path):
     assert rec.is_recording is False
     rec.process = FakeProcess()
     assert rec.is_recording is True
+
+
+def test_recorder_resolves_relative_output_dir_to_absolute(tmp_path, monkeypatch):
+    """Con la marca de agua ffmpeg arranca con cwd en la carpeta de fuentes: una
+    ruta de salida relativa acabaría escribiéndose allí."""
+    monkeypatch.chdir(tmp_path)
+
+    rec = Recorder("grabaciones")
+
+    assert rec.output_dir.is_absolute()
+    assert rec.output_dir == tmp_path / "grabaciones"
+    assert rec.output_dir.is_dir()

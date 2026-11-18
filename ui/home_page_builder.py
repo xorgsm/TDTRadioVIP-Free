@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
 )
 
 from ui.carousel import Carousel
-from ui.visual import set_variant
+from ui.visual import plain_label, set_variant
 
 
 def build_home_page(win) -> QScrollArea:
@@ -65,10 +65,10 @@ def build_home_page(win) -> QScrollArea:
     now_layout.setSpacing(10)
     win._home_now_layout = now_layout
     now_text = QVBoxLayout()
-    win.home_now_title = QLabel("Nada en reproducción")
+    win.home_now_title = plain_label("Nada en reproducción")
     win.home_now_title.setObjectName("nowTitle")
     win.home_now_title.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
-    win.home_now_subtitle = QLabel("Busca cualquier canal o emisora con Ctrl+K")
+    win.home_now_subtitle = plain_label("Busca cualquier canal o emisora con Ctrl+K")
     win.home_now_subtitle.setObjectName("nowSubtitle")
     win.home_now_subtitle.setWordWrap(True)
     win.home_now_subtitle.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)

@@ -63,6 +63,19 @@ def set_surface(widget: QWidget, surface: str) -> str:
     return safe
 
 
+def plain_label(text: str = "", parent=None) -> QLabel:
+    """QLabel que nunca interpreta su texto como HTML.
+
+    Con el formato automático de Qt, un nombre de canal, torrent, archivo de
+    Soulseek o episodio con una etiqueta (<img>, <a>, <b>...) se pinta como rich
+    text: puede suplantar otro texto o hacer que Qt pida una imagen remota. Úsala
+    para todo texto que venga de listas, feeds o pares ajenos.
+    """
+    label = QLabel(text, parent)
+    label.setTextFormat(Qt.PlainText)
+    return label
+
+
 class ElidedLabel(QLabel):
     """
     QLabel de una línea que acorta su texto con "…" al ancho disponible
@@ -74,6 +87,7 @@ class ElidedLabel(QLabel):
     def __init__(self, text: str = "", parent=None):
         super().__init__(parent)
         self._full_text = ""
+        self.setTextFormat(Qt.PlainText)  # el título/subtítulo puede venir de fuera
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.setText(text)
 

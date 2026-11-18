@@ -173,6 +173,33 @@ def test_libvlc_callbacks_are_forwarded_as_queued_signals(player, fake_vlc, qapp
 # Pistas
 # --------------------------------------------------------------------------
 
+def test_track_lists_accept_python_vlc_tuple_lists(player, fake_vlc):
+    """python-vlc 3.0.x devuelve ya una lista de (id, nombre en bytes) y
+    libera la lista nativa por su cuenta: no hay nada que recorrer ni liberar."""
+    mp = fake_vlc.instances[0].players[0]
+    mp.audio_descriptions = [(-1, b"Desactivar"), (1, "Español".encode()), (2, b"")]
+
+    assert player.audio_tracks() == [(-1, "Desactivar"), (1, "Español"), (2, "2")]
+    assert fake_vlc.released_lists == []
+
+
+def test_recreate_media_player_does_not_release_old_player_twice(player, fake_vlc):
+    instance = fake_vlc.instances[0]
+    viejo = instance.players[0]
+    liberaciones = []
+    viejo.release = lambda: liberaciones.append(1)
+
+    def _falla():
+        raise RuntimeError("libVLC no pudo crear el reproductor")
+
+    instance.media_player_new = _falla
+
+    player._recrear_media_player()
+
+    assert liberaciones == [1]
+    assert player.media_player is None
+
+
 def test_track_lists_are_walked_and_released(player, fake_vlc):
     mp = fake_vlc.instances[0].players[0]
 
@@ -312,3 +339,43 @@ def test_play_rejects_non_streaming_urls_without_touching_libvlc(player, fake_vl
     assert instancia.medias == []
     assert eventos and eventos[-1][0] == "error"
     assert "no permitida" in eventos[-1][1].lower()
+
+
+# --------------------------------------------------------------------------
+# Eventos tardíos del stream anterior
+# --------------------------------------------------------------------------
+
+def test_late_events_from_the_previous_stream_are_dropped(player, qapp):
+    """libVLC puede estar ejecutando (o haber encolado ya) un callback del
+    reproductor viejo cuando se zapea: no debe llegar a la interfaz como si
+    fuera del canal nuevo (error falso, auto-salto, título equivocado)."""
+    player.play("https://stream.test/uno.m3u8")
+    viejo = player.media_player
+    callbacks_viejos = dict(viejo.events.attached)
+    callback_meta_viejo = player.media_player.media.events.attached["meta"]
+
+    player.play("https://stream.test/dos.m3u8")
+    qapp.processEvents()
+    eventos = _signals(player)
+
+    callbacks_viejos["error"](None)
+    callbacks_viejos["end"](None)
+    callbacks_viejos["vout"](None)
+    callback_meta_viejo(None)
+    qapp.processEvents()
+
+    assert eventos == []
+
+
+def test_events_of_the_current_stream_still_reach_the_interface(player, qapp):
+    player.play("https://stream.test/uno.m3u8")
+    player.play("https://stream.test/dos.m3u8")
+    qapp.processEvents()
+    eventos = _signals(player)
+    actual = player.media_player
+
+    actual.events.attached["error"](None)
+    actual.events.attached["end"](None)
+    qapp.processEvents()
+
+    assert eventos == [("error", "No se pudo conectar con el servidor del stream."), ("end",)]

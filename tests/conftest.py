@@ -23,3 +23,20 @@ def _offline_dns(monkeypatch):
     monkeypatch.setattr(
         net_safety, "_resolve", lambda host: [ipaddress.ip_address("93.184.216.34")]
     )
+
+
+@pytest.fixture(autouse=True)
+def _mockable_pinned_get(request, monkeypatch):
+    """El pinning de DNS abre su propia Session y se saltaría los tests que
+    parchean `requests.get`: aquí delega en `requests.get` (resuelto al llamar)
+    salvo en test_dns_pinning, que ejercita la conexión fijada de verdad."""
+    if request.module.__name__.endswith("test_dns_pinning"):
+        return
+    import requests
+
+    from core import http_limits
+
+    monkeypatch.setattr(
+        http_limits, "_pinned_get",
+        lambda resolver: lambda url, **kwargs: requests.get(url, **kwargs),
+    )

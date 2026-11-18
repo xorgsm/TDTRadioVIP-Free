@@ -187,3 +187,15 @@ def test_find_conflicts_reads_from_disk_and_ignores_invalid_intervals(profile_di
     assert schedule.find_conflicts(
         _recording("Al revés", "20260824220000", "20260824200000")
     ) == []
+
+
+def test_check_starts_due_expires_entries_whose_program_already_ended(profile_dir):
+    """App reabierta dentro del margen de inicio pero con el programa ya
+    terminado: no se arranca (grabaría el programa siguiente)."""
+    ahora = datetime.now()
+    terminado = _recording("Terminado", _xmltv(ahora - timedelta(minutes=7)),
+                           _xmltv(ahora - timedelta(minutes=2)))
+    schedule.add_scheduled(terminado)
+
+    assert schedule.check_starts_due(parse_xmltv_time) == []
+    assert [(r.title, r.status) for r in schedule.load_scheduled()] == [("Terminado", "error")]

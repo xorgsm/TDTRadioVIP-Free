@@ -4,6 +4,12 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
 ## [Sin publicar]
 
+## [9.1.2] — 2026-11-18
+
+### Fixed
+- Las descargas y sus redirecciones se conectan a la dirección ya validada, sin volver a resolver el nombre (protección contra DNS rebinding).
+- Firmas OpenPGP con longitudes largas y varios fallos de la VPN, torrents, descargas, grabación y VLC corregidos en la revisión cruzada de `core/`.
+
 ## [9.1.0] — 2026-11-06
 
 ### Added

@@ -566,10 +566,11 @@ class PlaybackController:
                 win.statusBar().showMessage(f"Grabación guardada: {finished_file}", 8000)
             elif finished_file:
                 QMessageBox.warning(
-                    win, "Grabación vacía",
+                    win, "Grabación incompleta",
                     f"Se detuvo la grabación, pero el archivo no tiene contenido "
-                    f"real (probablemente ffmpeg no llegó a conectar con el "
-                    f"stream):\n\n{finished_file}"
+                    f"real o ffmpeg no pudo cerrarlo bien, así que puede no "
+                    f"reproducirse (si no tiene contenido, probablemente ffmpeg "
+                    f"no llegó a conectar con el stream):\n\n{finished_file}"
                 )
 
     def _check_recording_alive(self, expected_file):

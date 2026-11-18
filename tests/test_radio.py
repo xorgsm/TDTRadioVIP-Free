@@ -560,3 +560,37 @@ def test_record_station_failure_ignores_non_numeric_stored_count(tmp_path, monke
     assert radio.record_channel_failure("A") == 1
     assert radio.record_channel_failure("B") == 3
     assert radio.record_channel_failure("C") == 1
+
+
+@pytest.mark.parametrize("cuerpo_malo", [
+    {"error": "rate limited"},          # objeto en vez de lista
+    [None, "texto", 7],                 # elementos que no son diccionarios
+])
+def test_fetch_radio_stations_tries_next_mirror_when_body_is_malformed(tmp_path, monkeypatch, cuerpo_malo):
+    monkeypatch.setattr(radio, "get_app_data_dir", lambda: tmp_path)
+    calls = []
+
+    def _fake_get(url, **kwargs):
+        calls.append(url)
+        if len(calls) == 1:
+            return _FakeResponse(cuerpo_malo)
+        return _FakeResponse([_raw_station()])
+
+    monkeypatch.setattr(radio.requests, "get", _fake_get)
+
+    stations = radio.fetch_radio_stations("ES")
+
+    assert len(calls) == 2
+    assert len(stations) == 1
+
+
+def test_fetch_radio_stations_tolerates_non_string_name(tmp_path, monkeypatch):
+    monkeypatch.setattr(radio, "get_app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(
+        radio.requests, "get",
+        lambda url, **kwargs: _FakeResponse([_raw_station(name=123)]),
+    )
+
+    stations = radio.fetch_radio_stations("ES")
+
+    assert [s.name for s in stations] == ["123"]

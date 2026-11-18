@@ -27,9 +27,23 @@ def load_favorites() -> List[dict]:
         return []
     # Descarta entradas malformadas para que un archivo corrupto no tumbe la app.
     return [
-        f for f in data
+        _normalizar(f) for f in data
         if isinstance(f, dict) and f.get("type") and f.get("name")
     ]
+
+
+def _normalizar(fav: dict) -> dict:
+    """Un backup importado a mano puede traer folder/alternate_urls con otro
+    tipo (p. ej. una lista como carpeta): get_folders() reventaba con ellos."""
+    fav = dict(fav)
+    if "folder" in fav and not isinstance(fav["folder"], str):
+        fav["folder"] = ""
+    urls = fav.get("alternate_urls")
+    if "alternate_urls" in fav and not (
+        isinstance(urls, list) and all(isinstance(u, str) for u in urls)
+    ):
+        fav["alternate_urls"] = []
+    return fav
 
 
 def _save(favorites: List[dict]) -> None:

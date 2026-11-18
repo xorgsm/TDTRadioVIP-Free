@@ -110,7 +110,7 @@ class TrayReminderController:
                 win.record_btn.setChecked(False)
                 win.record_btn.setGraphicsEffect(None)
                 win._scheduled_recording_active = None
-                mensaje = f"«{r.title}» guardado." if ok else f"«{r.title}»: la grabación quedó vacía."
+                mensaje = f"«{r.title}» guardado." if ok else f"«{r.title}»: la grabación quedó vacía o incompleta."
                 win._tray_icon.showMessage(
                     "Grabación programada terminada", mensaje, QSystemTrayIcon.Information, 8000
                 )

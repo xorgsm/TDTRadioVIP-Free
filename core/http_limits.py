@@ -6,11 +6,18 @@ agotaría la RAM. ``fetch_limited`` cuenta los bytes ya descomprimidos y corta
 en cuanto se supera el tope.
 """
 import logging
+import socket
+import threading
 import time
 from typing import Callable, Optional, Union
 from urllib.parse import urljoin, urlsplit
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.connection import HTTPConnection, HTTPSConnection
+from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
+from urllib3.exceptions import ConnectTimeoutError, NewConnectionError
+from urllib3.util.connection import create_connection
 
 # Topes por tipo de recurso, holgados para el uso real y lejos de agotar RAM.
 MAX_PLAYLIST_BYTES = 64 * 1024 * 1024
@@ -56,6 +63,71 @@ class DownloadDeadlineExceeded(requests.Timeout):
     """
 
 
+def _pinned_connection(base, resolver):
+    """Conexión que NO resuelve el nombre: pide las direcciones a `resolver`
+    (que ya aplica la política de destino) y conecta a la primera que acepte.
+    `self.host` no cambia, así que SNI, cabecera Host y verificación del
+    certificado siguen siendo los del nombre."""
+
+    class Pinned(base):
+        def _new_conn(self):
+            addresses = resolver(self.host)
+            if not addresses:
+                raise NewConnectionError(self, f"Destino no permitido: {self.host}")
+            error = None
+            for address in addresses:
+                try:
+                    return create_connection(
+                        (address, self.port), self.timeout,
+                        source_address=self.source_address,
+                        socket_options=self.socket_options,
+                    )
+                except socket.timeout as exc:
+                    error = ConnectTimeoutError(
+                        self, f"Connection to {self.host} timed out. (connect timeout={self.timeout})"
+                    )
+                    error.__cause__ = exc
+                except OSError as exc:
+                    error = NewConnectionError(self, f"Failed to establish a new connection: {exc}")
+                    error.__cause__ = exc
+            raise error
+
+    return Pinned
+
+
+class _PinningAdapter(HTTPAdapter):
+    """Adaptador cuyas conexiones directas (sin proxy: con proxy es el proxy
+    quien resuelve el destino) conectan solo a direcciones de `resolver`."""
+
+    def __init__(self, resolver: Callable[[str], list]):
+        self._resolver = resolver
+        super().__init__()
+
+    def init_poolmanager(self, *args, **kwargs):
+        super().init_poolmanager(*args, **kwargs)
+        http_pool = type("PinnedHTTPPool", (HTTPConnectionPool,), {
+            "ConnectionCls": _pinned_connection(HTTPConnection, self._resolver),
+        })
+        https_pool = type("PinnedHTTPSPool", (HTTPSConnectionPool,), {
+            "ConnectionCls": _pinned_connection(HTTPSConnection, self._resolver),
+        })
+        self.poolmanager.pool_classes_by_scheme = {"http": http_pool, "https": https_pool}
+
+
+def _pinned_get(resolver: Callable[[str], list]) -> Callable:
+    def do_get(url, **kwargs):
+        session = requests.Session()
+        adapter = _PinningAdapter(resolver)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        try:
+            return session.get(url, **kwargs)
+        finally:
+            session.close()  # como requests.get: la respuesta en streaming sigue válida
+
+    return do_get
+
+
 def get_following_safe_redirects(
     url: str,
     *,
@@ -67,8 +139,14 @@ def get_following_safe_redirects(
     """GET que valida `url` y cada salto de redirección con `validate_url`
     antes de pedirlo, en vez de dejar que `requests` los siga a ciegas
     (una URL HTTPS podía redirigir a HTTP, a loopback o a la red local).
-    Devuelve la primera respuesta que no es una redirección."""
-    do_get = get or requests.get
+    Devuelve la primera respuesta que no es una redirección.
+
+    Si `validate_url` tiene un atributo `resolve` (ver core.net_safety), cada
+    conexión se hace contra la dirección que ese resolutor acepta, sin volver
+    a resolver el nombre: validar y conectar con dos DNS distintos permitía un
+    rebinding (primero IP pública, luego 127.0.0.1)."""
+    resolver = getattr(validate_url, "resolve", None)
+    do_get = get or (_pinned_get(resolver) if resolver else requests.get)
     current = url
     for _ in range(max_redirects + 1):
         if not validate_url(current):
@@ -82,6 +160,16 @@ def get_following_safe_redirects(
             raise UnsafeRedirect("Redirección sin destino")
         current = urljoin(current, location)
     raise UnsafeRedirect("Demasiadas redirecciones")
+
+
+def _expire(resp, expired: threading.Event) -> None:
+    """Vigilante del plazo total: marca la descarga como vencida y cierra la
+    respuesta, lo que desbloquea la lectura que esté esperando bytes."""
+    expired.set()
+    try:
+        resp.close()
+    except Exception:
+        logger.debug("No se pudo cerrar la respuesta al vencer el plazo", exc_info=True)
 
 
 def _declared_length(resp) -> int | None:
@@ -113,6 +201,14 @@ def _log_if_slow(
     )
 
 
+def _deadline_error(
+    url: str, headers_seconds: float, started: float, deadline: float
+) -> DownloadDeadlineExceeded:
+    now = _clock()
+    _log_if_slow(url, headers_seconds, now - started, now, aborted=True)
+    return DownloadDeadlineExceeded(f"La descarga superó el plazo de {deadline:g} s")
+
+
 def fetch_limited(
     url: str,
     *,
@@ -130,7 +226,10 @@ def fetch_limited(
     (``UnsafeRedirect`` si alguna no pasa; ``max_redirects`` acota la cadena).
 
     ``timeout`` puede ser ``(conexión, lectura)``. ``deadline`` es el plazo
-    TOTAL en segundos (``DownloadDeadlineExceeded`` si se supera entre trozos).
+    TOTAL en segundos (``DownloadDeadlineExceeded`` si se supera). Un vigilante
+    cierra la conexión al vencer: ``iter_content`` espera a juntar el trozo
+    entero, así que un servidor que entrega bytes a gotas dentro del timeout
+    de lectura nunca devolvería el control para comprobar el plazo.
     """
     started = _clock()
     if validate_url is None:
@@ -141,7 +240,13 @@ def fetch_limited(
             timeout=timeout, stream=True,
         )
     headers_seconds = _clock() - started
+    expired = threading.Event()
+    watchdog = None
     try:
+        if deadline is not None:
+            watchdog = threading.Timer(max(deadline - headers_seconds, 0.0), _expire, (resp, expired))
+            watchdog.daemon = True
+            watchdog.start()
         resp.raise_for_status()
         declared = _declared_length(resp)
         if declared is not None and declared > max_bytes:
@@ -161,13 +266,22 @@ def fetch_limited(
             if following is not None and deadline is not None:
                 now = _clock()
                 if now - started > deadline:
-                    _log_if_slow(url, headers_seconds, now - started, now, aborted=True)
-                    raise DownloadDeadlineExceeded(
-                        f"La descarga superó el plazo de {deadline:g} s"
-                    )
+                    raise _deadline_error(url, headers_seconds, started, deadline)
             chunk = following
+        if expired.is_set():
+            # El vigilante cerró la respuesta y la lectura acabó sin error:
+            # lo recibido está truncado, no es una descarga completa.
+            raise _deadline_error(url, headers_seconds, started, deadline)
         now = _clock()
         _log_if_slow(url, headers_seconds, now - started, now)
         return b"".join(chunks)
+    except DownloadDeadlineExceeded:
+        raise
+    except Exception as exc:
+        if expired.is_set():
+            raise _deadline_error(url, headers_seconds, started, deadline) from exc
+        raise
     finally:
+        if watchdog is not None:
+            watchdog.cancel()
         resp.close()

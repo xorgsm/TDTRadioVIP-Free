@@ -85,7 +85,9 @@ class Recorder:
     _stopping = False
 
     def __init__(self, output_dir: str):
-        self.output_dir = Path(output_dir)
+        # Absoluta: con la marca de agua ffmpeg arranca con cwd en la carpeta
+        # de fuentes y una ruta relativa de salida acabaría allí.
+        self.output_dir = Path(output_dir).absolute()
         try:
             self.output_dir.mkdir(parents=True, exist_ok=True)
         except OSError:
@@ -315,7 +317,8 @@ class Recorder:
         para no bloquearse durante la espera. Sin él, se comporta como una
         espera bloqueante normal (uso desde fuera de la interfaz, o tests).
 
-        Devuelve (archivo, ok). ok=False si el archivo no llegó a escribirse
+        Devuelve (archivo, ok). ok=False si hubo que forzar el cierre de ffmpeg
+        (el MP4 queda sin su índice final) o si el archivo no llegó a escribirse
         con contenido real -- antes se daba la grabación por buena con solo
         haber arrancado el proceso, así que un fallo a mitad de grabación
         (stream cortado, servidor caído) se reportaba igualmente como
@@ -347,13 +350,18 @@ class Recorder:
         except (OSError, ValueError):
             pass  # el proceso ya puede haber muerto por su cuenta
 
+        # Si hubo que forzar el cierre, ffmpeg no llegó a escribir el final del
+        # MP4 (su índice): el archivo puede pesar mucho y no reproducirse.
+        forzado = False
         try:
             if not self._wait_until(proceso, time.monotonic() + 5, on_wait):
+                forzado = True
                 proceso.terminate()
                 if not self._wait_until(proceso, time.monotonic() + 3, on_wait):
                     proceso.kill()
                     proceso.wait(timeout=5)
         except Exception:
+            forzado = True
             log.exception(
                 "ffmpeg no respondió al cierre normal; forzando kill() (grabación: %s)",
                 self.current_file,
@@ -366,7 +374,9 @@ class Recorder:
 
         self._reset_state()
 
-        ok = bool(archivo and archivo.exists() and archivo.stat().st_size >= _MIN_VALID_SIZE_BYTES)
+        ok = not forzado and bool(
+            archivo and archivo.exists() and archivo.stat().st_size >= _MIN_VALID_SIZE_BYTES
+        )
         return archivo, ok
 
     @property

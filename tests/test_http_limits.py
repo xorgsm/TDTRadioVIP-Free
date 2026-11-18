@@ -223,3 +223,47 @@ def test_slow_download_warnings_are_limited_to_one_per_host_per_minute(monkeypat
             fetch_limited("https://cdn.lento.test/a.png", max_bytes=10, timeout=5)
 
     assert len([r for r in caplog.records if "cdn.lento.test" in r.getMessage()]) == 1
+
+
+def test_a_read_that_blocks_forever_is_cut_by_the_deadline(monkeypatch):
+    """iter_content(64 KB) espera a juntar el trozo entero: un servidor que
+    manda bytes a gotas dentro del timeout de lectura nunca devuelve el
+    control, así que comprobar el plazo entre trozos no basta."""
+    import threading
+    import time
+
+    closed = threading.Event()
+
+    def _blocked():
+        if not closed.wait(5):
+            return
+        raise OSError("conexión cerrada por el vigilante")
+        yield b""  # pragma: no cover  (hace de esto un generador)
+
+    resp = _respuesta([])
+    resp.iter_content = Mock(return_value=_blocked())
+    resp.close = Mock(side_effect=closed.set)
+    _patch_get(monkeypatch, resp)
+
+    started = time.monotonic()
+    with pytest.raises(http_limits.DownloadDeadlineExceeded):
+        fetch_limited("https://x.test/a", max_bytes=100, timeout=5, deadline=0.1)
+    assert time.monotonic() - started < 3
+
+
+def test_a_response_closed_by_the_watchdog_is_never_returned_as_complete(monkeypatch):
+    import threading
+
+    closed = threading.Event()
+
+    def _ends_quietly_when_closed():
+        yield b"abc"
+        closed.wait(5)  # tras cerrarse, la lectura acaba sin error: bytes truncados
+
+    resp = _respuesta([])
+    resp.iter_content = Mock(return_value=_ends_quietly_when_closed())
+    resp.close = Mock(side_effect=closed.set)
+    _patch_get(monkeypatch, resp)
+
+    with pytest.raises(http_limits.DownloadDeadlineExceeded):
+        fetch_limited("https://x.test/a", max_bytes=100, timeout=5, deadline=0.1)

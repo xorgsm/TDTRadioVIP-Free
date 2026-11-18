@@ -191,6 +191,13 @@ def check_starts_due(parse_time_fn) -> List[ScheduledRecording]:
             cambiado = True
             continue
         if inicio <= ahora <= inicio + MARGEN_INICIO:
+            fin = parse_time_fn(r.stop)
+            if fin is not None and fin <= ahora:
+                # La app estuvo cerrada y el programa ya terminó dentro del
+                # margen: arrancarla grabaría el siguiente programa.
+                r.status = "error"
+                cambiado = True
+                continue
             r.status = "recording"
             cambiado = True
             listas.append(r)
