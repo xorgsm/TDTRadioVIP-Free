@@ -100,11 +100,7 @@ QToolButton#winCloseButton:hover {
     color: #ffffff;
 }
 
-/* ---------- Navegación superior ---------- */
-QWidget#navTopBar {
-    background-color: $bg_panel;
-    border-bottom: 1px solid $border;
-}
+/* ---------- Botones de navegación (raíl) ---------- */
 QToolButton#navButton {
     background: transparent;
     border: 1px solid transparent;

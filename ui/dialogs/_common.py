@@ -8,11 +8,42 @@ cabecera título/subtítulo).
 
 from PySide6.QtWidgets import (
     QComboBox, QFormLayout,
-    QFrame, QLabel, QVBoxLayout,
+    QFrame, QLabel, QMessageBox, QVBoxLayout,
 )
 
 from core import countries
 
+
+def warn_recording_conflict(parent, conflicts) -> None:
+    """Aviso de que una grabación programada (``ScheduledRecording``) solapa
+    con otras. Compartido por el diálogo de la EPG y el panel de la Guía."""
+    detalle = "\n".join(f"• {r.channel_name}: {r.title}" for r in conflicts[:4])
+    QMessageBox.warning(
+        parent,
+        "Conflicto de grabación",
+        "No se puede programar porque coincide con otra grabación:\n\n"
+        f"{detalle}\n\nCancela la otra reserva o elige otro horario.",
+    )
+
+
+def warn_rule_conflict(parent, rules) -> None:
+    """Aviso de que una regla recurrente (``RecurringRule``) solapa con otras."""
+    detalle = "\n".join(f"• {rule.channel_name} — {rule.start_time}" for rule in rules[:4])
+    QMessageBox.warning(
+        parent,
+        "Conflicto de grabación",
+        "Ese horario coincide con otra regla recurrente:\n\n"
+        f"{detalle}\n\nModifica el día, la hora o la duración.",
+    )
+
+
+def warn_rule_invalid(parent, message: str) -> None:
+    """Aviso de que no se pudo crear una regla recurrente (``ValueError``)."""
+    QMessageBox.warning(
+        parent,
+        "No se pudo crear la regla",
+        "No se pudo crear la grabación recurrente:\n\n" + message,
+    )
 
 
 def _panel(section_label: str) -> tuple[QFrame, QFormLayout]:

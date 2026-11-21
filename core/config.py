@@ -21,7 +21,7 @@ APP_ORG = "CoderByXOR"
 # carpeta propia, para poder probarla junto a 7.5.11 sin modificar sus datos.
 APP_DATA_NAME = "TDTRadioVIP_7.6.0"
 LEGACY_APP_ORG = "CoderByXOR"
-APP_VERSION = "9.1.2"
+APP_VERSION = "10.0.0"
 # Correo al que el cliente envía su ID de equipo para pedir el código de
 # activación. Centralizado aquí para no tener que buscarlo por el código
 # si algún día cambia.
@@ -430,10 +430,11 @@ def get_icon_path() -> Optional[str]:
 
 
 # Tipografías empaquetadas en resources/fonts/: Figtree para el texto y
-# Bricolage Grotesque para los títulos.
+# Barlow Condensed (Bold y ExtraBold) para títulos, horas y canales.
 BUNDLED_FONT_FILES = (
     "Figtree-Variable.ttf",
-    "BricolageGrotesque-Variable.ttf",
+    "BarlowCondensed-Bold.ttf",
+    "BarlowCondensed-ExtraBold.ttf",
 )
 
 

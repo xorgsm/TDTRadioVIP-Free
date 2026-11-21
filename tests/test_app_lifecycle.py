@@ -52,10 +52,31 @@ def win():
         equalizer=Mock(),
         download_panel=Mock(),
         catalog=catalog,
+        vpn_status=Mock(),
     )
 
 
+@pytest.mark.parametrize("has_poller", [True, False])
+def test_startup_schedules_the_vpn_status_poller_only_when_present(monkeypatch, has_poller):
+    scheduled = []
+    monkeypatch.setattr(
+        app_lifecycle.QTimer, "singleShot", lambda ms, func: scheduled.append(func)
+    )
+    poller = Mock() if has_poller else None
+    fake = SimpleNamespace(
+        settings={"onboarding_shown": True, "automatic_backups_enabled": False,
+                  "automatic_update_check": False},
+        player=Mock(disponible=True),
+        vpn_status=poller,
+    )
+    AppLifecycle(fake).schedule_startup_tasks()  # sin poller: no rompe
+    if has_poller:
+        assert poller.start in scheduled
+        poller.start.assert_not_called()  # diferido, no en la construcción
+
+
 def _assert_rest_of_shutdown_ran(win, stubs):
+    win.vpn_status.stop.assert_called_once()
     win.download_panel.shutdown.assert_called_once()
     win._taskbar.cleanup.assert_called_once()
     stubs.shutdown_workers.assert_called_once()

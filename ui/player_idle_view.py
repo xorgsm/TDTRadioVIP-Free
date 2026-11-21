@@ -5,6 +5,12 @@ de la ventana sin ninguna función; ahora ofrece retomar la última emisión,
 abrir la búsqueda (Ctrl+K) y saltar a las emisiones recientes y favoritas
 sin cambiar de sección.
 
+Desde la v10 el panel de vídeo se pliega mientras no suena nada
+(MainWindow.set_player_panel_collapsed) y el catálogo ocupa todo el ancho:
+esta vista queda como acceso rápido (último canal y favoritos) cuando el
+panel se ve sin reproducción -- el usuario arrastra el divisor para
+abrirlo, o pantalla completa/PiP sin nada sonando.
+
 Solo presenta datos: quien la puebla (refresh) es MainWindow a través de
 PlaybackController/HomeController, con las mismas entradas de historial y
 favoritos que ya usan los carruseles de Inicio.
@@ -182,7 +188,8 @@ class PlayerIdleView(QWidget):
         available = height - margins.top() - margins.bottom()
         # Título y explicación ajustan línea: su sizeHint supone un ancho
         # estrecho, así que se mide con el ancho real de la columna.
-        column_width = min(self._holder.maximumWidth(), width - margins.left() - margins.right())
+        # Con el panel de vídeo plegado el ancho es 0: nunca negativo.
+        column_width = max(0, min(self._holder.maximumWidth(), width - margins.left() - margins.right()))
         layouts = [(True, len(quick), True)]
         layouts += [(False, n, True) for n in range(len(quick), -1, -1)]
         layouts.append((False, 0, False))
@@ -233,7 +240,7 @@ class PlayerIdleView(QWidget):
         btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         btn.setCursor(Qt.PointingHandCursor)
         is_tv = entry.get("type", "tv") == "tv"
-        color = palette.ACCENT_INFO if is_tv else palette.ACCENT_CATEGORY_ORANGE
+        color = palette.ACCENT_TV if is_tv else palette.ACCENT_RADIO
         btn.setIcon(app_icons.icon_tv(color, 18) if is_tv else app_icons.icon_radio(color, 18))
         btn.setIconSize(QSize(18, 18))
         name = split_name_tags(entry.get("name", ""))[0]

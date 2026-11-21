@@ -80,7 +80,7 @@ class Programme:
     description: str = ""
 
 
-def _parse_xmltv_time(value: str) -> Optional[datetime]:
+def parse_xmltv_time(value: str) -> Optional[datetime]:
     """Convierte una hora XMLTV ("20260824193000" o "20260824193000 +0200",
     también "Z") a un datetime naive en hora LOCAL del sistema.
 
@@ -113,10 +113,10 @@ def _parse_xmltv_time(value: str) -> Optional[datetime]:
         return None
 
 
-# Alias público: la parrilla de programación (ui/epg_dialog.py) necesita
-# parsear horas de inicio/fin igual que este módulo, y usar un nombre con
-# guion bajo de otro módulo no es buena práctica aunque Python lo permita.
-parse_xmltv_time = _parse_xmltv_time
+# Nombre histórico: este módulo lo sigue usando por dentro (y los tests lo
+# sustituyen con monkeypatch para comprobar que no se reparsea), así que se
+# conserva como alias del público.
+_parse_xmltv_time = parse_xmltv_time
 
 
 def _prepare_guide(guide: Dict[str, List[Programme]]) -> Dict[str, List[Programme]]:

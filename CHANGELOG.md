@@ -4,6 +4,19 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
 ## [Sin publicar]
 
+## [10.0.0] — 2026-11-21
+
+Rediseño de imagen y navegación (fases 1 a 3). Sin cambios en reproducción, listas ni formato de datos.
+
+### Added
+- Sección «Guía» en el raíl: parrilla multicanal del día con línea de «ahora», filtros (Todos, Favoritos, Cine, Deportes) y panel de detalle con Ver ahora y Avisarme.
+
+### Changed
+- Identidad visual nueva («Teleprograma»): tinta cálida, un color por sección y tipografía Barlow Condensed con Figtree.
+- Navegación en raíl lateral de 208 px (iconos por debajo de 1000 px) con barra superior y búsqueda global (Ctrl+K); usable desde 860 × 580.
+- «Ahora suena» pasa a un dock inferior a todo el ancho con progreso del programa y estado de calidad.
+- El panel de vídeo se pliega mientras no se reproduce nada.
+
 ## [9.1.2] — 2026-11-18
 
 ### Fixed

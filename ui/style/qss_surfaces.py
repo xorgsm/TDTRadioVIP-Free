@@ -5,6 +5,192 @@ que `ui.style.qss_base`.
 """
 
 SURFACES_STYLE = """
+/* ---------- Raíl lateral de navegación ---------- */
+QWidget#navRail {
+    background-color: $bg_panel;
+    border-right: 1px solid $border;
+}
+QLabel#navBrand {
+    color: $text;
+    font-family: $display_font;
+    font-size: 16pt;
+    font-weight: 700;
+    padding: 0 6px;
+}
+QLabel#navCaption {
+    color: $muted;
+    font-size: 8.5pt;
+    font-weight: 700;
+    padding: 0 6px;
+}
+QWidget#navRail QToolButton#navButton {
+    padding: 9px 10px;
+}
+/* Parte de arriba desplazable del raíl (ui.nav_rail): deja ver el panel. */
+QScrollArea#navRailScroll, QScrollArea#navRailScroll > QWidget > QWidget#navRailSections {
+    background: transparent;
+    border: none;
+}
+QFrame#navVpnCard {
+    background-color: transparent;
+    border: 1px solid $border;
+    border-radius: 10px;
+}
+QFrame#navVpnDot {
+    background-color: $success;
+    border: none;
+    border-radius: 4px;
+}
+QLabel#navVpnTitle {
+    color: $text;
+    font-size: 9.5pt;
+    font-weight: 700;
+}
+QLabel#navVpnDetail {
+    color: $text2;
+    font-size: 8.5pt;
+}
+
+/* ---------- Barra superior global ---------- */
+QWidget#appTopBar {
+    background-color: $bg_root;
+    border-bottom: 1px solid $border;
+}
+QPushButton#topSearchField {
+    background-color: $bg_card;
+    border: 1px solid $border_strong;
+    border-radius: 10px;
+    min-height: 34px;
+    max-height: 34px;
+    padding: 0;
+    text-align: left;
+}
+QPushButton#topSearchField:hover {
+    background-color: $bg_hover;
+}
+QPushButton#topSearchField:focus {
+    border: 1px solid $accent_light;
+}
+QLabel#topSearchHint {
+    color: $muted;
+}
+QLabel#topSearchKbd {
+    color: $text2;
+    border: 1px solid $border_strong;
+    border-radius: 5px;
+    padding: 1px 6px;
+    font-size: 8pt;
+    font-weight: 700;
+}
+QPushButton#topChip {
+    background-color: transparent;
+    border: 1px solid $border;
+    border-radius: 8px;
+    color: $text2;
+    min-height: 30px;
+    max-height: 30px;
+    padding: 0 12px;
+    font-weight: 600;
+}
+QPushButton#topChip:hover {
+    background-color: $bg_hover;
+    color: $text;
+}
+QPushButton#topChip:focus {
+    border: 1px solid $accent_light;
+}
+/* ---------- Guía: parrilla de programación (ui.guide_view) ---------- */
+QWidget#guideView {
+    background-color: $bg_root;
+}
+QLabel#guideTitle {
+    color: $text;
+    font-family: $display_font;
+    font-size: 17pt;
+    font-weight: 800;
+}
+QPushButton#guideChip {
+    background-color: transparent;
+    border: 1px solid $border;
+    border-radius: 8px;
+    color: $text2;
+    min-height: 28px;
+    max-height: 28px;
+    padding: 0 10px;
+    font-weight: 600;
+}
+QPushButton#guideChip:hover {
+    background-color: $bg_hover;
+    color: $text;
+}
+QPushButton#guideChip:focus {
+    border: 1px solid $accent_light;
+}
+/* Elegido: bloque de la tinta de la Guía con texto en tinta (Ink On Blocks). */
+QPushButton#guideChip:checked {
+    background-color: $block_guide;
+    border: 1px solid $block_guide;
+    color: $ink;
+    font-weight: 700;
+}
+QPushButton#guideChip:checked:focus {
+    border: 1px solid $ink;
+}
+QAbstractScrollArea#guideGrid {
+    background-color: $bg_panel;
+    border: 1px solid $border;
+}
+/* Panel de detalle del programa elegido (ui.guide_detail). */
+QWidget#guideDetail {
+    background-color: $bg_panel;
+    border-left: 1px solid $border;
+}
+QWidget#guideDetailBody, QScrollArea#guideDetailScroll {
+    background-color: transparent;
+}
+QLabel#guideDetailTitle {
+    color: $text;
+    font-family: $display_font;
+    font-size: 16pt;
+    font-weight: 800;
+}
+QLabel#guideDetailMeta {
+    color: $text2;
+    font-weight: 600;
+}
+QLabel#guideDetailText {
+    color: $text2;
+}
+QPushButton#guideDetailBtn {
+    background-color: transparent;
+    border: 1px solid $border;
+    border-radius: 8px;
+    color: $text;
+    min-height: 32px;
+    padding: 0 12px;
+    font-weight: 600;
+}
+QPushButton#guideDetailBtn:hover {
+    background-color: $bg_hover;
+}
+QPushButton#guideDetailBtn:focus {
+    border: 1px solid $accent_light;
+}
+QPushButton#guideDetailBtn:disabled {
+    color: $dim;
+}
+QPushButton#guideDetailBtn[primaryAction="true"] {
+    background-color: $block_guide;
+    border: 1px solid $block_guide;
+    color: $ink;
+    font-weight: 700;
+}
+QPushButton#guideDetailBtn[primaryAction="true"]:disabled {
+    background-color: transparent;
+    border: 1px solid $border;
+    color: $dim;
+}
+
 /* ---------- Estados y variantes de color ---------- */
 QPushButton[uiVariant="cast"], QLabel[uiVariant="cast"] { color: $cast; }
 QPushButton[uiVariant="sleep"], QLabel[uiVariant="sleep"] { color: $sleep; }
@@ -49,12 +235,54 @@ QWidget#playerIdleView QLabel#nowTitle { color: #faf7ff; }
 QWidget#playerIdleView QLabel#nowSubtitle { color: #ddd7ea; }
 QWidget#playerIdleView QLabel#dialogSectionLabel { color: #ddd7ea; }
 
-/* ---------- Ahora suena: rótulo en antena ---------- */
+/* ---------- Ahora suena: dock a todo el ancho ---------- */
 QFrame#nowPlayingBar {
     background-color: $bg_panel;
-    border: 1px solid $border;
-    border-radius: 14px;
+    border: none;
+    border-top: 1px solid $border_strong;
+    border-radius: 0;
 }
+QWidget#dockColumn, QWidget#dockProgress {
+    background: transparent;
+}
+/* El dock mide 76 px: el botón de reproducir encoge un poco para que
+   quepan transporte y progreso en una columna. */
+QFrame#nowPlayingBar QPushButton#playCircle {
+    min-width: 40px;
+    max-width: 40px;
+    min-height: 40px;
+    max-height: 40px;
+    border-radius: 20px;
+}
+QLabel#dockProgressTime {
+    color: $text2;
+    font-family: $display_font;
+    font-size: 9pt;
+    font-weight: 700;
+}
+QProgressBar#dockProgressBar {
+    background-color: $bg_hover;
+    border: none;
+    border-radius: 2px;
+}
+QProgressBar#dockProgressBar::chunk {
+    background-color: $accent;
+    border-radius: 2px;
+}
+QLabel#dockQualityBadge {
+    color: $text2;
+    background: transparent;
+    border: 1px solid $border_strong;
+    border-radius: 5px;
+    padding: 2px 6px;
+    font-size: 8pt;
+    font-weight: 700;
+}
+QLabel#dockQualityBadge[health="stable"] { color: $success; border-color: $success; }
+QLabel#dockQualityBadge[health="slow"] { color: $warning; border-color: $warning; }
+QLabel#dockQualityBadge[health="down"] { color: $danger; border-color: $danger; }
+
+/* ---------- Ahora suena: rótulo en antena ---------- */
 QFrame#nowRotulo {
     background-color: transparent;
     border: none;

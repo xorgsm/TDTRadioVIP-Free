@@ -1,5 +1,6 @@
-"""Construcción del panel del reproductor (cabecera, frame de vídeo/radio
-y barra "Ahora suena"). Extraído de ui/main_window.py.
+"""Construcción del panel del reproductor (cabecera y frame de vídeo/radio).
+También crea el dock "Ahora suena", que MainWindow coloca a todo el ancho.
+Extraído de ui/main_window.py.
 """
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
@@ -95,8 +96,11 @@ def build_player_panel(win) -> QWidget:
     frame_layout.addWidget(win.player_stack, stretch=1)
 
     layout.addWidget(win.player_frame, stretch=1)
+    # El dock «Ahora suena» se construye aquí (sus botones necesitan los
+    # controladores ya listos, como el resto del panel), pero no se añade a
+    # este layout: MainWindow._build_ui lo coloca a todo el ancho bajo el
+    # contenido.
     win.now_playing_bar = build_now_playing_bar(win)
-    layout.addWidget(win.now_playing_bar)
 
     # Auto-ocultar cabecera/controles en pantalla completa (ajuste
     # "fullscreen_autohide_ui") -- ver WindowChrome.enter_player_fullscreen

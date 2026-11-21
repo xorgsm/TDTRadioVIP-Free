@@ -9,13 +9,10 @@ porqué del patrón (estado en MainWindow, comportamiento aquí).
 
 Coder By X@R
 """
-from PySide6.QtWidgets import QMessageBox
 
 from core import epg as epg_module
-from ui.epg_dialog import EpgDialog
 from ui.fetch_worker import FetchWorker
-from ui.nav_sections import NAV_TV
-from ui.modal import run_modal
+from ui.nav_sections import NAV_GUIDE, NAV_TV
 
 
 class EpgController:
@@ -82,6 +79,9 @@ class EpgController:
             }
             guide = {clave: progs for clave, progs in guide.items() if clave in claves_propias}
         win.epg_guide = guide
+        guide_view = getattr(win, "guide_view", None)
+        if guide_view is not None:
+            guide_view.set_guide(guide)
         win.playback.update_epg_display()
         # La lista de canales de TV normalmente ya se pobló antes de que
         # esta guía terminara de descargarse (_load_tv_channels() se lanza
@@ -98,20 +98,10 @@ class EpgController:
             win.lists.update_epg_subtitles()
 
     def open_dialog(self):
+        """La guía ya no es un diálogo: activa la sección «Guía» del raíl."""
         win = self.win
-        if not win.epg_guide:
-            QMessageBox.information(
-                win, "Sin guía de programación",
-                "Todavía no hay datos de programación descargados.\n\n"
-                "Configura una URL de EPG (XMLTV) en Configuración si no lo "
-                "has hecho, o espera unos segundos a que termine de cargar."
-            )
-            return
-        dialog = EpgDialog(
-            win.tv_channels_data, win.epg_guide, win, cancel_scheduled=win.tray.cancel_scheduled,
-        )
-        dialog.channel_chosen.connect(self.tune_to_tvg_id)
-        run_modal(dialog)
+        win.nav_group.button(NAV_GUIDE).setChecked(True)
+        win.navigation.on_nav_changed(NAV_GUIDE)
 
     def now_on_air_entries(self, limit: int = 12) -> list:
         """

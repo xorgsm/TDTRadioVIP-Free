@@ -1,16 +1,74 @@
-"""Construcción de la barra "Ahora suena" (info + controles de
-reproducción) de MainWindow. Extraído de ui/main_window.py.
+"""Construcción del dock "Ahora suena" (info + controles de reproducción)
+de MainWindow. Extraído de ui/main_window.py.
+
+Desde la 10.0 es un dock a todo el ancho bajo el contenido (lo coloca
+MainWindow._build_ui), con tres columnas: qué suena | transporte y progreso
+del programa | opciones.
 """
 from PySide6.QtCore import QSize, Qt, QTimer
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QPushButton, QSlider,
-    QVBoxLayout,
+    QFrame, QGridLayout, QHBoxLayout, QLabel, QProgressBar, QPushButton,
+    QSizePolicy, QSlider, QVBoxLayout, QWidget,
 )
 
 from ui import icons as app_icons
 from ui import palette
 from ui.player_menus import open_more_controls_menu, open_tracks_menu
 from ui.visual import ElidedLabel, make_separator, set_variant, set_visual_state
+
+# Alto del dock (DESIGN.md, Layout). También lo usan PiP y su salida.
+DOCK_HEIGHT = 76
+# Por debajo de este ancho de ventana el dock oculta calidad, PiP y
+# temporizador (DESIGN.md: "Essential Controls Survive").
+DOCK_COMPACT_BELOW = 700
+# Por debajo de este, además, logo, avance/retroceso y separador (PiP).
+DOCK_NARROW_BELOW = 520
+DOCK_ROTULO_MIN_WIDTH = 140
+_PROGRESS_STEPS = 1000
+
+
+class DockProgress(QWidget):
+    """Fila fina de progreso del programa: "HH:MM ━━━━── HH:MM".
+
+    Oculta mientras no hay programa en curso (radio, canal sin guía).
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("dockProgress")
+        # Subclase de QWidget: sin esto Qt ignora fondo/borde de su QSS.
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
+        self._start = QLabel()
+        self._start.setObjectName("dockProgressTime")
+        self._bar = QProgressBar()
+        self._bar.setObjectName("dockProgressBar")
+        self._bar.setRange(0, _PROGRESS_STEPS)
+        self._bar.setTextVisible(False)
+        self._bar.setFixedHeight(4)
+        self._end = QLabel()
+        self._end.setObjectName("dockProgressTime")
+        row.addWidget(self._start)
+        row.addWidget(self._bar, stretch=1)
+        row.addWidget(self._end)
+        self.setMaximumWidth(440)
+        self.setVisible(False)
+
+    def set_progress(self, fraction: float, start: str, end: str) -> None:
+        """Valores de ui.dock_progress.programme_progress; sin horas se oculta."""
+        self._bar.setValue(round(max(0.0, min(1.0, fraction)) * _PROGRESS_STEPS))
+        self._start.setText(start)
+        self._end.setText(end)
+        self.setVisible(bool(start and end))
+
+    def fraction(self) -> float:
+        return self._bar.value() / _PROGRESS_STEPS
+
+    def times(self) -> tuple[str, str]:
+        return self._start.text(), self._end.text()
 
 
 class NowRotulo(QFrame):
@@ -28,13 +86,18 @@ class NowRotulo(QFrame):
 def build_now_playing_bar(win) -> QFrame:
     bar = QFrame()
     bar.setObjectName("nowPlayingBar")
-    bar.setFixedHeight(142)
-    outer = QVBoxLayout(bar)
-    outer.setContentsMargins(12, 12, 12, 12)
-    outer.setSpacing(10)
-    win._now_bar_layout = outer
+    bar.setFixedHeight(DOCK_HEIGHT)
+    # Rejilla de tres columnas (DESIGN.md, maqueta): qué suena | transporte
+    # y progreso | opciones. Las laterales estiran igual para que el
+    # transporte quede centrado en la ventana pase lo que pase a los lados.
+    grid = QGridLayout(bar)
+    grid.setContentsMargins(16, 6, 16, 6)
+    grid.setHorizontalSpacing(16)
+    grid.setVerticalSpacing(0)
+    win._now_bar_layout = grid
 
-    info_row = QHBoxLayout()
+    left_group = QHBoxLayout()
+    left_group.setSpacing(8)
     # El rótulo: logo y nombre sobre un bloque del color de lo que suena (ver
     # PlaybackController, que le pone el estado "tv", "radio" o "error").
     win.now_rotulo = NowRotulo()
@@ -50,57 +113,47 @@ def build_now_playing_bar(win) -> QFrame:
     rotulo_row.addWidget(win.now_logo)
 
     text_col = QVBoxLayout()
-    text_col.setSpacing(2)
+    text_col.setSpacing(0)
     win.now_title = ElidedLabel("Nada en reproducción")
     win.now_title.setObjectName("nowTitle")
+    # Nombre del canal en mayúsculas de rótulo (Barlow Condensed por QSS).
+    # La hoja de estilos no fija la capitalización, así que se conserva.
+    title_font = win.now_title.font()
+    title_font.setCapitalization(QFont.AllUppercase)
+    win.now_title.setFont(title_font)
     win.now_subtitle = ElidedLabel("Elige un canal o una emisora")
     win.now_subtitle.setObjectName("nowSubtitle")
     text_col.addWidget(win.now_title)
     text_col.addWidget(win.now_subtitle)
     rotulo_row.addLayout(text_col, stretch=1)
-    info_row.addWidget(win.now_rotulo, stretch=1)
+    # Ignored + mínimo: el nombre se recorta (ElidedLabel) antes que empujar
+    # al transporte, pero nunca desaparece salvo en el dock estrecho de PiP
+    # (ver update_now_playing_bar_compact).
+    win.now_rotulo.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+    win.now_rotulo.setMinimumWidth(DOCK_ROTULO_MIN_WIDTH)
+    left_group.addWidget(win.now_rotulo, stretch=1)
 
-    # El volumen vivía en la fila de botones de abajo, donde con muchos
-    # botones + separadores no queda sitio de sobra: con ventana
-    # estrecha el slider (que necesita un ancho mínimo para no
-    # convertirse en un punto suelto irreconocible) se comía a sus
-    # vecinos. Aquí arriba, junto al nombre del canal, sí hay margen.
     win.volume_slider = QSlider(Qt.Horizontal)
     win.volume_slider.setObjectName("volumeSlider")
     win.volume_slider.setRange(0, 100)
     win.volume_slider.setValue(win.settings.get("volume", 80))
-    win.volume_slider.setFixedWidth(108)
+    win.volume_slider.setFixedWidth(96)
+    win.volume_slider.setAccessibleName("Volumen")
     win.volume_slider.valueChanged.connect(win.playback.on_volume_changed)
-    info_row.addWidget(win.volume_slider)
 
-    outer.addLayout(info_row)
-
-    controls = QHBoxLayout()
-    controls.setSpacing(6)
-
-    # Reorganizado en tres zonas (izquierda / centro / derecha), estilo
-    # Spotify: antes todos los botones iban en una sola fila corrida de
-    # izquierda a derecha sin agrupar por función. Con addStretch a cada
-    # lado del grupo central, el transporte de reproducción (parar /
-    # play / reintentar) queda siempre centrado en la barra pase lo que
-    # pase con favoritos/cast a la izquierda o grabar/volumen/vista a la
-    # derecha -- la misma jerarquía visual que un reproductor "grande".
-    left_group = QHBoxLayout()
-    left_group.setSpacing(6)
     center_group = QHBoxLayout()
-    center_group.setSpacing(3)
+    center_group.setSpacing(4)
     right_group = QHBoxLayout()
-    right_group.setSpacing(5)
+    right_group.setSpacing(6)
 
     win.fav_btn = QPushButton()
     win.fav_btn.setObjectName("ctrlButton")
     win.fav_btn.setIconSize(QSize(15, 15))
-    win.fav_btn.setIcon(app_icons.icon_favorite(palette.ACCENT_FAVORITE, size=18))
+    win.fav_btn.setIcon(app_icons.icon_favorite(palette.ACCENT_LIST, size=18))
     win.fav_btn.setToolTip("Añadir a favoritos")
     win.fav_btn.setAccessibleName("Añadir a favoritos")
     win.fav_btn.setCheckable(True)
     win.fav_btn.clicked.connect(win.playback.toggle_favorite_current)
-    left_group.addWidget(win.fav_btn)
 
     # Igual que NAV_DOWNLOAD/download_panel: en la versión free ni
     # siquiera se construye (self.casting es None ahí, ver __init__).
@@ -124,7 +177,6 @@ def build_now_playing_bar(win) -> QFrame:
             lambda checked: win.cast_btn.setIcon(app_icons.icon_cast(palette.INK if checked else palette.ACCENT_CAST))
         )
         win.cast_btn.setVisible(win.activated)
-        left_group.addWidget(win.cast_btn)
 
     win.stop_btn = QPushButton()
     win.stop_btn.setObjectName("ctrlButton")
@@ -192,31 +244,27 @@ def build_now_playing_bar(win) -> QFrame:
     set_variant(win.record_btn, "danger")
     win.record_btn.setCheckable(True)
     win.record_btn.clicked.connect(win.playback.toggle_recording)
-    right_group.addWidget(win.record_btn)
+    # Grabar va con el transporte, como en la maqueta: es un control esencial.
+    center_group.addSpacing(4)
+    center_group.addWidget(win.record_btn)
 
     win.mute_btn = QPushButton()
     win.mute_btn.setObjectName("muteButton")
     set_variant(win.mute_btn, "info")
     win.mute_btn.setIconSize(QSize(15, 15))
-    win.mute_btn.setIcon(app_icons.icon_speaker(palette.ACCENT_INFO, muted=False))
+    win.mute_btn.setIcon(app_icons.icon_speaker(palette.ACCENT_TV, muted=False))
     win.mute_btn.setCheckable(True)
     win.mute_btn.setToolTip("Silenciar")
     win.mute_btn.setAccessibleName("Silenciar")
     win.mute_btn.clicked.connect(win.playback.apply_mute)
-    right_group.addWidget(win.mute_btn)
 
     win.now_controls_separator = make_separator()
-    right_group.addWidget(win.now_controls_separator)
 
-    # Pistas/pantalla completa/PiP/temporizador/cola: antes cada uno
-    # tenia su propio boton circular en esta fila. Con 8 botones +
-    # separador no cabian en ventanas estrechas y quedaban solapados o
-    # cortados (reportado con captura). Se siguen creando igual -- el
-    # resto del codigo (iconos, tooltips, estado checked/toggled) sigue
-    # dependiendo de estos widgets como "guardianes de estado" -- pero
-    # ya NO se anaden a right_group: se agrupan bajo un unico boton
-    # "Mas opciones" siempre visible, asi la fila no crece con el
-    # numero de funciones, solo con las acciones realmente frecuentes.
+    # Pistas/pantalla completa/cola no tienen botón visible: viven en "Más
+    # opciones" y estos widgets se conservan como "guardianes de estado"
+    # (iconos, tooltips, checked) que lee ese menú. PiP y temporizador sí
+    # tienen sitio en el dock a todo el ancho (columna de opciones) y se
+    # ocultan por debajo de DOCK_COMPACT_BELOW; el menú los sigue ofreciendo.
     win.tracks_btn = QPushButton("CC")
     win.tracks_btn.setObjectName("ctrlButton")
     win.tracks_btn.setToolTip("Pistas de audio y subtítulos")
@@ -269,7 +317,6 @@ def build_now_playing_bar(win) -> QFrame:
     win.more_btn.setToolTip("Más opciones (pistas, pantalla completa, PiP, temporizador, cola)")
     win.more_btn.setAccessibleName("Más opciones de reproducción")
     win.more_btn.clicked.connect(lambda: open_more_controls_menu(win))
-    right_group.addWidget(win.more_btn)
 
     win._sleep_timer = QTimer(win)
     win._sleep_timer.setSingleShot(True)
@@ -279,25 +326,102 @@ def build_now_playing_bar(win) -> QFrame:
     win._sleep_countdown.timeout.connect(win.playback.update_sleep_tooltip)
     win._sleep_minutes_left = 0
 
-    controls.addLayout(left_group)
-    controls.addStretch(1)
-    controls.addLayout(center_group)
-    controls.addStretch(1)
-    controls.addLayout(right_group)
+    # Salud del canal que suena (ver set_quality_badge): oculta sin datos.
+    win.dock_quality_badge = QLabel()
+    win.dock_quality_badge.setObjectName("dockQualityBadge")
+    win.dock_quality_badge.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+    win.dock_quality_badge.setVisible(False)
 
-    outer.addLayout(controls)
+    # Columna 1: qué suena (+ favorito).
+    left_group.addWidget(win.fav_btn)
+    left = QWidget()
+    left.setObjectName("dockColumn")
+    left.setLayout(left_group)
+    left_group.setContentsMargins(0, 0, 0, 0)
+
+    # Columna 2: transporte y, debajo, el progreso del programa.
+    center = QWidget()
+    center.setObjectName("dockColumn")
+    center_col = QVBoxLayout(center)
+    center_col.setContentsMargins(0, 0, 0, 0)
+    center_col.setSpacing(4)
+    center_col.addLayout(center_group)
+    center_group.setAlignment(Qt.AlignHCenter)
+    # Centrada y ocupando el ancho de la columna hasta su máximo (440 px).
+    progress_row = QHBoxLayout()
+    progress_row.setContentsMargins(0, 0, 0, 0)
+    win.dock_progress = DockProgress()
+    progress_row.addStretch(1)
+    progress_row.addWidget(win.dock_progress, stretch=100)
+    progress_row.addStretch(1)
+    center_col.addLayout(progress_row)
+
+    # Columna 3: calidad, PiP, Cast, temporizador | silencio, volumen, más.
+    right_group.addStretch(1)
+    right_group.addWidget(win.dock_quality_badge)
+    right_group.addWidget(win.pip_btn)
+    if win.cast_btn is not None:
+        right_group.addWidget(win.cast_btn)
+    right_group.addWidget(win.sleep_btn)
+    right_group.addWidget(win.now_controls_separator)
+    right_group.addWidget(win.mute_btn)
+    right_group.addWidget(win.volume_slider)
+    right_group.addWidget(win.more_btn)
+    right = QWidget()
+    right.setObjectName("dockColumn")
+    right.setLayout(right_group)
+    right_group.setContentsMargins(0, 0, 0, 0)
+
+    grid.addWidget(left, 0, 0, Qt.AlignVCenter)
+    grid.addWidget(center, 0, 1, Qt.AlignVCenter)
+    grid.addWidget(right, 0, 2, Qt.AlignVCenter)
+    grid.setColumnStretch(0, 1)
+    grid.setColumnStretch(1, 1)
+    grid.setColumnStretch(2, 1)
     return bar
 
 
 def update_now_playing_bar_compact(win, width: int) -> None:
-    """Adapta la barra de reproducción sin solapar controles."""
-    compact = width < 390
-    margin = 8 if compact else 12
-    win._now_bar_layout.setContentsMargins(margin, 12, margin, 12)
-    win.now_logo.setVisible(not compact)
-    win.volume_slider.setFixedWidth(56 if compact else 108)
+    """Adapta el dock al ancho de la ventana sin solapar controles.
+
+    El dock ocupa todo el ancho, así que ``width`` es el de la ventana. Por
+    debajo de DOCK_COMPACT_BELOW se ocultan calidad, PiP y temporizador
+    (siguen en "Más opciones"); por debajo de DOCK_NARROW_BELOW (PiP),
+    también logo, avance/retroceso y separador. Reproducir, detener,
+    grabar, volumen y "Más opciones" no se ocultan nunca aquí.
+    """
+    compact = width < DOCK_COMPACT_BELOW
+    narrow = width < DOCK_NARROW_BELOW
+    win.now_playing_bar.setProperty("dockCompact", compact)
+    margin = 8 if narrow else 16
+    win._now_bar_layout.setContentsMargins(margin, 6, margin, 6)
+    win._now_bar_layout.setHorizontalSpacing(8 if compact else 16)
+    win.now_logo.setVisible(not narrow)
+    win.now_rotulo.setMinimumWidth(0 if narrow else DOCK_ROTULO_MIN_WIDTH)
+    win.volume_slider.setFixedWidth(56 if narrow else 72 if compact else 96)
     # En directo no aportan nada; en contenido posicionable reaparecen
-    # al ensanchar el panel, evitando sacrificar controles esenciales.
-    win.seek_back_btn.setVisible(not compact)
-    win.seek_fwd_btn.setVisible(not compact)
-    win.now_controls_separator.setVisible(not compact)
+    # al ensanchar, evitando sacrificar controles esenciales.
+    win.seek_back_btn.setVisible(not narrow)
+    win.seek_fwd_btn.setVisible(not narrow)
+    win.now_controls_separator.setVisible(not narrow)
+    # En PiP (460 px) el botón de PiP es la salida visible: no se oculta.
+    win.pip_btn.setVisible(not compact or bool(getattr(win, "_pip_mode", False)))
+    win.sleep_btn.setVisible(not compact)
+    win.dock_quality_badge.setVisible(not compact and bool(win.dock_quality_badge.text()))
+
+
+def set_quality_badge(win, text: str, state: str) -> None:
+    """Pone la etiqueta de calidad (ui.dock_progress.quality_badge).
+
+    Sin texto se oculta; con el dock en modo compacto sigue oculta aunque
+    reciba texto (update_now_playing_bar_compact la recupera al ensanchar).
+    """
+    badge = win.dock_quality_badge
+    badge.setText(text)
+    # "health" y no uiState: los estados de salud (stable/slow/down) no son
+    # estados visuales genéricos de ui.visual. Qt no repinta un selector de
+    # propiedad dinámica por sí solo: hace falta el repolish.
+    badge.setProperty("health", state or "none")
+    badge.style().unpolish(badge)
+    badge.style().polish(badge)
+    badge.setVisible(bool(text) and not win.now_playing_bar.property("dockCompact"))

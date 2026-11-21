@@ -78,13 +78,15 @@ class HomeController:
     def _refresh_player_idle_view(self):
         """Sin nada en reproducción, el área de emisión muestra la vista de
         reposo (ui/player_idle_view.py) con el historial y favoritos al día,
-        en lugar del lienzo negro de libVLC."""
+        en lugar del lienzo negro de libVLC, y el panel se pliega para que
+        el catálogo ocupe todo (MainWindow.set_player_panel_collapsed)."""
         win = self.win
         idle = getattr(win, "player_idle_view", None)
         if idle is None or win.current_url:
             return
         idle.refresh(win.history, win.favorites)
         win.player_stack.setCurrentWidget(idle)
+        win.set_player_panel_collapsed(True)
 
     def refresh_home_page(self):
         """Puebla las 4 filas de carrusel de Inicio (Continuar viendo/

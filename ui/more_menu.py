@@ -40,7 +40,7 @@ def build_more_menu_button(win) -> QToolButton:
 
     # Menú anclado al propio botón (no a win): win puede ser un doble de
     # pruebas (SimpleNamespace) en los tests de este módulo/de
-    # ui.nav_top, y QMenu exige un QWidget real o ningún padre.
+    # ui.nav_rail, y QMenu exige un QWidget real o ningún padre.
     menu = QMenu(btn)
     win.more_menu = menu
     _build_content_management_menu(win, menu)
@@ -104,7 +104,7 @@ def _build_audio_tools_menu(win, menu: QMenu) -> None:
     """Convertir/Editor MP3/Editar info son pestañas de
     ui.download_panel.DownloadPanel, no diálogos propios -- estas entradas
     saltan a Descargas y seleccionan la pestaña pedida. Solo tiene sentido
-    en la edición VIP (Descargas no se construye en Free, ver ui.nav_top)."""
+    en la edición VIP (Descargas no se construye en Free, ver ui.nav_rail)."""
     submenu = menu.addMenu("Herramientas de audio")
     for label, tab_index in _DOWNLOAD_TOOL_TABS.items():
         submenu.addAction(label, lambda idx=tab_index: _open_download_tool_tab(win, idx))

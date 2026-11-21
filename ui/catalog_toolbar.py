@@ -190,8 +190,8 @@ def toggle_grid_view(win, checked: bool) -> None:
     if checked:
         # BG_ROOT (oscuro) cuando está marcado, porque :checked pone de
         # fondo el color de acento claro -- mismo criterio que ya usan
-        # los botones de la barra de navegación superior (ver nav_icon_builders
-        # en ui.nav_top).
+        # los botones del raíl de navegación (ver nav_icon_builders en
+        # ui.nav_rail).
         win.tv_view_toggle.setIcon(app_icons.icon_list_view(palette.INK))
         win.tv_view_toggle.setToolTip("Ver catálogo en lista")
     else:

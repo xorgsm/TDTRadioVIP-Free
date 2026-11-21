@@ -24,6 +24,7 @@ forma aislada.
 Coder By X@R
 """
 import logging
+from datetime import datetime
 
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QTimer
 from PySide6.QtGui import QColor
@@ -42,11 +43,13 @@ from core import recorder as rec_module
 from core import recording_schedule
 from ui import icons as app_icons
 from ui import palette
-from ui.channel_model import ChannelListView
+from ui.channel_model import ChannelListModel, ChannelListView
+from ui.dock_progress import programme_progress, quality_badge
 from ui.event_pump import pump_events_without_input
+from ui.now_playing_bar_builder import set_quality_badge
 from ui.toast import show_toast
 from ui.visual import make_glow
-from ui.widgets import ROLE_DATA
+from ui.widgets import ROLE_DATA, ROLE_HEALTH
 
 
 logger = logging.getLogger(__name__)
@@ -62,10 +65,16 @@ class PlaybackController:
     # (no total histórico, ver core.channels.record_channel_failure), se
     # ofrece ocultarlo -- ver _maybe_offer_autohide().
     AUTO_HIDE_THRESHOLD = 3
+    # Refresco del progreso del programa en el dock: nadie más llama a
+    # update_epg_display() de forma periódica (solo al reproducir y al
+    # cargar la guía). Medio minuto basta para una barra de un programa.
+    EPG_TICK_MS = 30_000
 
     def __init__(self, window):
         self.win = window
         self._recovery_attempts = 0
+        # QTimer creado al primer canal de TV con guía (ver _sync_epg_tick).
+        self._epg_tick = None
 
     # ---------- Reproducción ----------
 
@@ -89,6 +98,10 @@ class PlaybackController:
         win.equalizer.stop()
         win._playback_failed = False
         win.retry_btn.setVisible(False)
+        # En reposo el panel de vídeo está plegado (ver
+        # MainWindow.set_player_panel_collapsed); stop_playback lo vuelve a
+        # plegar a través de HomeController._refresh_player_idle_view.
+        win.set_player_panel_collapsed(False)
 
         if item_type == "tv":
             win.player_stack.setCurrentWidget(win.player)
@@ -155,6 +168,8 @@ class PlaybackController:
         win.home._refresh_home_now_playing()
 
         self.update_epg_display()
+        self._sync_epg_tick()
+        self.refresh_quality_badge()
 
         # Si tras el margen de auto-salto esto sigue siendo lo que suena y
         # no ha fallado, se da por buena la reproducción y se resetea el
@@ -266,6 +281,7 @@ class PlaybackController:
         self._update_seek_buttons_enabled(False)
         win.now_subtitle.setText(f"⚠ {message}")
         win.now_rotulo.set_state("error")
+        self.refresh_quality_badge()
         name = win.current_name or "el canal seleccionado"
         win.lists.mark_playing_everywhere()
 
@@ -322,6 +338,7 @@ class PlaybackController:
         retry_token = win._playback_token
         win._playback_failed = False
         win.retry_btn.setVisible(False)
+        self.refresh_quality_badge()
         win.now_subtitle.setText(
             f"Reconectando… intento {self._recovery_attempts}/{self.MAX_STREAM_RETRIES}"
         )
@@ -413,6 +430,9 @@ class PlaybackController:
         win.current_name = None
         win.current_url = None
         win._current_alternate_urls = []
+        self.update_epg_display()
+        self._sync_epg_tick()
+        self.refresh_quality_badge()
         win.lists.mark_playing_everywhere()
         win.home._refresh_home_now_playing()
 
@@ -437,9 +457,9 @@ class PlaybackController:
         win.player.set_muted(muted)
         # "muted" pinta el icono con palette.INK, igual que
         # #muteButton[uiVariant="info"]:checked en ui/style.py sobre el
-        # fondo palette.ACCENT_INFO -- mismo patrón que cast_btn/sleep_btn
+        # fondo palette.ACCENT_TV -- mismo patrón que cast_btn/sleep_btn
         # en main_window.py.
-        win.mute_btn.setIcon(app_icons.icon_speaker(palette.INK if muted else palette.ACCENT_INFO, muted=muted))
+        win.mute_btn.setIcon(app_icons.icon_speaker(palette.INK if muted else palette.ACCENT_TV, muted=muted))
         win.mute_btn.setToolTip("Activar sonido" if muted else "Silenciar")
         win._taskbar.update_mute_state(muted)
         if win.current_type == "radio":
@@ -696,10 +716,11 @@ class PlaybackController:
         menu.addAction("Personalizado…", self._custom_sleep_timer)
         menu.addSeparator()
         menu.addAction("Cancelar temporizador", self.cancelar_sleep)
-        # Ancla a more_btn: sleep_btn ya no vive en ningún layout visible
-        # (ver ui.now_playing_bar_builder.build_now_playing_bar) y su posición
-        # en pantalla no sería fiable para mapToGlobal.
-        menu.exec(win.more_btn.mapToGlobal(win.more_btn.rect().bottomLeft()))
+        # Se ancla a sleep_btn cuando se ve en el dock; con el dock compacto
+        # (ver update_now_playing_bar_compact) está oculto y su posición no
+        # sería fiable para mapToGlobal, así que se ancla a more_btn.
+        anchor = win.sleep_btn if win.sleep_btn.isVisible() else win.more_btn
+        menu.exec(anchor.mapToGlobal(anchor.rect().bottomLeft()))
         # Si el usuario cierra el menú sin elegir nada, desmarcar el botón.
         if not win._sleep_timer.isActive():
             win.sleep_btn.setChecked(False)
@@ -758,14 +779,66 @@ class PlaybackController:
     # ---------- EPG ----------
 
     def update_epg_display(self):
+        """Programa en curso: subtítulo del rótulo y progreso del dock.
+
+        Se llama al reproducir, al cargar la guía y cada EPG_TICK_MS
+        mientras suena un canal de TV con guía (ver _sync_epg_tick).
+        """
         win = self.win
-        if win.current_type != "tv" or not win.current_tvg_id or not win.epg_guide:
+        current = upcoming = None
+        if win.current_type == "tv" and win.current_tvg_id and win.epg_guide:
+            current, upcoming = epg_module.get_now_next(win.epg_guide, win.current_tvg_id)
+            # Un aviso de error o de reconexión no se tapa con la guía.
+            if not win._playback_failed:
+                if current:
+                    win.now_subtitle.setText(f"Ahora: {current.title}")
+                elif upcoming:
+                    win.now_subtitle.setText(f"A continuación: {upcoming.title}")
+        # Sin programa en curso (radio, canal sin guía) la fila se oculta.
+        win.dock_progress.set_progress(*programme_progress(current, datetime.now()))
+
+    def _sync_epg_tick(self):
+        """Mantiene el progreso al día solo mientras haya algo que medir:
+        un canal de TV con tvg-id. Un tick cada EPG_TICK_MS, sin red."""
+        win = self.win
+        wanted = win.current_type == "tv" and bool(win.current_tvg_id)
+        if self._epg_tick is None:
+            if not wanted:
+                return
+            self._epg_tick = QTimer(win)
+            self._epg_tick.setInterval(self.EPG_TICK_MS)
+            self._epg_tick.timeout.connect(self.update_epg_display)
+        if wanted:
+            self._epg_tick.start()
+        else:
+            self._epg_tick.stop()
+
+    # ---------- Calidad del canal (etiqueta del dock) ----------
+
+    def _current_health_status(self) -> str | None:
+        """Último diagnóstico guardado del stream que suena, leído de las
+        filas del catálogo ya en memoria (ROLE_HEALTH, ver
+        ChannelListsController.populate_*): sin disco ni red."""
+        win = self.win
+        lists = {"tv": win.tv_list, "radio": win.radio_list}
+        view = lists.get(win.current_type)
+        if view is None or not win.current_url:
+            return None
+        model = view.model()
+        if not isinstance(model, ChannelListModel):
+            return None
+        for entry in model.entries():
+            if (entry.get(ROLE_DATA) or {}).get("url") == win.current_url:
+                return entry.get(ROLE_HEALTH)
+        return None
+
+    def refresh_quality_badge(self):
+        win = self.win
+        if not win.current_url:
+            set_quality_badge(win, "", "")
             return
-        current, upcoming = epg_module.get_now_next(win.epg_guide, win.current_tvg_id)
-        if current:
-            win.now_subtitle.setText(f"Ahora: {current.title}")
-        elif upcoming:
-            win.now_subtitle.setText(f"A continuación: {upcoming.title}")
+        text, state = quality_badge(self._current_health_status(), failed=win._playback_failed)
+        set_quality_badge(win, text, state)
 
     # ---------- Favoritos del elemento en reproducción ----------
 
@@ -788,7 +861,7 @@ class PlaybackController:
     def _update_favorite_button_icon(self) -> None:
         checked = self.win.fav_btn.isChecked()
         self.win.fav_btn.setIcon(
-            app_icons.icon_favorite(palette.ACCENT_FAVORITE, size=18, filled=checked)
+            app_icons.icon_favorite(palette.ACCENT_LIST, size=18, filled=checked)
         )
         self.win.fav_btn.setToolTip(
             "Quitar de favoritos" if checked else "Añadir a favoritos"

@@ -272,6 +272,8 @@ class CatalogLoadController:
             # No se borran/recrean miles de filas (ni se reencolan sus logos)
             # mientras el usuario puede estar reproduciendo un stream.
             win.lists.update_stream_health(recorded)
+            # La etiqueta de calidad del dock lee esas mismas filas.
+            win.playback.refresh_quality_badge()
             win.lists.filter_current_list()
             win.statusBar().showMessage(
                 f"Diagnóstico automático: {len(win._background_health_results)} streams revisados.",

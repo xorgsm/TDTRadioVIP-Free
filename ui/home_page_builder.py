@@ -16,8 +16,8 @@ def build_home_page(win) -> QScrollArea:
     Portada: hero con la reproducción actual (o la última emisión, o un
     genérico si no hay historial) + filas de carrusel con lo más
     relevante -- Continuar viendo/escuchando, Ahora en antena, Recomendado
-    para ti y Favoritos -- sin duplicar las pestañas TV/Radio de la barra
-    de navegación superior (ui.nav_top), que ya cubren "ver todos los
+    para ti y Favoritos -- sin duplicar las secciones TV/Radio del raíl
+    de navegación (ui.nav_rail), que ya cubren "ver todos los
     canales/emisoras" (spec v8 §6.1). No usa win._make_list() en absoluto
     -- las 4 filas son ui.carousel.Carousel, la misma tarjeta
     reutilizable/testeada que ya usaban 3 de las 4 antes de esta fase.

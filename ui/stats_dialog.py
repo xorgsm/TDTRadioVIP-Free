@@ -85,7 +85,7 @@ class StatsDialog(QDialog):
         icono.setFixedSize(22, 22)
         icono.setPixmap(
             (icon_tv if es_tv else icon_radio)(
-                palette.ACCENT_INFO if es_tv else palette.ACCENT_CATEGORY_ORANGE,
+                palette.ACCENT_TV if es_tv else palette.ACCENT_RADIO,
                 size=20,
             ).pixmap(20, 20)
         )

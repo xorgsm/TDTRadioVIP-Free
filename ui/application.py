@@ -33,7 +33,7 @@ def _bring_existing_window_to_front(window) -> None:
 def _register_app_font() -> None:
     """
     Registra las tipografías empaquetadas en resources/fonts/ (Figtree y
-    Bricolage Grotesque, ver core.get_font_paths) para Qt. Es la fuente del mockup original del
+    Barlow Condensed, ver core.get_font_paths) para Qt. Es la fuente del mockup original del
     rediseño 7.5.8 (ver ui/palette.py); antes del empaquetado, ui/style.py
     solo podía usar 'Segoe UI' porque Inter no estaba instalada en el
     sistema. Si por lo que sea no está disponible (build sin recursos,

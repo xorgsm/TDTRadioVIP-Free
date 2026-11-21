@@ -86,6 +86,19 @@ def icon_tv(color: str, size: int = 26) -> QIcon:
 
 
 @lru_cache(maxsize=128)
+def icon_guide(color: str, size: int = 26) -> QIcon:
+    """Parrilla: marco con cabecera y dos filas de programas."""
+    pm = _blank(size)
+    p = _stroke_painter(pm, color)
+    p.drawRoundedRect(QRectF(size * 0.10, size * 0.14, size * 0.80, size * 0.72), 3, 3)
+    p.drawLine(QPointF(size * 0.10, size * 0.36), QPointF(size * 0.90, size * 0.36))
+    p.drawLine(QPointF(size * 0.22, size * 0.52), QPointF(size * 0.54, size * 0.52))
+    p.drawLine(QPointF(size * 0.40, size * 0.70), QPointF(size * 0.76, size * 0.70))
+    p.end()
+    return QIcon(pm)
+
+
+@lru_cache(maxsize=128)
 def icon_radio(color: str, size: int = 26) -> QIcon:
     pm = _blank(size)
     p = _stroke_painter(pm, color)
@@ -403,6 +416,24 @@ def icon_more(color: str, size: int = 26) -> QIcon:
     for x_frac in (0.28, 0.5, 0.72):
         cx = size * x_frac
         p.drawEllipse(QRectF(cx - radio, centro_y - radio, radio * 2, radio * 2))
+    p.end()
+    return QIcon(pm)
+
+
+@lru_cache(maxsize=128)
+def icon_settings(color: str, size: int = 26) -> QIcon:
+    """Engranaje: aro central y ocho dientes radiales."""
+    pm = _blank(size)
+    p = _stroke_painter(pm, color)
+    c = size / 2
+    p.drawEllipse(QRectF(c - size * 0.17, c - size * 0.17, size * 0.34, size * 0.34))
+    for i in range(8):
+        a = math.radians(i * 45)
+        p.drawLine(
+            QPointF(c + math.cos(a) * size * 0.28, c + math.sin(a) * size * 0.28),
+            QPointF(c + math.cos(a) * size * 0.4, c + math.sin(a) * size * 0.4),
+        )
+    p.drawEllipse(QRectF(c - size * 0.28, c - size * 0.28, size * 0.56, size * 0.56))
     p.end()
     return QIcon(pm)
 

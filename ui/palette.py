@@ -18,7 +18,7 @@ setStyleSheet() de una sola línea):
 
     from ui import palette
     QColor(palette.ACCENT)
-    icon_tv(palette.ACCENT_INFO)
+    icon_tv(palette.ACCENT_TV)
 
 Los estilos estructurales compartidos se construyen en ui.style. Solo se
 mantienen junto al widget los estilos que dependen de datos dinámicos o de
@@ -26,30 +26,30 @@ un estado local que no forma parte del sistema visual común.
 """
 
 # ── Fondos ───────────────────────────────────────────────────────────────
-# Tinta de plató: negro ciruela, neutro para que los bloques de color de
+# Tinta de plató: negro cálido, neutro para que los bloques de color de
 # cada sección sean lo único saturado de la pantalla.
-BG_ROOT = "#120f1a"
-BG_PANEL = "#1b1726"
-BG_CARD = "#241f33"
-BG_PANEL_ALT = "#2f2942"
-BG_HOVER = "#3a3351"
-BORDER = "#443c5e"
-BORDER_STRONG = "#6a5f8c"
+BG_ROOT = "#12110e"
+BG_PANEL = "#1a1814"
+BG_CARD = "#23211b"
+BG_PANEL_ALT = "#2d2a22"
+BG_HOVER = "#38342a"
+BORDER = "#3d3930"
+BORDER_STRONG = "#6b6454"
 # Marco del vídeo: nunca tintado, el color de la imagen manda.
 VIDEO_BLACK = "#08060c"
 # Texto e iconos sobre un bloque de color vivo. Es fijo en ambos temas (a
 # diferencia de BG_ROOT, que el tema claro sustituye por un tono claro).
-INK = "#0f0c16"
+INK = "#12110e"
 # Texto e iconos sobre el negro del vídeo, también fijos en ambos temas.
 ON_VIDEO = "#faf7ff"
 
 # ── Texto ────────────────────────────────────────────────────────────────
 # Todos cumplen WCAG AA (4.5:1) sobre los cinco fondos, BG_HOVER incluido:
 # lo vigila tests/test_palette_contrast.py.
-TEXT_PRIMARY = "#faf7ff"
-TEXT_SECONDARY = "#ddd7ea"
-TEXT_MUTED = "#cbc4dd"
-TEXT_DIM = "#c0b8d4"
+TEXT_PRIMARY = "#f3edde"
+TEXT_SECONDARY = "#d9d2bf"
+TEXT_MUTED = "#cdc6b0"
+TEXT_DIM = "#bfb8a2"
 
 # ── Acento de marca (magenta por defecto) ────────────────────────────────
 ACCENT = "#ff2d78"
@@ -64,12 +64,15 @@ WARNING = "#ffc53d"
 # ── Color de identidad de cada sección ──────────────────────────────────
 # Fijos, no siguen al acento del usuario: cada sección se reconoce por su
 # bloque de color, como una cadena por su cabecera.
-ACCENT_HOME = "#ff2d78"
-ACCENT_INFO = "#4d94ff"  # Televisión
-ACCENT_CATEGORY_ORANGE = "#ff8a1f"  # Radio y podcasts
-ACCENT_FAVORITE = "#ffd02e"
-ACCENT_HISTORY = "#b794ff"
-ACCENT_DOWNLOAD = "#c8f031"
+ACCENT_HOME = "#ff9f1c"
+ACCENT_TV = "#19b5f0"  # Televisión
+ACCENT_RADIO = "#f0338f"  # Radio y podcasts
+ACCENT_GUIDE = "#ffd92e"  # Guía de programación
+# Favoritos, Historial y «Mi lista»: el crema del texto, sin color propio.
+ACCENT_LIST = "#f3edde"
+ACCENT_RECORD = "#f2452f"
+ACCENT_DOWNLOAD = "#2fbf71"
+ACCENT_TOOLS = "#8a7bf5"
 
 # ── Acentos secundarios por función ─────────────────────────────────────
 # Cada función tiene su propio color para no confundirse visualmente entre
@@ -81,39 +84,46 @@ ACCENT_SLEEP = "#b794ff"
 # Celda del programa en emisión ahora mismo vs. resto de celdas de la
 # rejilla (ui/epg_dialog.py). Distintos de BG_PANEL/TEXT_SECONDARY porque
 # necesitan más contraste dentro de una tabla densa.
-EPG_NOW_BG = "#4a1a3a"
-EPG_CELL_BG = "#17131f"
-EPG_CELL_TEXT = "#d2cce0"
+# Negro cálido como el resto; la celda en emisión, tintada de magenta sobre
+# BG_CARD (como el programa en curso de la maqueta v10).
+EPG_NOW_BG = "#502535"
+EPG_CELL_BG = "#1a1814"
+EPG_CELL_TEXT = "#d9d2bf"
 
 # ── Tema ─────────────────────────────────────────────────────────────────
 # Tono de cada color en el tema claro. Los que no aparecen aquí son iguales
 # en ambos temas. Para cambiar de tema se reescriben estas constantes, así
 # que hay que leerlas siempre como palette.X, nunca copiarlas al importar.
 _LIGHT = {
-    "BG_ROOT": "#f6f3fb",
-    "BG_PANEL": "#ece7f5",
-    "BG_CARD": "#ffffff",
-    "BG_PANEL_ALT": "#e2dbef",
-    "BG_HOVER": "#d6cde7",
-    "BORDER": "#cfc6e0",
-    "BORDER_STRONG": "#a99ec2",
-    "TEXT_PRIMARY": "#1a1526",
-    "TEXT_SECONDARY": "#3c3450",
-    "TEXT_MUTED": "#4d4463",
-    "TEXT_DIM": "#584f70",
+    "BG_ROOT": "#f7f3e8",
+    "BG_PANEL": "#ede8da",
+    "BG_CARD": "#fffdf6",
+    "BG_PANEL_ALT": "#e2dccb",
+    "BG_HOVER": "#d6cfbb",
+    "BORDER": "#cfc7b2",
+    "BORDER_STRONG": "#a39a82",
+    "TEXT_PRIMARY": "#1c1a14",
+    "TEXT_SECONDARY": "#3d392d",
+    "TEXT_MUTED": "#4d4838",
+    "TEXT_DIM": "#585340",
     "ACCENT_LIGHT": "#d01a5e",
     "ACCENT_LIGHTER": "#b3104f",
     "DANGER": "#c81e3a",
     "SUCCESS": "#0d7a45",
     "WARNING": "#8a5f00",
-    "ACCENT_INFO": "#1f62d0",
-    "ACCENT_CATEGORY_ORANGE": "#b35200",
-    "ACCENT_FAVORITE": "#8a5f00",
+    "ACCENT_HOME": "#995200",
+    "ACCENT_TV": "#0a6e99",
+    "ACCENT_RADIO": "#b8105f",
+    "ACCENT_GUIDE": "#756000",
+    "ACCENT_LIST": "#4d4838",
+    "ACCENT_RECORD": "#c42a14",
+    "ACCENT_DOWNLOAD": "#16783f",
+    "ACCENT_TOOLS": "#5b4bd0",
     "ACCENT_CAST": "#0a7d6b",
     "ACCENT_SLEEP": "#6a3fd0",
     "EPG_NOW_BG": "#ffd6e5",
-    "EPG_CELL_BG": "#ffffff",
-    "EPG_CELL_TEXT": "#1a1526",
+    "EPG_CELL_BG": "#fffdf6",
+    "EPG_CELL_TEXT": "#1c1a14",
 }
 _DARK = {name: globals()[name] for name in _LIGHT}
 

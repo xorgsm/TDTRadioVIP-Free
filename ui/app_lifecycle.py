@@ -72,6 +72,12 @@ class AppLifecycle:
         if win.settings.get("automatic_update_check", True):
             QTimer.singleShot(5000, self.check_update_automatically)
 
+        # Tarjeta «VPN activa» del raíl: primera comprobación real poco
+        # después de abrir y luego cada 20 s (ui.vpn_status). None fuera de
+        # la edición con licencia activada.
+        if win.vpn_status is not None:
+            QTimer.singleShot(2500, win.vpn_status.start)
+
     def show_onboarding(self):
         win = self.win
         run_modal(OnboardingDialog(win))
@@ -284,6 +290,8 @@ class AppLifecycle:
         step("desconectar VPN", self.disconnect_vpn_profiles)
         step("bloquear hilos nuevos", FetchWorker.begin_shutdown)
         step("parar avisos EPG", self._stop_reminder_timer)
+        if win.vpn_status is not None:
+            step("parar sondeo VPN", win.vpn_status.stop)
         step("ocultar icono de bandeja", win._tray_icon.hide)
         step("soltar teclas multimedia", win._media_keys.stop)
         step("parar grabación", self._stop_recording)

@@ -14,7 +14,7 @@ from PySide6.QtWidgets import QGraphicsOpacityEffect, QWidget
 
 from core import config as cfg
 from ui.nav_sections import (
-    NAV_DOWNLOAD, NAV_FAV, NAV_HOME, NAV_RADIO, NAV_TV, SECTION_TITLES,
+    NAV_DOWNLOAD, NAV_FAV, NAV_GUIDE, NAV_HOME, NAV_RADIO, NAV_TV, SECTION_TITLES,
     SECTION_VARIANTS,
 )
 from ui.visual import set_variant
@@ -60,7 +60,8 @@ class NavigationController:
         win.section_title.setStyleSheet("")
         set_variant(win.section_title, SECTION_VARIANTS[nav_id])
         win.catalog.update_catalog_count()
-        win.epg_btn.setVisible(nav_id == NAV_TV)
+        # El acceso a la Guía vive en el raíl; el botón del catálogo ya no se ve.
+        win.epg_btn.setVisible(False)
         win.tv_view_toggle.setVisible(nav_id in (NAV_TV, NAV_RADIO))
         # group_filter ya no se usa para TV -- lo sustituye groups_sidebar
         # (panel lateral con contador por grupo). Sigue siendo el filtro de
@@ -84,7 +85,7 @@ class NavigationController:
             win.catalog_sort.blockSignals(False)
         elif nav_id == NAV_HOME:
             win.home.refresh_home_page()
-        win.search_box.setVisible(nav_id not in (NAV_DOWNLOAD, NAV_HOME))
+        win.search_box.setVisible(nav_id not in (NAV_DOWNLOAD, NAV_HOME, NAV_GUIDE))
         if nav_id in (NAV_TV, NAV_RADIO):
             kind = "tv" if nav_id == NAV_TV else "radio"
             state = (win.settings.get("catalog_filters") or {}).get(kind, {})
@@ -104,7 +105,13 @@ class NavigationController:
                 win.groups_sidebar.select_groups(win._tv_sidebar_groups)
         else:
             win.search_box.clear()
-        if nav_id not in (NAV_DOWNLOAD, NAV_HOME):
+        if nav_id == NAV_GUIDE:
+            win.guide_view.set_channels(win.tv_channels_data)
+            win.guide_view.set_guide(win.epg_guide)
+            win.guide_view.set_favorites(
+                f.get("name", "") for f in win.favorites if f.get("type") == "tv"
+            )
+        if nav_id not in (NAV_DOWNLOAD, NAV_HOME, NAV_GUIDE):
             win.lists.filter_current_list()
         if nav_id == NAV_TV:
             win.lists.load_visible_logos(win.tv_list)

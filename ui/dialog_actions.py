@@ -53,7 +53,16 @@ class DialogActionsController:
         win.activated and not win.es_version_free)."""
         from ui.dialogs import VpnDialog
 
-        VpnDialog(self.win).exec()
+        dialog = VpnDialog(self.win)
+        # La tarjeta «VPN activa» del raíl tiene una sola fuente: el sondeo
+        # de ui.vpn_status, que mira TODOS los perfiles. El diálogo solo ve
+        # el seleccionado (con A conectado y B elegido diría «desconectado»),
+        # así que cuando lo que ve cambia solo pide al sondeo que vuelva a
+        # mirar, fuera del hilo de la UI como siempre.
+        poller = getattr(self.win, "vpn_status", None)
+        if poller is not None:
+            dialog.vpn_state_changed.connect(poller.request_refresh)
+        dialog.exec()
 
     def open_activation_dialog(self):
         """
@@ -285,7 +294,7 @@ class DialogActionsController:
         win = self.win
         if win.es_version_free:
             registro_html = (
-                f"<p style='font-size:13pt; font-weight:700; color:{palette.ACCENT_INFO};'>"
+                f"<p style='font-size:13pt; font-weight:700; color:{palette.ACCENT_TV};'>"
                 "Versión FREE — TV y Radio incluidos, sin Descargas ni Chromecast</p>"
             )
         elif win.activated:
@@ -312,7 +321,7 @@ class DialogActionsController:
             "<b style='color:#7c6cff; font-size:12pt;'>TDTChannels</b><br>"
             "Proporciona listas oficiales y legales de television terrestre en Espana "
             "en formato M3U y M3U8.<br>"
-            f"<a href='https://www.tdtchannels.com/lists/tv.m3u8' style='color:{palette.ACCENT_INFO};'>"
+            f"<a href='https://www.tdtchannels.com/lists/tv.m3u8' style='color:{palette.ACCENT_TV};'>"
             "https://www.tdtchannels.com/lists/tv.m3u8</a>"
             "</td></tr></table><br>"
             "<hr>"

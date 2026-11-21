@@ -1,4 +1,4 @@
-"""Tipografías empaquetadas (Figtree + Bricolage Grotesque) y tema Continuidad."""
+"""Tipografías empaquetadas (Figtree + Barlow Condensed) y tema Continuidad."""
 import os
 import re
 import sys
@@ -23,7 +23,11 @@ def qt_app():
 
 def test_get_font_paths_includes_body_and_display_fonts():
     names = {os.path.basename(p) for p in get_font_paths()}
-    assert {"Figtree-Variable.ttf", "BricolageGrotesque-Variable.ttf"} <= names
+    assert {
+        "Figtree-Variable.ttf",
+        "BarlowCondensed-Bold.ttf",
+        "BarlowCondensed-ExtraBold.ttf",
+    } <= names
     assert all(os.path.isfile(p) for p in get_font_paths())
 
 
@@ -31,7 +35,7 @@ def test_register_app_font_makes_both_families_available(qt_app):
     _register_app_font()
     families = set(QFontDatabase.families())
     assert "Figtree" in families
-    assert "Bricolage Grotesque" in families
+    assert "Barlow Condensed" in families
 
 
 @pytest.mark.parametrize("theme", ["dark", "light"])
@@ -94,7 +98,8 @@ def test_each_section_tab_becomes_a_block_of_its_own_color(theme):
 
 
 def test_section_variants_and_colors_match_the_style_idents():
-    assert set(SECTION_VARIANTS.values()) == set(SECTION_IDENTS)
+    # list, record y tools están definidos pero aún sin sección.
+    assert set(SECTION_VARIANTS.values()) == set(SECTION_IDENTS) - {"list", "record", "tools"}
     # set_variant descarta en silencio las variantes que no conoce.
     assert set(SECTION_IDENTS) <= VALID_VARIANTS
     for nav_id, variant in SECTION_VARIANTS.items():

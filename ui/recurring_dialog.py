@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 
 from core import recurring_recordings as recurring
 from ui import palette
+from ui.dialogs._common import warn_rule_conflict
 from ui.visual import set_surface
 
 DIAS_CORTO = ("L", "M", "X", "J", "V", "S", "D")
@@ -84,16 +85,7 @@ class _NuevaReglaDialog(QDialog):
             self.duracion_spin.value(),
         )
         if conflicts:
-            detail = "\n".join(
-                f"• {rule.channel_name} — {rule.start_time}"
-                for rule in conflicts[:4]
-            )
-            QMessageBox.warning(
-                self,
-                "Conflicto de grabación",
-                "Ese horario coincide con otra regla recurrente:\n\n"
-                f"{detail}\n\nModifica el día, la hora o la duración.",
-            )
+            warn_rule_conflict(self, conflicts)
             return
         self.result_rule = {
             "channel_name": name, "channel_url": url, "days": dias,

@@ -29,9 +29,11 @@ from ui.home_controller import HomeController
 from ui.keyboard_shortcuts import register_shortcuts
 from ui.catalog_toolbar import build_top_bar
 from ui.home_page_builder import build_home_page
-from ui.nav_top import (
-    build_nav_top, on_groups_sidebar_changed, open_favorites_folder, update_nav_top_compact,
+from ui.nav_rail import (
+    build_nav_rail, on_groups_sidebar_changed, open_favorites_folder, update_nav_rail_compact,
 )
+from ui.top_bar import build_app_top_bar
+from ui.vpn_status import VpnStatusPoller
 from ui.navigation_controller import NavigationController
 from ui.now_playing_bar_builder import update_now_playing_bar_compact
 from ui.player_panel_builder import build_player_panel
@@ -49,17 +51,24 @@ from ui.media_keys import (
 )
 from ui.playback_controller import PlaybackController
 from ui.queue_controller import QueueController
-from ui.window_chrome import WindowChrome
+from ui.window_chrome import (
+    CONTENT_MIN_WIDTH, WINDOW_MIN_HEIGHT, WINDOW_MIN_WIDTH, WindowChrome,
+)
 from ui.taskbar_controls import (
     BTN_NEXT, BTN_PLAY, BTN_PREV, BTN_STOP, BTN_MUTE, TaskbarControls, set_native_window_icon,
 )
 from ui.widgets import ChannelDelegate, ChannelGridDelegate, LogoLoader
+from ui.guide_detail import GuideDetailPanel
+from ui.guide_view import GuideView
 from ui.nav_sections import NAV_HOME
 
 DEFAULT_DOWNLOADS_DIRNAME = "TDT Radio VIP"
 # Por debajo de este ancho de ventana el panel de grupos de TV pasa a su
 # ancho compacto (ver GroupsSidebar.set_compact).
 GROUPS_SIDEBAR_COMPACT_BELOW = 1100
+# Ancho mínimo del panel de vídeo mientras está desplegado (plegado es 0,
+# ver MainWindow.set_player_panel_collapsed).
+PLAYER_PANEL_MIN_WIDTH = 300
 
 # ---------------------------------------------------------------------------
 # Mapa de responsabilidades extraídas de MainWindow (refactor de
@@ -74,10 +83,11 @@ GROUPS_SIDEBAR_COMPACT_BELOW = 1100
 # ui.app_lifecycle.AppLifecycle (self.lifecycle):
 #     schedule_startup_tasks, show_onboarding, warn_vlc_unavailable,
 #     run_automatic_backup, resume_last_stream, shutdown
-# ui.nav_top (funciones de módulo):
-#     _build_nav_top, _toggle_library_sidebar, _open_favorites_folder,
-#     _on_groups_sidebar_changed, update_nav_top_compact (colapso a
-#     solo-iconos, spec v8 §5.4)
+# ui.nav_rail (funciones de módulo):
+#     build_nav_rail, toggle_library_sidebar, open_favorites_folder,
+#     on_groups_sidebar_changed, update_nav_rail_compact (colapso a
+#     solo-iconos por debajo de 1000 px de ventana)
+# ui.top_bar.build_app_top_bar(): barra superior global (búsqueda, Multivista)
 # ui.catalog_toolbar (funciones de módulo):
 #     _build_top_bar, _on_catalog_sort_changed, _toggle_tv_grid_view
 # ui.home_page_builder.build_home_page(): _build_home_page
@@ -159,11 +169,11 @@ class MainWindow(QMainWindow):
         self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         # El LibrarySidebar (Recientes/Playlists) arranca OCULTO a propósito
-        # (ver ui.nav_top.build_nav_top/toggle_library_sidebar): con él visible por
+        # (ver ui.nav_rail.build_nav_rail/toggle_library_sidebar): con él visible por
         # defecto la ventana necesitaba 210px de más, y en pantallas más
         # pequeñas la app se abría demasiado grande y con la barra de
         # controles y la barra superior apretadas. Quien lo quiera, lo
-        # activa con el botón de biblioteca de la barra superior — sigue
+        # activa con el botón «Biblioteca» del raíl — sigue
         # disponible, solo que no ocupa sitio si no se pide.
         # El lienzo de Pencil se ha planteado a 1280 px: arrancar algo más
         # cerca de esa proporción deja respirar el catálogo, la emisión y
@@ -174,20 +184,13 @@ class MainWindow(QMainWindow):
         # 1920px ÷ 2 = 960), Windows no dejaba encajar la ventana en la
         # mitad de la pantalla ni al arrastrarla al borde izquierdo -- se
         # quedaba "a medias" (bug reportado).
-        # 900 tenía margen sobre el desglose real de la interfaz cuando la
-        # navegación era un riel lateral compartiendo fila con el contenido
-        # (riel 76 + lista de canales 420 + panel de vídeo 300 + divisor
-        # ≈ 800-820px). Con la navegación en su propia fila horizontal
-        # (ui.nav_top, ver spec v8 §4.1) ese desglose ya no aplica: ahora
-        # la barra de navegación es una restricción de ancho independiente
-        # (7 pestañas de texto, sin colapso a iconos todavía -- ver spec v8
-        # §5.4) que puede o no caber en 860px según la fuente/DPI real.
-        # Pendiente de medir con la interfaz corriendo (ver plan Fase 1,
-        # Task 2, Step 10) antes de dar este mínimo por bueno de nuevo.
+        # Con el raíl lateral v10 (ui.nav_rail), por debajo de 1000 px de
+        # ventana el raíl se queda en 64 px de iconos: raíl 64 + contenido
+        # 330 + reproductor 300 + divisor cabe de sobra en 860 px.
         # Los tres paneles pueden coexistir en una ventana estrecha. Antes
         # sus mínimos sumaban casi todo el ancho de la pantalla y Qt acababa
         # recortando el panel central en vez de dejar al splitter repartirlo.
-        self.setMinimumSize(860, 580)
+        self.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
 
         self.settings = cfg.load_settings()
         self.favorites = fav_store.load_favorites()
@@ -288,6 +291,12 @@ class MainWindow(QMainWindow):
 
         self._build_ui()
         self._registrar_atajos()
+        # Estado real de la VPN para la tarjeta del raíl: solo existe en la
+        # edición con licencia activada (la misma que construye la tarjeta).
+        # Lo arranca AppLifecycle.schedule_startup_tasks.
+        self.vpn_status = None
+        if self.activated and not self.es_version_free:
+            self.vpn_status = VpnStatusPoller(self, parent=self)
 
         # Teclas multimedia del teclado (play/pausa, siguiente, anterior,
         # detener) funcionando en segundo plano, no solo con la ventana en
@@ -329,16 +338,23 @@ class MainWindow(QMainWindow):
         raiz_v.addWidget(self.title_bar)
         raiz_v.addWidget(build_ident_strip())
 
-        # La barra de navegación vive como fila propia del layout vertical
-        # (no como columna del QHBoxLayout de más abajo): en el modelo v8
-        # las secciones son pestañas horizontales, no un raíl lateral que
-        # comparte fila con el contenido. Ver spec v8 §4.1.
-        self.nav_top = build_nav_top(self)
-        raiz_v.addWidget(self.nav_top)
-        # Colapso a solo-iconos por debajo del ancho real que necesitan las
-        # pestañas con texto completo (spec v8 §5.4) -- ver
-        # ui.nav_top.update_nav_top_compact, invocado desde eventFilter().
-        self.nav_top.installEventFilter(self)
+        # Carcasa v10: raíl | (barra superior / contenido). La barra de
+        # título y la franja de identidad siguen arriba, a todo el ancho.
+        carcasa = QWidget()
+        carcasa_h = QHBoxLayout(carcasa)
+        carcasa_h.setContentsMargins(0, 0, 0, 0)
+        carcasa_h.setSpacing(0)
+        # El raíl pasa a solo iconos (64 px) por debajo de 1000 px de
+        # ventana -- ver eventFilter(), que observa el ancho de la ventana
+        # (la superficie central), no el del raíl, que es fijo.
+        self.nav_rail = build_nav_rail(self)
+        carcasa_h.addWidget(self.nav_rail)
+        columna = QVBoxLayout()
+        columna.setContentsMargins(0, 0, 0, 0)
+        columna.setSpacing(0)
+        self.top_bar = build_app_top_bar(self)
+        columna.addWidget(self.top_bar)
+        carcasa_h.addLayout(columna, stretch=1)
 
         cuerpo = QWidget()
         root = QHBoxLayout(cuerpo)
@@ -346,11 +362,10 @@ class MainWindow(QMainWindow):
         root.setSpacing(0)
 
         # Sidebar de biblioteca (Recientes + Playlists = carpetas de
-        # favoritos), estilo Spotify: panel aditivo entre la barra de
-        # navegación superior y el contenido principal, colapsable con el
-        # botón de biblioteca al final de la barra (ui.nav_top). No
-        # sustituye a las pestañas de Favoritos/Historial -- es un atajo
-        # hacia ellas.
+        # favoritos), estilo Spotify: panel aditivo entre el raíl y el
+        # contenido principal, colapsable con el botón «Biblioteca» del
+        # raíl (ui.nav_rail). No sustituye a las pestañas de
+        # Favoritos/Historial -- es un atajo hacia ellas.
         self.library_sidebar = LibrarySidebar(self, partial(open_favorites_folder, self))
         self.library_sidebar.setVisible(False)
         root.addWidget(self.library_sidebar)
@@ -382,7 +397,7 @@ class MainWindow(QMainWindow):
         # superior, que se construye antes que el QStackedWidget.
         self.tv_view_toggle.setChecked(bool(self.settings.get("catalog_grid_view", False)))
 
-        # setChecked(True) sobre el botón de Inicio (ui.nav_top.build_nav_top)
+        # setChecked(True) sobre el botón de Inicio (ui.nav_rail.build_nav_rail)
         # no dispara idClicked por sí solo — solo lo hace
         # un clic real del usuario. Sin esto, la portada se abriría vacía
         # hasta que el usuario cambiara de sección y volviera a Inicio.
@@ -393,22 +408,16 @@ class MainWindow(QMainWindow):
         # Mínimo real: por debajo de esto, el título + filtro de categoría +
         # buscador de la barra superior no caben y se cortan (era el bug del
         # buscador cortado). El splitter no puede arrastrarse más allá.
-        self.content_widget.setMinimumWidth(330)
+        self.content_widget.setMinimumWidth(CONTENT_MIN_WIDTH)
 
         player_panel = build_player_panel(self)
-        # La fila de controles ya no crece con el número de funciones: las
-        # cinco acciones secundarias (pistas, pantalla completa, PiP,
-        # temporizador, cola) que antes tenían un botón circular propio y
-        # obligaban a un mínimo de 430px ahora viven en un único botón
-        # "Más opciones" (ver ui.now_playing_bar_builder.build_now_playing_bar). 300px sigue dejando
-        # margen de sobra para el resto de la fila (favoritos, cast,
-        # detener, play, grabar, silenciar, más) sin que se solape nada, y
-        # permite que la ventana encaje en la mitad de pantallas normales
-        # en vez del mínimo inflado de antes.
+        # Los controles ya no viven en este panel (dock a todo el ancho,
+        # ver más abajo), así que 300px solo protege el vídeo.
         # El reproductor necesita un ancho protegido: en la captura, al
         # arrastrar el divisor el catálogo se quedaba con casi todo el
         # espacio y el vídeo/"Ahora suena" quedaba reducido a una franja.
-        player_panel.setMinimumWidth(300)
+        player_panel.setMinimumWidth(PLAYER_PANEL_MIN_WIDTH)
+        self.player_panel = player_panel
 
         # Antes el reparto entre la lista y el vídeo era un stretch fijo
         # (3:2) dentro del QHBoxLayout: no había forma de ajustarlo a mano.
@@ -424,9 +433,24 @@ class MainWindow(QMainWindow):
         self.main_splitter.setStretchFactor(1, 2)
         self.main_splitter.setSizes([560, 500])
         root.addWidget(self.main_splitter, stretch=1)
-        raiz_v.addWidget(cuerpo, stretch=1)
+        # Se arranca sin reproducción: el panel de vídeo empieza plegado y
+        # el catálogo ocupa todo (ver set_player_panel_collapsed).
+        self._player_panel_collapsed = False
+        self._player_panel_width = None
+        self._player_panel_opened_for_mode = False
+        self.set_player_panel_collapsed(True)
+        self.main_splitter.splitterMoved.connect(self._on_player_splitter_moved)
+        columna.addWidget(cuerpo, stretch=1)
+        raiz_v.addWidget(carcasa, stretch=1)
+        # Dock «Ahora suena» (76 px) a todo el ancho bajo raíl y contenido;
+        # lo crea build_player_panel junto al resto del reproductor.
+        raiz_v.addWidget(self.now_playing_bar)
 
         self.setCentralWidget(central)
+        # La superficie central mide lo mismo que la ventana: su Resize
+        # decide el raíl compacto y el panel de grupos estrecho.
+        self._app_surface = central
+        central.installEventFilter(self)
         # Los filtros de adaptación se activan solo cuando todos los widgets
         # que consulta eventFilter ya existen; durante la construcción Qt
         # también emite Resize y podría entrar antes de crear player_frame.
@@ -435,6 +459,71 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(QSizeGrip(self))
         self.statusBar().showMessage("Listo.")
         self.player.set_volume(self.volume_slider.value())
+
+    def set_player_panel_collapsed(self, collapsed: bool) -> None:
+        """
+        Pliega (True) o despliega (False) el panel de vídeo del splitter.
+        Sin reproducción el panel solo enseñaba la vista de reposo y le
+        quitaba ~40 % del ancho al catálogo; plegado, el contenido ocupa
+        todo. Al desplegar recupera el ancho que tenía la última vez que
+        se vio (o 2/5 del splitter la primera vez).
+
+        Pantalla completa y PiP necesitan el panel aunque no suene nada:
+        mientras duran, plegar no hace nada, y desplegar para ellos no
+        cuenta como "tamaño del usuario" al volver a plegar (ver
+        WindowChrome.enter_pip_mode / enter_player_fullscreen).
+        """
+        # El panel es siempre el segundo hijo del splitter (tras el contenido).
+        splitter = self.main_splitter
+        index = 1
+        in_mode = self._player_fullscreen or self._pip_mode
+        if collapsed:
+            if self._player_panel_collapsed or in_mode:
+                return
+            sizes = splitter.sizes()
+            # Antes de mostrarse la ventana, sizes() aún no es un reparto real.
+            if splitter.isVisible() and sizes[index] > 0 and not self._player_panel_opened_for_mode:
+                self._player_panel_width = sizes[index]
+            self._player_panel_collapsed = True
+            self._player_panel_opened_for_mode = False
+            # El mínimo de 300 px y setChildrenCollapsible(False) impedirían
+            # dejarlo a 0: se relajan solo para este panel mientras está plegado.
+            self.player_panel.setMinimumWidth(0)
+            splitter.setCollapsible(index, True)
+            splitter.setSizes([sum(sizes), 0])
+            return
+
+        if not self._player_panel_collapsed:
+            # Ya desplegado (p. ej. empezó la reproducción dentro de pantalla
+            # completa): el panel pasa a ser de la reproducción y su ancho
+            # vuelve a contar como el elegido al plegar.
+            self._player_panel_opened_for_mode = False
+            return
+        self._player_panel_collapsed = False
+        self._player_panel_opened_for_mode = in_mode
+        self._restore_player_panel_constraints()
+        total = sum(splitter.sizes())
+        width = self._player_panel_width or round(total * 2 / 5)
+        content_min = self.content_widget.minimumWidth() if self.content_widget.isVisible() else 0
+        width = max(PLAYER_PANEL_MIN_WIDTH, min(width, total - content_min))
+        splitter.setSizes([total - width, width])
+
+    def _restore_player_panel_constraints(self) -> None:
+        """Vuelve a proteger el ancho del panel (lo relaja al plegarlo)."""
+        self.main_splitter.setCollapsible(1, False)
+        self.player_panel.setMinimumWidth(PLAYER_PANEL_MIN_WIDTH)
+
+    def _on_player_splitter_moved(self, _pos: int, _index: int) -> None:
+        """
+        El usuario abrió a mano el panel plegado arrastrando el divisor
+        (splitterMoved no se emite con setSizes): deja de estar plegado y su
+        ancho es el que se recordará al plegar de nuevo.
+        """
+        if not self._player_panel_collapsed or self.main_splitter.sizes()[1] <= 0:
+            return
+        self._player_panel_collapsed = False
+        self._player_panel_opened_for_mode = False
+        self._restore_player_panel_constraints()
 
     def _build_content_stack(self) -> QStackedWidget:
         self.stack = QStackedWidget()
@@ -467,10 +556,35 @@ class MainWindow(QMainWindow):
         pages = [self.home_page, self.tv_list, self.radio_list, self.fav_list, self.hist_list]
         if self._download_host is not None:
             pages.append(self._download_host)
+        # El índice del stack es el id de la sección: la Guía va en la posición
+        # NAV_GUIDE (6), también en Free, donde no hay página de Descargas.
+        if self._download_host is None:
+            pages.append(QWidget())
+        pages.append(self._build_guide_page())
         for page in pages:
             self.stack.addWidget(page)
 
         return self.stack
+
+    def _build_guide_page(self) -> QWidget:
+        """Sección «Guía»: la parrilla y, a su derecha, el panel de detalle. Los
+        datos llegan por set_guide/set_channels/set_favorites (ver
+        NavigationController y EpgController._on_loaded); aquí no se descarga nada."""
+        self.guide_view = GuideView(self.tv_channels_data, self.epg_guide, favorites=())
+        self.guide_detail = GuideDetailPanel(
+            recording_enabled=not self.es_version_free,
+            cancel_scheduled=self.tray.cancel_scheduled,
+        )
+        self.guide_view.programme_selected.connect(self.guide_detail.show_programme)
+        self.guide_detail.tune_requested.connect(self.epg.tune_to_tvg_id)
+        page = self.guide_page = QWidget()
+        page.setObjectName("guidePage")
+        layout = QHBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(self.guide_view, stretch=1)
+        layout.addWidget(self.guide_detail)
+        return page
 
     def _ensure_download_panel(self):
         if self.es_version_free or self._is_closing or self.download_panel is not None:
@@ -575,13 +689,13 @@ class MainWindow(QMainWindow):
         comportamiento por defecto de QMainWindow, no un True/False propio.
         """
         if obj is getattr(self, "now_playing_bar", None) and event.type() == QEvent.Resize:
+            # El dock ocupa todo el ancho: su ancho es el de la ventana.
             update_now_playing_bar_compact(self, event.size().width())
         if obj is getattr(self, "_home_viewport", None) and event.type() == QEvent.Resize:
             self.home.update_home_compact(event.size().width())
-        if obj is getattr(self, "nav_top", None) and event.type() == QEvent.Resize:
-            update_nav_top_compact(self, event.size().width())
-            # nav_top ocupa todo el ancho de la ventana: sirve también de
-            # referencia para estrechar el panel de grupos de TV.
+        if obj is getattr(self, "_app_surface", None) and event.type() == QEvent.Resize:
+            update_nav_rail_compact(self, event.size().width())
+            # El mismo ancho de ventana estrecha el panel de grupos de TV.
             compact = event.size().width() < GROUPS_SIDEBAR_COMPACT_BELOW
             if hasattr(self, "groups_sidebar"):
                 self.groups_sidebar.set_compact(compact)
@@ -610,8 +724,8 @@ class MainWindow(QMainWindow):
 
         # Búsqueda global (paleta de comandos): antes era el atajo de la
         # QAction "Búsqueda global…" de la barra de menú clásica, retirada
-        # en el rediseño v8 (spec §5.2) -- el icono equivalente vive ahora
-        # en ui.nav_top (ver ui.more_menu.build_global_search_button), pero
+        # en el rediseño v8 (spec §5.2) -- hoy se abre desde el campo de la
+        # barra superior (ui.top_bar) y el icono del raíl, pero
         # el atajo de teclado necesita registrarse aparte, a nivel de
         # ventana, igual que F11/Esc arriba.
         atajo_busqueda = QShortcut(QKeySequence("Ctrl+K"), self)

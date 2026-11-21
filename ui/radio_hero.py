@@ -47,7 +47,7 @@ class RadioHeroWidget(QWidget):
         self.cover.setAlignment(Qt.AlignCenter)
         self.cover.setStyleSheet(
             f"QLabel#radioHeroCover {{"
-            f"  background-color: {palette.ACCENT_CATEGORY_ORANGE};"
+            f"  background-color: {palette.ACCENT_RADIO};"
             f"  border: none;"
             f"  border-radius: 14px;"
             f"}}"
@@ -62,7 +62,7 @@ class RadioHeroWidget(QWidget):
         self.station_label = QLabel()
         self.station_label.setAlignment(Qt.AlignCenter)
         self.station_label.setStyleSheet(
-            f"color: {palette.ACCENT_CATEGORY_ORANGE}; font-weight: 800; font-size: 13pt;"
+            f"color: {palette.ACCENT_RADIO}; font-weight: 800; font-size: 13pt;"
         )
         layout.addWidget(self.station_label)
 

@@ -46,13 +46,13 @@ LOGO_MAX_SIDE = 256
 # en cada sesión, sin tener que mantener un diccionario.
 CATEGORY_PALETTE = (
     palette.ACCENT_CAST,  # verde azulado
-    palette.ACCENT_INFO,  # azul cielo
-    palette.ACCENT_HISTORY,  # lavanda
-    palette.ACCENT_HOME,  # rosa
+    palette.ACCENT_TV,  # azul cielo
+    palette.ACCENT_TOOLS,  # violeta
+    palette.ACCENT_HOME,  # naranja
     palette.SUCCESS,  # verde
-    palette.ACCENT_CATEGORY_ORANGE,  # naranja
-    palette.ACCENT_DOWNLOAD,  # lima
-    palette.ACCENT_FAVORITE,  # amarillo
+    palette.ACCENT_RADIO,  # magenta
+    palette.ACCENT_DOWNLOAD,  # verde
+    palette.ACCENT_GUIDE,  # amarillo
 )
 
 
@@ -461,9 +461,9 @@ class ChannelGridDelegate(QStyledItemDelegate):
             painter.drawRoundedRect(logo_rect, 10, 10)
             icon_size = int(logo_size * 0.45)
             icon_pixmap = (
-                icon_tv(palette.ACCENT_INFO, size=icon_size)
+                icon_tv(palette.ACCENT_TV, size=icon_size)
                 if data.get("type") == "tv"
-                else icon_radio(palette.ACCENT_CATEGORY_ORANGE, size=icon_size)
+                else icon_radio(palette.ACCENT_RADIO, size=icon_size)
             ).pixmap(icon_size, icon_size)
             painter.drawPixmap(
                 int(logo_rect.center().x() - icon_size / 2),
@@ -484,7 +484,7 @@ class ChannelGridDelegate(QStyledItemDelegate):
 
         if is_fav:
             star_rect = QRectF(rect.right() - 26, rect.top() + 4, 20, 20)
-            painter.setPen(QColor(palette.ACCENT_FAVORITE))
+            painter.setPen(QColor(palette.ACCENT_LIST))
             star_font = QFont(painter.font())
             star_font.setPointSize(11)
             painter.setFont(star_font)
@@ -624,9 +624,9 @@ class ChannelDelegate(QStyledItemDelegate):
             # el mismo color que su equivalente en el menú lateral.
             icon_size = int(self.LOGO_SIZE * 0.5)
             if data.get("type") == "tv":
-                icon_pixmap = icon_tv(palette.ACCENT_INFO, size=icon_size).pixmap(icon_size, icon_size)
+                icon_pixmap = icon_tv(palette.ACCENT_TV, size=icon_size).pixmap(icon_size, icon_size)
             else:
-                icon_pixmap = icon_radio(palette.ACCENT_CATEGORY_ORANGE, size=icon_size).pixmap(icon_size, icon_size)
+                icon_pixmap = icon_radio(palette.ACCENT_RADIO, size=icon_size).pixmap(icon_size, icon_size)
             icon_x = logo_rect.center().x() - icon_size / 2
             icon_y = logo_rect.center().y() - icon_size / 2
             painter.drawPixmap(int(icon_x), int(icon_y), icon_pixmap)
@@ -718,7 +718,7 @@ class ChannelDelegate(QStyledItemDelegate):
         # ---- estrella de favorito ----
         if is_fav:
             star_rect = QRectF(rect.right() - 26, rect.center().y() - 11, 20, 22)
-            painter.setPen(QColor(palette.ACCENT_FAVORITE))
+            painter.setPen(QColor(palette.ACCENT_LIST))
             star_font = QFont(painter.font())
             star_font.setPointSize(12)
             painter.setFont(star_font)

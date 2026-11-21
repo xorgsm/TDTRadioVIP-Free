@@ -25,7 +25,14 @@ from PySide6.QtGui import QCursor, QGuiApplication
 from ui import icons as app_icons
 from ui import palette
 from ui.nav_sections import NAV_TV
+from ui.now_playing_bar_builder import DOCK_HEIGHT, update_now_playing_bar_compact
 from ui.style import accent_shades
+
+# Mínimos de la ventana normal: los fija MainWindow.__init__ y los restaura
+# exit_pip_mode (ver allí el porqué de 860 × 580 y 330 px de contenido).
+WINDOW_MIN_WIDTH = 860
+WINDOW_MIN_HEIGHT = 580
+CONTENT_MIN_WIDTH = 330
 
 
 class WindowChrome:
@@ -168,8 +175,13 @@ class WindowChrome:
         win = self.win
         win._player_fullscreen = True
         win._was_maximized_before_fs = win._pseudo_maximizado
+        # Sin reproducción el panel de vídeo está plegado; la pantalla
+        # completa lo necesita (con el flag ya puesto: no cuenta como
+        # tamaño elegido por el usuario).
+        win.set_player_panel_collapsed(False)
 
-        win.nav_top.setVisible(False)
+        win.nav_rail.setVisible(False)
+        win.top_bar.setVisible(False)
         win.content_widget.setVisible(False)
         win.library_sidebar.setVisible(False)
         win.groups_sidebar.setVisible(False)
@@ -200,7 +212,8 @@ class WindowChrome:
         win.player_header_bar.setVisible(True)
         win.now_playing_bar.setVisible(True)
 
-        win.nav_top.setVisible(True)
+        win.nav_rail.setVisible(True)
+        win.top_bar.setVisible(True)
         win.content_widget.setVisible(True)
         # Respeta la preferencia del usuario (botón de biblioteca de la
         # barra de navegación)
@@ -220,6 +233,8 @@ class WindowChrome:
         if win._was_maximized_before_fs:
             win._pseudo_maximizado = False  # forzar recálculo limpio
             self.maximizar()
+        if not win.current_url:
+            win.set_player_panel_collapsed(True)
 
     def show_fullscreen_overlay(self):
         """
@@ -277,8 +292,11 @@ class WindowChrome:
         win._pip_mode = True
         win._geometria_antes_pip = win.geometry()
         win._was_maximized_before_pip = win._pseudo_maximizado
+        # Igual que en pantalla completa: el PiP es el panel de vídeo.
+        win.set_player_panel_collapsed(False)
 
-        win.nav_top.setVisible(False)
+        win.nav_rail.setVisible(False)
+        win.top_bar.setVisible(False)
         win.content_widget.setVisible(False)
         win.content_widget.setMinimumWidth(0)
         win.library_sidebar.setVisible(False)
@@ -292,25 +310,24 @@ class WindowChrome:
         # devolverla tal cual al salir.
         win._groups_sidebar_visible_before_pip = win.groups_sidebar.isVisible()
         win.groups_sidebar.setVisible(False)
-        # win.nav_top ya se oculta más arriba en este mismo método, y con
-        # ella se lleva consigo la búsqueda global y "Más ▾" (ver
-        # ui.more_menu) -- no hace falta ocultarlos aparte, a diferencia de
-        # cuando esto vivía en una QMenuBar independiente de la barra de
-        # navegación.
+        # win.nav_rail y win.top_bar ya se ocultan más arriba en este mismo
+        # método, y con ellos la búsqueda global y "Más ▾" (ver
+        # ui.more_menu) -- no hace falta ocultarlos aparte.
         win.statusBar().setVisible(False)
-        # El PiP funciona como mini reproductor: conserva transporte y mute,
-        # pero esconde acciones secundarias para no saturar la ventana.
-        # En Free win.cast_btn es None (ver
+        # El PiP funciona como mini reproductor: esconde favorito y Cast,
+        # pero conserva lo esencial (DESIGN.md, "Essential Controls
+        # Survive"): reproducir, detener, grabar, volumen y "Más opciones".
+        # El resto del encogido lo hace update_now_playing_bar_compact con
+        # el ancho de 460 px. En Free win.cast_btn es None (ver
         # ui.now_playing_bar_builder.build_now_playing_bar).
         win._pip_compact_visibility = {
-            widget: widget.isVisible() for widget in (
-                win.fav_btn, win.cast_btn, win.record_btn, win.more_btn, win.volume_slider,
-            ) if widget is not None
+            widget: widget.isVisible() for widget in (win.fav_btn, win.cast_btn)
+            if widget is not None
         }
         for widget in win._pip_compact_visibility:
             widget.setVisible(False)
-        win.now_playing_bar.setFixedHeight(96)
-        # setMinimumSize(1000, 580) del arranque impediría encoger la
+        win.now_playing_bar.setFixedHeight(DOCK_HEIGHT)
+        # El setMinimumSize(860, 580) del arranque impediría encoger la
         # ventana a un tamaño de ventana flotante — se relaja mientras
         # dure el modo PiP y se restaura al salir.
         win.setMinimumSize(320, 240)
@@ -318,7 +335,10 @@ class WindowChrome:
         win.pip_btn.setIcon(app_icons.icon_pip(
             accent_shades(win.settings.get("accent_color", palette.ACCENT))["lighter"]
         ))
+        # Salida visible del PiP: el dock compacto lo mantiene a la vista
+        # mientras dure el modo (ver update_now_playing_bar_compact).
         win.pip_btn.setToolTip("Salir de ventana flotante")
+        win.pip_btn.setAccessibleName("Salir de ventana flotante")
 
         win.setWindowFlag(Qt.WindowStaysOnTopHint, True)
         win.resize(460, 340)
@@ -330,27 +350,34 @@ class WindowChrome:
         win = self.win
         win._pip_mode = False
 
-        win.nav_top.setVisible(True)
+        win.nav_rail.setVisible(True)
+        win.top_bar.setVisible(True)
         win.content_widget.setVisible(True)
-        win.content_widget.setMinimumWidth(420)
+        win.content_widget.setMinimumWidth(CONTENT_MIN_WIDTH)
         win.library_sidebar.setVisible(win.library_toggle_btn.isChecked())
         win.groups_sidebar.setVisible(getattr(win, "_groups_sidebar_visible_before_pip", False))
         win.statusBar().setVisible(True)
         for widget, was_visible in getattr(win, "_pip_compact_visibility", {}).items():
             widget.setVisible(was_visible)
         win._pip_compact_visibility = {}
-        win.now_playing_bar.setFixedHeight(118)
-        # Debe coincidir con el mínimo fijado en MainWindow.__init__ -- ver
-        # el comentario ahí sobre por qué 900 y no 1000.
-        win.setMinimumSize(900, 580)
+        win.now_playing_bar.setFixedHeight(DOCK_HEIGHT)
+        # Los mismos mínimos que fija MainWindow.__init__ (antes 900 y 420:
+        # tras un PiP la ventana ya no bajaba a 860).
+        win.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
 
         win.pip_btn.setIcon(app_icons.icon_pip(palette.TEXT_PRIMARY))
         win.pip_btn.setToolTip("Ventana flotante")
+        win.pip_btn.setAccessibleName("Abrir ventana flotante")
 
         win.setWindowFlag(Qt.WindowStaysOnTopHint, False)
         win.show()
+        if not win.current_url:
+            win.set_player_panel_collapsed(True)
         if win._geometria_antes_pip is not None:
             win.setGeometry(win._geometria_antes_pip)
         if win._was_maximized_before_pip:
             win._pseudo_maximizado = False
             self.maximizar()
+        # Sin _pip_mode el botón de PiP vuelve a la regla normal del dock
+        # aunque la geometría restaurada no cambie de ancho.
+        update_now_playing_bar_compact(win, win.now_playing_bar.width())

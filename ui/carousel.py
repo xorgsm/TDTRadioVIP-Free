@@ -97,7 +97,7 @@ class CarouselCard(QFrame):
         self.logo_label.setFixedSize(CARD_LOGO_SIZE, CARD_LOGO_SIZE)
         self.logo_label.setAlignment(Qt.AlignCenter)
         placeholder_builder = icon_tv if is_tv else icon_radio
-        placeholder_color = palette.ACCENT_INFO if is_tv else palette.ACCENT_CATEGORY_ORANGE
+        placeholder_color = palette.ACCENT_TV if is_tv else palette.ACCENT_RADIO
         self.logo_label.setPixmap(placeholder_builder(placeholder_color, size=36).pixmap(36, 36))
         layout.addWidget(self.logo_label, alignment=Qt.AlignHCenter)
 
@@ -153,7 +153,7 @@ class CarouselCard(QFrame):
         if old_logo != entry.get("logo", ""):
             self._logo_token += 1
             builder = icon_tv if is_tv else icon_radio
-            color = palette.ACCENT_INFO if is_tv else palette.ACCENT_CATEGORY_ORANGE
+            color = palette.ACCENT_TV if is_tv else palette.ACCENT_RADIO
             self.logo_label.setPixmap(builder(color, size=36).pixmap(36, 36))
             if entry.get("logo") and self._logo_loader is not None:
                 self._load_logo(entry["logo"])

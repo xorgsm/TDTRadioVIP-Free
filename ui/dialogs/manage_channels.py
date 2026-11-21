@@ -175,7 +175,7 @@ class ManageChannelsDialog(QDialog):
         if ambito == "custom":
             texto, color = "Eliminar seleccionados", palette.DANGER
         elif ambito == "public":
-            texto, color = "Ocultar seleccionados", palette.ACCENT_CATEGORY_ORANGE
+            texto, color = "Ocultar seleccionados", palette.ACCENT_RADIO
         else:
             texto, color = "Restaurar seleccionados", palette.SUCCESS
         self.action_btn.setText(texto)

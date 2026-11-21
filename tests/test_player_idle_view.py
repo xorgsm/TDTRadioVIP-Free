@@ -93,6 +93,23 @@ def _visible_quick_buttons(view):
     return [w for w in items if w is not None and not w.isHidden()]
 
 
+def test_idle_view_con_ancho_cero_no_pide_un_minimo_negativo(qapp):
+    # El panel de vídeo plegado mide 0 de ancho: restarle los márgenes dejaba
+    # la columna en un ancho negativo y Qt avisaba «Negative sizes (-56,0)».
+    from PySide6.QtCore import qInstallMessageHandler
+
+    avisos = []
+    previo = qInstallMessageHandler(lambda _tipo, _ctx, msg: avisos.append(msg))
+    try:
+        parent, view = _idle_view_in(qapp, 0, 400, [_e("Canal 1")])
+        view.setGeometry(0, 0, 0, 400)
+        qapp.processEvents()
+    finally:
+        qInstallMessageHandler(previo)
+    assert not [m for m in avisos if "Negative sizes" in m], avisos
+    assert view._holder.minimumWidth() >= 0
+
+
 def test_idle_view_sin_espacio_no_comprime_los_accesos_rapidos(qapp):
     entries = [_e(f"Serie larga {i} (2005) S02 - S02E1{i}") for i in range(5)]
     parent, view = _idle_view_in(qapp, 560, 400, entries)

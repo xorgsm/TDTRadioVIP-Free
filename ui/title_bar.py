@@ -29,8 +29,9 @@ def build_title_bar(win) -> QWidget:
 
     Ya no aloja la barra de menú clásica (Archivo/Configuración/Ayuda,
     ui/app_menu.py) -- retirada por completo en el rediseño v8 (spec §5.2),
-    redistribuida entre ui.nav_top (búsqueda global + "Más ▾", ver
-    ui.more_menu) y el resto de la interfaz.
+    redistribuida entre el raíl ui.nav_rail (búsqueda global + "Más ▾",
+    ver ui.more_menu), la barra superior ui.top_bar y el resto de la
+    interfaz.
     """
     barra = QWidget()
     barra.setObjectName("titleBar")
@@ -43,8 +44,8 @@ def build_title_bar(win) -> QWidget:
     # Marca + versión, apiladas: antes la versión no vivía aquí (esta
     # barra se veía apretada contra "Archivo" en ventanas no muy
     # anchas con la marca en una sola línea) y en su lugar se repetía
-    # en el riel de navegación (brandLabel/versionLabel, ya retirado -- ver
-    # ui.nav_top). Con la barra ya más alta para dos líneas, la marca+versión
+    # en el riel de navegación (brandLabel/versionLabel, ya retirado).
+    # Con la barra ya más alta para dos líneas, la marca+versión
     # viven una sola vez, más grandes, y la barra de navegación no las repite.
     marca = QLabel("TDT & Radio VIP")
     marca.setObjectName("titleBrand")
@@ -70,10 +71,9 @@ def build_title_bar(win) -> QWidget:
     version_row.addWidget(win.edition_badge)
     version_row.addStretch(1)
 
-    # Columna de ancho natural (antes se fijaba a NAV_RAIL_WIDTH para
-    # alinear el menú con el contenido bajo el raíl lateral; ese raíl ya
-    # no existe -- ver ui.nav_top -- así que la marca simplemente ocupa
-    # el espacio que necesita su texto).
+    # Columna de ancho natural: la barra de título va a todo el ancho por
+    # encima del raíl (ui.nav_rail), sin alinearse con él, así que la
+    # marca simplemente ocupa el espacio que necesita su texto.
     marca_col = QWidget()
     marca_col_layout = QVBoxLayout(marca_col)
     marca_col_layout.setContentsMargins(0, 0, 0, 0)

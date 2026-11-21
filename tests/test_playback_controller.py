@@ -549,3 +549,34 @@ def test_sleep_timeout_cancels_a_pending_reconnection(ctrl, win, timers):
 
     win.player.play.assert_not_called()
     assert win._active_list is None
+
+
+# --------------------------------------------------------------------------
+# Progreso del programa en el dock
+# --------------------------------------------------------------------------
+
+def test_epg_tick_runs_only_for_tv_with_epg_id(ctrl, win, timers):
+    tick = pc_module.QTimer.return_value
+
+    ctrl.play("radio", "Cadena SER", "https://stream.test/ser")
+    pc_module.QTimer.assert_not_called()           # radio: ni se crea
+
+    ctrl.play("tv", "La 1", "https://stream.test/la1", "la1")
+    pc_module.QTimer.assert_called_once_with(win)
+    tick.setInterval.assert_called_once_with(ctrl.EPG_TICK_MS)
+    tick.timeout.connect.assert_called_once_with(ctrl.update_epg_display)
+    tick.start.assert_called_once()
+
+    ctrl.play("radio", "Cadena SER", "https://stream.test/ser")
+    tick.stop.assert_called_once()
+
+    ctrl.play("tv", "La 1", "https://stream.test/la1", "la1")
+    tick.stop.reset_mock()
+    ctrl.stop_playback()
+    tick.stop.assert_called_once()
+    pc_module.QTimer.assert_called_once()          # se reutiliza el mismo
+
+
+def test_epg_tick_not_started_for_tv_without_epg_id(ctrl, win, timers):
+    ctrl.play("tv", "Canal sin guía", "https://stream.test/x")
+    pc_module.QTimer.assert_not_called()
